@@ -2,14 +2,19 @@
 
 from lib.run import Runner
 import sys
-
-
-WEATHER_TOKEN  = '80ce462129470ef2f5d55e6f65d32eef'
+import os
 
 class WeatherApi(Runner):
     def __init__(self, config):
         super().__init__(config)
         self.weather = self.config['weather']
+        try:
+            if "open_weather_token" in self.config['basic']:
+                self.token = self.config['basic'].get('open_weather_token')
+            else:
+                self.token = os.environ['WEATHERTOKEN']
+        except KeyError:
+            sys.exit("No Weather Token")
 
     def parse_args(self):
         if 'zipcode' in self.weather:
@@ -20,7 +25,7 @@ class WeatherApi(Runner):
 
     def get_long_and_lat(self, location):
         try: 
-            url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={WEATHER_TOKEN}'
+            url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
             response = self.get_data(url)
             lon = response.json().get('coord').get('lon')
             lat = response.json().get('coord').get('lat')
@@ -31,9 +36,9 @@ class WeatherApi(Runner):
     def url_builder(self, location=None, zipcode=None):
         if location:
             lon, lat = self.get_long_and_lat(location)
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_TOKEN}&units={self.weather.get('format')}"
+            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
-            url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={WEATHER_TOKEN}&units={self.weather.get('format')}"
+            url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={self.token}&units={self.weather.get('format')}"
         return url
     
     async def run(self):
