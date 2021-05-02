@@ -1,39 +1,47 @@
 #!/usr/bin/env python3
 
-from lib.run import Runner, RunnerABS
+from lib.run import Runner
+import sys
+import os
 
+class WeatherApi(Runner):
+    def __init__(self, config):
+        super().__init__(config)
+        self.weather = self.config['weather']
+        try:
+            if "open_weather_token" in self.config['basic']:
+                self.token = self.config['basic'].get('open_weather_token')
+            else:
+                self.token = os.environ['WEATHERTOKEN']
+        except KeyError:
+            sys.exit("No Weather Token")
 
-WEATHER_TOKEN  = '80ce462129470ef2f5d55e6f65d32eef'
+    def parse_args(self):
+        if 'zipcode' in self.weather:
+            return self.url_builder(zipcode=self.weather.getint('zipcode'))
+        else:
+            return self.url_builder(location=self.weather['city'])
 
-class WeatherApi(RunnerABS):
-    def __init__(self, location=None, zipcode=None):
-        super().__init__()
-        self.location = location
-        self.zipcode = zipcode
-        self.runner = Runner()
-
-    def parse_args(self, location):
-        pass 
 
     def get_long_and_lat(self, location):
         try: 
-            url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={WEATHER_TOKEN}'
-            response = self.runner.get_data(url)
+            url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
+            response = self.get_data(url)
             lon = response.json().get('coord').get('lon')
             lat = response.json().get('coord').get('lat')
             return lon, lat
         except Exception as e:
-            return "No", "City Found"
+            sys.exit("No City Found")
 
     def url_builder(self, location=None, zipcode=None):
         if location:
             lon, lat = self.get_long_and_lat(location)
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={WEATHER_TOKEN}"
+            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
-            url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={WEATHER_TOKEN}&units=imperial"
+            url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={self.token}&units={self.weather.get('format')}"
         return url
     
-    async def run(self, location=None, zipcode=None):
+    async def run(self):
         """
         Get Args
         parse args
@@ -41,11 +49,7 @@ class WeatherApi(RunnerABS):
         make request
         return Json
         """
-        if not location:
-            location = self.location 
-        elif not zipcode:
-            zipcode = self.zipcode
-        # location = self.parse_args(location)
-        url = self.url_builder(location, zipcode)
-        api_data = self.runner.get_data(url)
+
+        args = self.parse_args()
+        api_data = self.get_data(args)
         return api_data.json()

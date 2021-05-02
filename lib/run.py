@@ -5,7 +5,7 @@ import requests
 
 class RunnerABS():
     def __init__(self):
-        pass 
+        pass
     @abstractmethod
     async def run(self): pass
 
@@ -17,8 +17,9 @@ class RunnerABS():
 
 class Runner(RunnerABS):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, config):
         super().__init__()
+        self.config = config
 
     def get_data(self, url):
         data = requests.get(url)
