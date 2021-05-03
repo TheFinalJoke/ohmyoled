@@ -2,6 +2,7 @@
 
 from typing import get_args
 from lib.run import Runner
+from lib.stockquote import SQuote
 import os 
 import sys
 
@@ -19,19 +20,21 @@ class StockApi(Runner):
     def parse_args(self):
         return super().parse_args()
     
-    def url_builder(self, symbol):
-        base = 'https://finnhub.io/api/v1/'
-        url = base + f'quote?symbol={symbol.upper()}&token={self.token}'
-        return url
     def symbol_lookup(self, company):
         """
         Current Config only Takes in symbols
         """
         base = 'https://finnhub.io/api/v1/'
         url = base + f'quote?symbol={company.upper()}&token={self.token}'
-        return self.runner.get_data(url)
+        return self.get_data(url)
 
     async def run(self):
-        symbol = self.stock.get('symbol')
-        api_data = self.get_data(self.url_builder(symbol=symbol))
-        return api_data.json()
+        stock_data = {}
+        if "historical" in self.stock and self.stock.getboolean("historical"):
+            pass
+        elif "quote" in self.stock and self.stock.getboolean("quote"):
+            base = 'https://finnhub.io/api/v1/'
+
+            url = base + f'quote?symbol={self.stock["symbol"]}&token={self.token}'
+            stock_data['Quote'] = self.get_data(url)
+        return stock_data

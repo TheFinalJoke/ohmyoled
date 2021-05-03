@@ -3,10 +3,12 @@
 import asyncio
 from asyncio.runners import run
 import configparser
+from lib.stocks import StockApi
 
 from lib.run import Runner
 from lib.weather import WeatherApi
 from lib.stocks import StockApi
+from lib.stockquote import SQuote
 TESTING = True
 """
 This file for now is for testing the library
@@ -34,7 +36,6 @@ class Main():
                     api_modules.append(StockApi(self.config))
         return api_modules
     async def main_run(self):
-        #stuff = self.parse_config_file()
         tasks = []
         for task in self.get_modules_to_run():
             tasks.append(asyncio.create_task(task.run()))
