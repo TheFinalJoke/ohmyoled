@@ -3,6 +3,7 @@
 from typing import get_args
 from lib.run import Runner
 from lib.stockquote import SQuote
+from datetime import date, datetime
 import os 
 import sys
 
@@ -30,11 +31,14 @@ class StockApi(Runner):
 
     async def run(self):
         stock_data = {}
+        base = 'https://finnhub.io/api/v1/'
+        symbol = self.stock["symbol"]
         if "historical" in self.stock and self.stock.getboolean("historical"):
-            pass
+            now = int(datetime.now().timestamp())
+            week_ago = now - 604800
+            url = base + f"/stock/candle?symbol={symbol}&resolution=D&from={week_ago}&to={now}&token={self.token}"
+            stock_data['Historical'] = self.get_data(url)
         elif "quote" in self.stock and self.stock.getboolean("quote"):
-            base = 'https://finnhub.io/api/v1/'
-
-            url = base + f'quote?symbol={self.stock["symbol"]}&token={self.token}'
+            url = base + f'quote?symbol={symbol}&token={self.token}'
             stock_data['Quote'] = self.get_data(url)
         return stock_data
