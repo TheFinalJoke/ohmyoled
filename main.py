@@ -35,15 +35,22 @@ class Main():
                 if section == 'stock':
                     api_modules.append(StockApi(self.config))
         return api_modules
-    async def main_run(self):
+
+    async def poll_apis(self):
         tasks = []
         for task in self.get_modules_to_run():
             tasks.append(asyncio.create_task(task.run()))
         completed = await asyncio.gather(*tasks, return_exceptions=True)
-        for task in completed:
-            print(task)
+        print(completed)
+        return completed
+    async def other_stuff(self):
+        print("hello World")
         
-
+    async def main_run(self):
+        while True:
+            asyncio.ensure_future(self.poll_apis())
+            asyncio.ensure_future(self.other_stuff())
+            await asyncio.sleep(5)
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     if TESTING:
@@ -51,4 +58,11 @@ if __name__ == "__main__":
     else:
         config.read('/etc/ohmyoled/ohmyoled.conf')
     main = Main(config)
-    asyncio.run(main.main_run())
+    loop = asyncio.get_event_loop()
+    try:
+        loop.create_task(main.main_run())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        print("Key Interrupt")
+    finally:
+        loop.stop()

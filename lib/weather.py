@@ -51,4 +51,4 @@ class WeatherApi(Runner):
         """
         args = self.parse_args()
         api_data = self.get_data(args)
-        return api_data.json()
+        return {"weather": {"city": api_data}}

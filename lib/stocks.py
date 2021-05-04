@@ -30,15 +30,15 @@ class StockApi(Runner):
         return self.get_data(url)
 
     async def run(self):
-        stock_data = {}
+        stock_data = {"Stock": []}
         base = 'https://finnhub.io/api/v1/'
         symbol = self.stock["symbol"]
         if "historical" in self.stock and self.stock.getboolean("historical"):
             now = int(datetime.now().timestamp())
             week_ago = now - 604800
             url = base + f"/stock/candle?symbol={symbol}&resolution=D&from={week_ago}&to={now}&token={self.token}"
-            stock_data['Historical'] = self.get_data(url)
-        elif "quote" in self.stock and self.stock.getboolean("quote"):
+            stock_data["Stock"].append({"Historical": self.get_data(url)})
+        if "quote" in self.stock and self.stock.getboolean("quote"):
             url = base + f'quote?symbol={symbol}&token={self.token}'
-            stock_data['Quote'] = self.get_data(url)
+            stock_data["Stock"].append({"Quote": self.get_data(url)})
         return stock_data
