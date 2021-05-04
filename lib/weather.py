@@ -49,7 +49,6 @@ class WeatherApi(Runner):
         make request
         return Json
         """
-
         args = self.parse_args()
         api_data = self.get_data(args)
         return api_data.json()
