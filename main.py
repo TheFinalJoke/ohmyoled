@@ -3,12 +3,14 @@
 import asyncio
 from asyncio.runners import run
 import configparser
+import termplotlib as tpl
 from lib.stocks import StockApi
 
 from lib.run import Runner
 from lib.weather import WeatherApi
 from lib.stocks import StockApi
 from lib.stockquote import SQuote
+
 TESTING = True
 """
 This file for now is for testing the library
@@ -41,15 +43,19 @@ class Main():
         for task in self.get_modules_to_run():
             tasks.append(asyncio.create_task(task.run()))
         completed = await asyncio.gather(*tasks, return_exceptions=True)
-        print(completed)
         return completed
-    async def other_stuff(self):
-        print("hello World")
-        
+    
+    async def show_stock(self, api):
+        x = [1,2,3,4,5]
+        y = [1,2,3,4,5]
+        fig = tpl.figure()
+        fig.plot(x, y, label="line", width=50, height=15)
+        fig.show()
+
     async def main_run(self):
         while True:
-            asyncio.ensure_future(self.poll_apis())
-            asyncio.ensure_future(self.other_stuff())
+            apis = await self.poll_apis()
+            asyncio.ensure_future(self.show_stock(apis))
             await asyncio.sleep(5)
 if __name__ == "__main__":
     config = configparser.ConfigParser()

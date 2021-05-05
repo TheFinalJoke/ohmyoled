@@ -1,7 +1,7 @@
 {
     "_meta": {
         "hash": {
-            "sha256": "c5ccbc66928eddc1fa940e919be24fbff9b129e404d27afbbd5c5e0ca717a6f1"
+            "sha256": "2a7cc13e61be0faf9015fb593c0045d20ed6404b68d97021e81b070f81dac24b"
         },
         "pipfile-spec": 6,
         "requires": {
@@ -16,6 +16,21 @@
         ]
     },
     "default": {
+        "asciichart": {
+            "hashes": [
+                "sha256:bc6c99a9725fb27522cf7200534c74c3a82dd617485ad72cfd00a4210b164922"
+            ],
+            "index": "pypi",
+            "version": "==0.1"
+        },
+        "asciiplotlib": {
+            "hashes": [
+                "sha256:49353edb7ded625610f14cc1b16590a73b4f54ff0fbfd0cc7388042d35bc4519",
+                "sha256:6d787f2d3bcfbc84b6b269c5fb3013c5451d5c7b5c997ef00cd91e76a47141b4"
+            ],
+            "index": "pypi",
+            "version": "==0.2.3"
+        },
         "atomicwrites": {
             "hashes": [
                 "sha256:6d1784dea7c0c8d4a5172b6c620f40b6e4cbfdf96d783691f2e1302a7b88e197",
@@ -72,11 +87,11 @@
         },
         "ipython": {
             "hashes": [
-                "sha256:9c900332d4c5a6de534b4befeeb7de44ad0cc42e8327fa41b7685abde58cec74",
-                "sha256:c0ce02dfaa5f854809ab7413c601c4543846d9da81010258ecdab299b542d199"
+                "sha256:3455b020a895710c4366e8d1b326e5ee6aa684607907fc96895e7b8359569f49",
+                "sha256:69178f32bf9c6257430b6f592c3ae230c32861a1966d2facec454e09078e232d"
             ],
             "index": "pypi",
-            "version": "==7.22.0"
+            "version": "==7.23.0"
         },
         "ipython-genutils": {
             "hashes": [
@@ -92,6 +107,14 @@
             ],
             "markers": "python_version >= '3.6'",
             "version": "==0.18.0"
+        },
+        "matplotlib-inline": {
+            "hashes": [
+                "sha256:5cf1176f554abb4fa98cb362aa2b55c500147e4bdbb07e3fda359143e1da0811",
+                "sha256:f41d5ff73c9f5385775d5c0bc13b424535c8402fe70ea8210f93e11f3683993e"
+            ],
+            "markers": "python_version >= '3.5'",
+            "version": "==0.1.2"
         },
         "mock": {
             "hashes": [
@@ -165,11 +188,11 @@
         },
         "pygments": {
             "hashes": [
-                "sha256:2656e1a6edcdabf4275f9a3640db59fd5de107d88e8663c5d4e9a0fa62f77f94",
-                "sha256:534ef71d539ae97d4c3a4cf7d6f110f214b0e687e92f9cb9d2a3b0d3101289c8"
+                "sha256:a18f47b506a429f6f4b9df81bb02beab9ca21d0a5fee38ed15aef65f0545519f",
+                "sha256:d66e804411278594d764fc69ec36ec13d9ae9147193a1740cd34d272ca383b8e"
             ],
             "markers": "python_version >= '3.5'",
-            "version": "==2.8.1"
+            "version": "==2.9.0"
         },
         "pytest": {
             "hashes": [
@@ -202,6 +225,14 @@
             ],
             "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
             "version": "==1.15.0"
+        },
+        "termplotlib": {
+            "hashes": [
+                "sha256:448c7791e0a2abbb860fd87785b135c4af9a9a6199dfd408a3ec23f90f240079",
+                "sha256:b1ebe3b31ac554db249c2b4cf042b7ba5363f49eeb36c4d1c5e4f15db9fc20ea"
+            ],
+            "index": "pypi",
+            "version": "==0.3.4"
         },
         "traitlets": {
             "hashes": [

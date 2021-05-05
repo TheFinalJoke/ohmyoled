@@ -11,6 +11,9 @@ setuptools = "*"
 pytest-runner = "==4.4"
 ipython = "*"
 mock = "*"
+asciichart = "*"
+asciiplotlib = "*"
+termplotlib = "*"
 
 [dev-packages]
 
