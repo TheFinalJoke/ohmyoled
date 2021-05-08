@@ -2,6 +2,19 @@
 
 from abc import abstractmethod
 import requests
+import logging
+
+stream_formatter = logging.Formatter(
+    "%(levelname)s:%(asctime)s:%(module)s: %(message)s"
+)
+sh = logging.StreamHandler()
+filehandler = logging.FileHandler("/var/log/ohmyoled.log","a")
+sh.setFormatter(stream_formatter)
+filehandler.setFormatter(stream_formatter)
+logger = logging.getLogger(__name__)
+logger.addHandler(sh)
+logger.addHandler(filehandler)
+logger.setLevel(logging.DEBUG)
 
 class RunnerABS():
     def __init__(self):
@@ -15,12 +28,24 @@ class RunnerABS():
     @abstractmethod
     def url_builder(self): pass
 
+class Caller(object):
+    logger = logging.getLogger(__name__)
+    logger.addHandler(sh)
+    logger.addHandler(filehandler)
+    logger.setLevel(logging.DEBUG)
+    def __init__(self) -> None:
+        super().__init__()
+        self.caller_logger = logger
+        
 class Runner(RunnerABS):
-
+    logger = logging.getLogger(__name__)
+    logger.addHandler(sh)
+    logger.addHandler(filehandler)
+    logger.setLevel(logging.DEBUG)
     def __init__(self, config):
         super().__init__()
         self.config = config
-
+        self.runner_logger = logger
     def get_data(self, url):
         data = requests.get(url)
         return data

@@ -3,12 +3,13 @@
 import asyncio
 from asyncio.runners import run
 import configparser
+from requests import api
 import termplotlib as tpl
 from lib.stocks import StockApi
 
 from lib.run import Runner
-from lib.weather import WeatherApi
-from lib.stocks import StockApi
+from lib.weather import WeatherApi, Weather
+from lib.stocks import StockApi, Stock
 from lib.stockquote import SQuote
 
 TESTING = True
@@ -44,7 +45,14 @@ class Main():
             tasks.append(asyncio.create_task(task.run()))
         completed = await asyncio.gather(*tasks, return_exceptions=True)
         return completed
-    
+    def build_obj(self, polled_apis):
+        objs = []
+        for api in polled_apis:
+            if api.key() == 'Weather':
+                objs.append(Weather(api['weather']))
+            if api.key() == 'Stock':
+                objs.append(Stock(api['Stock']))
+        return objs
     async def show_stock(self, api):
         x = [1,2,3,4,5]
         y = [1,2,3,4,5]
@@ -53,10 +61,13 @@ class Main():
         fig.show()
 
     async def main_run(self):
-        while True:
-            apis = await self.poll_apis()
-            asyncio.ensure_future(self.show_stock(apis))
-            await asyncio.sleep(5)
+        #while True:
+        apis = await self.poll_apis()
+        objs = self.build_obj(apis)
+        breakpoint()
+            #asyncio.ensure_future(self.show_stock(apis))
+        #print(apis)
+            #await asyncio.sleep(5)
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     if TESTING:
