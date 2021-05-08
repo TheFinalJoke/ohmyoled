@@ -8,7 +8,7 @@ stream_formatter = logging.Formatter(
     "%(levelname)s:%(asctime)s:%(module)s: %(message)s"
 )
 sh = logging.StreamHandler()
-filehandler = logging.FileHandler("/var/log/ohmyoled.log","a")
+filehandler = logging.FileHandler("/home/nickshorter/ohmyoled.log","a")
 sh.setFormatter(stream_formatter)
 filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)

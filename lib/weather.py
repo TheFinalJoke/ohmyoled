@@ -57,10 +57,10 @@ class WeatherApi(Runner):
         return {"weather": api_data}
 
 class Weather(Caller):
-    def __init__(self, api_response: Response) -> None:
+    def __init__(self, api: Dict) -> None:
         super().__init__()
-        self.api = api_response
-        self.api_json = self.api.json()
+        self.api = api
+        self.api_json = api['weather'].json()
         self._place = self.api_json.get('name')
         self._weather = self.api_json.get('weather')
         self._conditions = self._weather[0].get('main')

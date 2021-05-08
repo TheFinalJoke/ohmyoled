@@ -29,30 +29,30 @@ class Main():
             module.update({section: self.config[section].getboolean('Run')})
         return module
     def get_modules_to_run(self):
-        api_modules = []
+        api_modules = {}
         parsed = self.parse_config_file()
         for section, runtime in parsed.items():
             if runtime:
                 if section == 'weather':
-                    api_modules.append(WeatherApi(self.config))
+                    api_modules.update({'weather': WeatherApi(self.config)})
                 if section == 'stock':
-                    api_modules.append(StockApi(self.config))
+                    api_modules.update({'stock': StockApi(self.config)})
         return api_modules
 
     async def poll_apis(self):
-        tasks = []
-        for task in self.get_modules_to_run():
-            tasks.append(asyncio.create_task(task.run()))
-        completed = await asyncio.gather(*tasks, return_exceptions=True)
-        return completed
+        modules = self.get_modules_to_run()
+        for task in modules:
+            modules[task] = asyncio.create_task(modules[task].run())
+        await asyncio.gather(*modules.values())
+        return modules
+
     def build_obj(self, polled_apis):
-        objs = []
-        for api in polled_apis:
-            if api.key() == 'Weather':
-                objs.append(Weather(api['weather']))
-            if api.key() == 'Stock':
-                objs.append(Stock(api['Stock']))
-        return objs
+        #TODO(thefinaljoke): When Convert to Python3.10 Use match Statment
+        if 'weather' in polled_apis:
+            polled_apis['weather'] = Weather(polled_apis['weather'].result())
+        if 'stock' in polled_apis:
+            polled_apis['stock'] = Stock(polled_apis['stock'].result())
+        return polled_apis
     async def show_stock(self, api):
         x = [1,2,3,4,5]
         y = [1,2,3,4,5]
