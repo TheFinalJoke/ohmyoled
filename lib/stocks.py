@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from typing import get_args
-from lib.run import Runner
+from lib.run import Runner, Caller
 from lib.stockquote import SQuote
 from datetime import date, datetime
 import os 
@@ -30,15 +30,65 @@ class StockApi(Runner):
         return self.get_data(url)
 
     async def run(self):
-        stock_data = {}
+        stock_data = {"Stock": {}}
         base = 'https://finnhub.io/api/v1/'
         symbol = self.stock["symbol"]
         if "historical" in self.stock and self.stock.getboolean("historical"):
             now = int(datetime.now().timestamp())
             week_ago = now - 604800
-            url = base + f"/stock/candle?symbol={symbol}&resolution=D&from={week_ago}&to={now}&token={self.token}"
-            stock_data['Historical'] = self.get_data(url)
-        elif "quote" in self.stock and self.stock.getboolean("quote"):
-            url = base + f'quote?symbol={symbol}&token={self.token}'
-            stock_data['Quote'] = self.get_data(url)
+            url = base + f"/stock/candle?symbol={symbol.upper()}&resolution=D&from={week_ago}&to={now}&token={self.token}"
+            stock_data["Stock"].update({"Historical": self.get_data(url)})
+        if "quote" in self.stock and self.stock.getboolean("quote"):
+            url = base + f'quote?symbol={symbol.upper()}&token={self.token}'
+            stock_data["Stock"].update({"Quote": self.get_data(url)})
         return stock_data
+    
+class Stock(Caller):
+    def __init__(self, stock_data):
+        self.stock_data = stock_data
+        self.stock_data = self.stock_data.get('Stock')
+        if 'Quote' in self.stock_data:
+            self.quote = self.stock_data.get('Quote').json()
+            self._open_price = self.quote['o']
+            self._current_price = self.quote['c']
+            self._highest_price = self.quote['h']
+            self._lowest_price = self.quote['l']
+            self._previous_close = self.quote['pc']
+        if 'Historical' in self.stock_data:
+            self.historical = self.stock_data.get('Historical').json()
+            self._hist_close_prices = self.historical['c']
+            self._hist_high_prices = self.historical['h']
+            self._hist_low_prices = self.historical['l']
+            self._hist_opening_prices = self.historical['o']
+            self._hist_volume = self.historical['v']
+            self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
+    @property
+    def get_quote_open_price(self):
+        return self._open_price
+    @property 
+    def get_quote_current_price(self):
+        return self._current_price
+    @property
+    def get_quote_highest_price(self):
+        return self._highest_price
+    @property
+    def get_quote_lowest_price(self):
+        return self._lowest_price
+    @property
+    def get_quote_previous_close(self):
+        return self._previous_close
+    @property
+    def get_hist_close_prices(self):
+        return self._hist_close_prices
+    @property
+    def get_hist_low_prices(self):
+        return self._hist_low_prices
+    @property
+    def get_hist_opening_prices(self):
+        return self._hist_opening_prices
+    @property
+    def get_hist_volume(self):
+        return self._hist_volume
+    @property
+    def get_hist_timestamps(self):
+        return self._hist_timestamps
