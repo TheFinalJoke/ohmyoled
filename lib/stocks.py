@@ -17,7 +17,9 @@ class StockApi(Runner):
             else:
                 self.token = os.environ['STOCKTOKEN']
         except KeyError:
+            self.logger.critical("No Stock Token")
             sys.exit("No Stock Token")
+    
     def parse_args(self):
         return super().parse_args()
     
@@ -25,20 +27,24 @@ class StockApi(Runner):
         """
         Current Config only Takes in symbols
         """
+        self.logger.debug(f"Looking up Symbol for company {company}")
         base = 'https://finnhub.io/api/v1/'
         url = base + f'quote?symbol={company.upper()}&token={self.token}'
         return self.get_data(url)
 
     async def run(self):
+        self.logger.info("Getting Stock")
         stock_data = {"Stock": {}}
         base = 'https://finnhub.io/api/v1/'
         symbol = self.stock["symbol"]
         if "historical" in self.stock and self.stock.getboolean("historical"):
+            self.logger.debug("Config has historical data for stocks")
             now = int(datetime.now().timestamp())
             week_ago = now - 604800
             url = base + f"/stock/candle?symbol={symbol.upper()}&resolution=D&from={week_ago}&to={now}&token={self.token}"
             stock_data["Stock"].update({"Historical": self.get_data(url)})
         if "quote" in self.stock and self.stock.getboolean("quote"):
+            self.logger.debug("Getting Quote data")
             url = base + f'quote?symbol={symbol.upper()}&token={self.token}'
             stock_data["Stock"].update({"Quote": self.get_data(url)})
         return stock_data

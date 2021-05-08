@@ -5,7 +5,7 @@ import requests
 import logging
 
 stream_formatter = logging.Formatter(
-    "%(levelname)s:%(asctime)s:%(module)s: %(message)s"
+    "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
 )
 sh = logging.StreamHandler()
 filehandler = logging.FileHandler("/home/nickshorter/ohmyoled.log","a")
@@ -47,5 +47,6 @@ class Runner(RunnerABS):
         self.config = config
         self.runner_logger = logger
     def get_data(self, url):
+        self.logger.debug(f'Getting data with URL {url}')
         data = requests.get(url)
         return data

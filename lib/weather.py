@@ -17,17 +17,21 @@ class WeatherApi(Runner):
             else:
                 self.token = os.environ['WEATHERTOKEN']
         except KeyError:
+            self.logger.critical("No Weather Token")
             sys.exit("No Weather Token")
 
     def parse_args(self):
         if 'zipcode' in self.weather:
+            self.logger.debug(f"Using Zipcode {self.weather.getint('zipcode')}")
             return self.url_builder(zipcode=self.weather.getint('zipcode'))
         else:
+            self.logger.debug(f"Using City {self.weather['city']}")
             return self.url_builder(location=self.weather['city'])
 
 
     def get_long_and_lat(self, location):
         try: 
+            self.logger.debug("Getting Longitude and Latitude")
             url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
             response = self.get_data(url)
             lon = response.json().get('coord').get('lon')
@@ -52,6 +56,7 @@ class WeatherApi(Runner):
         make request
         return Json
         """
+        self.logger.info("Using to get Weather")
         args = self.parse_args()
         api_data = self.get_data(args)
         return {"weather": api_data}
