@@ -5,12 +5,10 @@ from asyncio.runners import run
 import configparser
 from requests import api
 import termplotlib as tpl
-from lib.stocks import StockApi
 
 from lib.run import Runner
 from lib.weather import WeatherApi, Weather
-from lib.stocks import StockApi, Stock
-from lib.stockquote import SQuote
+from lib.stock.stocks import StockApi, Stock
 
 TESTING = True
 """

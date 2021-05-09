@@ -2,7 +2,8 @@
 
 from typing import get_args
 from lib.run import Runner, Caller
-from lib.stockquote import SQuote
+from lib.stock.stockquote import SQuote
+from lib.stock.historical_stock import HistoricalStock
 from datetime import date, datetime
 import os 
 import sys
@@ -39,14 +40,13 @@ class StockApi(Runner):
         symbol = self.stock["symbol"]
         if "historical" in self.stock and self.stock.getboolean("historical"):
             self.logger.debug("Config has historical data for stocks")
-            now = int(datetime.now().timestamp())
-            week_ago = now - 604800
-            url = base + f"/stock/candle?symbol={symbol.upper()}&resolution=D&from={week_ago}&to={now}&token={self.token}"
-            stock_data["Stock"].update({"Historical": self.get_data(url)})
+            hist_stock = HistoricalStock(self.token, self.config['stock'])
+            stock_data["Stock"].update({"Historical": await hist_stock.run()})
         if "quote" in self.stock and self.stock.getboolean("quote"):
             self.logger.debug("Getting Quote data")
-            url = base + f'quote?symbol={symbol.upper()}&token={self.token}'
-            stock_data["Stock"].update({"Quote": self.get_data(url)})
+            quote = SQuote(self.token, self.config['stock'])
+            stock_api_return = await quote.run()
+            stock_data["Stock"].update({"Quote": stock_api_return})
         return stock_data
     
 class Stock(Caller):
