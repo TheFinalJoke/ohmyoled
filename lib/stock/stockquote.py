@@ -2,6 +2,7 @@
 from lib.run import Runner
 class SQuote(Runner):
     def __init__(self, token, config):
+        # Only Pass in config pertains to stock
         self.config = config
         self.token = token
 
@@ -14,4 +15,4 @@ class SQuote(Runner):
         symbol = self.config.get('symbol')
         api_data = self.get_data(self.url_builder(symbol=symbol))
         return api_data
-         
+        
