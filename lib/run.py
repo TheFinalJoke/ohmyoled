@@ -3,6 +3,7 @@
 from abc import abstractmethod
 import requests
 import logging
+import aiohttp
 
 stream_formatter = logging.Formatter(
     "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
@@ -46,7 +47,9 @@ class Runner(RunnerABS):
         super().__init__()
         self.config = config
         self.runner_logger = logger
-    def get_data(self, url):
+    async def get_data(self, url):
         self.logger.debug(f'Getting data with URL {url}')
-        data = requests.get(url)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                data = await resp.json()
         return data

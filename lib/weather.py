@@ -58,14 +58,14 @@ class WeatherApi(Runner):
         """
         self.logger.info("Using to get Weather")
         args = self.parse_args()
-        api_data = self.get_data(args)
+        api_data = await self.get_data(args)
         return {"weather": api_data}
 
 class Weather(Caller):
     def __init__(self, api: Dict) -> None:
         super().__init__()
         self.api = api
-        self.api_json = api['weather'].json()
+        self.api_json = api['weather']
         self._place = self.api_json.get('name')
         self._weather = self.api_json.get('weather')
         self._conditions = self._weather[0].get('main')
