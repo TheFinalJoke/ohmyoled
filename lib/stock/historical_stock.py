@@ -19,5 +19,5 @@ class HistoricalStock(Runner):
     
     async def run(self):
         url = self.url_builder()
-        api_data = self.get_data(url)
+        api_data = await self.get_data(url)
         return api_data
