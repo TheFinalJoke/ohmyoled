@@ -4,10 +4,15 @@ from lib.run import Runner, Caller
 import sys
 import os
 from requests import Response
-from typing import Dict
+from typing import Dict, Tuple
 from datetime import datetime 
 
 class WeatherApi(Runner):
+    """
+    Weatherapi object 
+    To parse the config file and 
+    Run Data  
+    """
     def __init__(self, config):
         super().__init__(config)
         self.weather = self.config['weather']
@@ -20,29 +25,38 @@ class WeatherApi(Runner):
             self.logger.critical("No Weather Token")
             sys.exit("No Weather Token")
 
-    def parse_args(self):
+    async def parse_args(self) -> str:
+        """
+        Check if zipcode or city in config file
+        """
         if 'zipcode' in self.weather:
             self.logger.debug(f"Using Zipcode {self.weather.getint('zipcode')}")
-            return self.url_builder(zipcode=self.weather.getint('zipcode'))
+            return await self.url_builder(zipcode=self.weather.getint('zipcode'))
         else:
             self.logger.debug(f"Using City {self.weather['city']}")
-            return self.url_builder(location=self.weather['city'])
+            return await self.url_builder(location=self.weather['city'])
 
 
-    def get_long_and_lat(self, location):
+    async def get_long_and_lat(self, location: str) -> Tuple:
+        """
+        Searches for Longitude and latitude for Given City
+        """
         try: 
             self.logger.debug("Getting Longitude and Latitude")
             url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
-            response = self.get_data(url)
-            lon = response.json().get('coord').get('lon')
-            lat = response.json().get('coord').get('lat')
+            response = await self.get_data(url)
+            lon = response.get('coord').get('lon')
+            lat = response.get('coord').get('lat')
             return lon, lat
         except Exception as e:
             sys.exit("No City Found")
 
-    def url_builder(self, location=None, zipcode=None):
+    async def url_builder(self, location=None, zipcode=None):
+        """
+        Builds Url to poll the Api
+        """
         if location:
-            lon, lat = self.get_long_and_lat(location)
+            lon, lat = await self.get_long_and_lat(location)
             url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
             url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={self.token}&units={self.weather.get('format')}"
@@ -57,11 +71,14 @@ class WeatherApi(Runner):
         return Json
         """
         self.logger.info("Using to get Weather")
-        args = self.parse_args()
+        args = await self.parse_args()
         api_data = await self.get_data(args)
         return {"weather": api_data}
 
 class Weather(Caller):
+    """
+    Weather object to describe current Polled data
+    """
     def __init__(self, api: Dict) -> None:
         super().__init__()
         self.api = api

@@ -18,6 +18,9 @@ logger.addHandler(filehandler)
 logger.setLevel(logging.DEBUG)
 
 class RunnerABS():
+    """ 
+    Abstract Class to define polling modules
+    """
     def __init__(self):
         pass
     @abstractmethod
@@ -30,6 +33,10 @@ class RunnerABS():
     def url_builder(self): pass
 
 class Caller(object):
+    """
+    Abstract Class to create base Objects
+    of current datasets 
+    """
     logger = logging.getLogger(__name__)
     logger.addHandler(sh)
     logger.addHandler(filehandler)
@@ -39,6 +46,9 @@ class Caller(object):
         self.caller_logger = logger
         
 class Runner(RunnerABS):
+    """
+    Base Class for all poll Api and Modules 
+    """
     logger = logging.getLogger(__name__)
     logger.addHandler(sh)
     logger.addHandler(filehandler)
