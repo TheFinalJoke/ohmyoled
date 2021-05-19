@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import get_args
+from typing import Dict
 from lib.run import Runner, Caller
 from lib.stock.stockquote import SQuote
 from lib.stock.historical_stock import HistoricalStock
@@ -9,6 +9,11 @@ import os
 import sys
 
 class StockApi(Runner):
+    """
+    Mirrored of WeatherApi Object
+    Used to Build and Poll Stock Data from
+    Finnhub.IO
+    """
     def __init__(self, config):
         super().__init__(config)
         self.stock = self.config['stock']
@@ -22,6 +27,9 @@ class StockApi(Runner):
             sys.exit("No Stock Token")
     
     def parse_args(self):
+        """
+        This Method does nothing
+        """
         return super().parse_args()
     
     async def symbol_lookup(self, company):
@@ -33,7 +41,10 @@ class StockApi(Runner):
         url = base + f'quote?symbol={company.upper()}&token={self.token}'
         return await self.get_data(url)
 
-    async def run(self):
+    async def run(self) -> Dict:
+        """
+        Runs Stock to bring back the dictionary
+        """
         self.logger.info("Getting Stock")
         stock_data = {"Stock": {}}
         if "historical" in self.stock and self.stock.getboolean("historical"):
@@ -48,6 +59,11 @@ class StockApi(Runner):
         return stock_data
     
 class Stock(Caller):
+    """
+    Reflecting of current stock polling
+    Any Updates will need to update this object
+    or create new object and pulled here
+    """
     def __init__(self, stock_data):
         self.stock_data = stock_data
         self.stock_data = self.stock_data.get('Stock')
