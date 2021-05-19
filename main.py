@@ -9,6 +9,7 @@ import termplotlib as tpl
 from lib.run import Runner
 from lib.weather import WeatherApi, Weather
 from lib.stock.stocks import StockApi, Stock
+from lib.sports.sports import SportApi, Sport
 
 TESTING = True
 """
@@ -55,6 +56,9 @@ class Main():
                 if section == 'stock':
                     self.logger.debug("Stock module was Selected from config")
                     api_modules.update({'stock': StockApi(self.config)})
+                if section == 'sport':
+                    self.logger.debug("Sport Module was passed into config")
+                    api_modules.update({"sport": SportApi(self.config)})
         return api_modules
 
     async def poll_apis(self):
@@ -71,6 +75,8 @@ class Main():
             polled_apis['weather'] = Weather(polled_apis['weather'].result())
         if 'stock' in polled_apis:
             polled_apis['stock'] = Stock(polled_apis['stock'].result())
+        if 'sport' in polled_apis:
+            polled_apis['sport'] = Sport(polled_apis['sport'].result())
         return polled_apis
 
     async def show_stock(self, api):
