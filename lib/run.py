@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from abc import abstractmethod
+from typing import Dict
 import requests
 import logging
 import aiohttp
@@ -57,9 +58,9 @@ class Runner(RunnerABS):
         super().__init__()
         self.config = config
         self.runner_logger = logger
-    async def get_data(self, url):
+    async def get_data(self, url, headers: Dict[str, str]={}):
         self.logger.debug(f'Getting data with URL {url}')
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as resp:
+            async with session.get(url, headers=headers) as resp:
                 data = await resp.json()
         return data
