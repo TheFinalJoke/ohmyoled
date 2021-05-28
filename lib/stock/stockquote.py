@@ -22,6 +22,9 @@ class SQuote(Runner):
     async def run(self) -> Dict:
         """
         returns current stock Quotes and Price
+        Also Supports Crypto data
+        Crypto Args Exchange:Symbol
+        E.g. BINANCE:BTCUSDT
         """
         symbol = self.config.get('symbol')
         api_data = await self.get_data(self.url_builder(symbol=symbol))
