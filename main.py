@@ -3,13 +3,15 @@
 import asyncio
 from asyncio.runners import run
 import configparser
+from matrix.matrix import Matrix
 from requests import api
-import termplotlib as tpl
+#import termplotlib as tpl
 
 from lib.run import Runner
 from lib.weather import WeatherApi, Weather
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
+from matrix.time import TimeMatrix
 
 TESTING = True
 """
@@ -79,19 +81,24 @@ class Main():
             polled_apis['sport'] = Sport(polled_apis['sport'].result())
         return polled_apis
 
-    async def show_stock(self, api):
-        x = [1,2,3,4,5]
-        y = [1,2,3,4,5]
-        fig = tpl.figure()
-        fig.plot(x, y, label="line", width=50, height=15)
-        fig.show()
-
+    async def init_matrix(self, matrix):
+        modules = [TimeMatrix(matrix)]
+        return modules
     async def main_run(self):
-        #while True:
+        # Get matrix objects
+        # Same time Display Loading Screen
+        # Loop through matrix
+        # Poll Api
+        # Display Marix 
+        # And Then Loop forever 
         self.logger.info("Starting OhMyOled")
-        apis = await self.poll_apis()
-        objs = self.build_obj(apis)
-        breakpoint()
+        matrix = Matrix(self.config)
+        matrixes = await self.init_matrix(matrix.matrix)
+        for matrix in matrixes:
+            matrix.render()
+        #apis = await self.poll_apis()
+        #objs = self.build_obj(apis)
+        #breakpoint()
             #asyncio.ensure_future(self.show_stock(apis))
         #print(apis)
             #await asyncio.sleep(5)
