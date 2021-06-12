@@ -98,6 +98,7 @@ class Main():
         return rgboptions
     async def init_matrix(self, matrix):
         modules = [TimeMatrix(matrix)]
+        self.logger.info("Initalized matrixes")
         return modules
     async def main_run(self):
         # Get matrix objects
@@ -108,11 +109,12 @@ class Main():
         # And Then Loop forever 
         self.logger.info("Starting OhMyOled")
         matrix = RGBMatrix(options=self.poll_rgbmatrix())
+        self.logger.debug("Built Options for RGBMatrix")
         matrixes = await self.init_matrix(matrix)
+        self.logger.info("Starting Matrixes...")
         while True:
             for matrix in matrixes:
                 matrix.render()
-                print("pass")
         #apis = await self.poll_apis()
         #objs = self.build_obj(apis)
         #breakpoint()

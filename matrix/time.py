@@ -9,13 +9,14 @@ import time
 class TimeMatrix(Canvas):
     def __init__(self, matrix) -> None:
         self.matrix = matrix
-    def poll_api(self):
-        return datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
+        self.logger = self.get_logger()
+    def poll_api(self, fmt: str):
+        return datetime.now().strftime(fmt)
     def render(self):
         try:
-            timestamp = self.poll_api()
-            font = self.get_font("7x13.bdf")
-            if not font:
+            top_font = self.get_font("tom-thumb.bdf")
+            bottom_font = self.get_font("5x8.bdf")
+            if not top_font or not bottom_font:
                 raise FontException
         except FontException:
             self.logger.critical("Font file is not found")
@@ -25,16 +26,10 @@ class TimeMatrix(Canvas):
         while counter < 5:
             canvas.Clear()
             # Top Line
-            font = graphics.Font()
-            font.CharacterWidth(20)
-            font.LoadFont("submodules/rgbmatrix/fonts/tom-thumb.bdf")
             color = graphics.Color(74,3,54)    
-            graphics.DrawText(canvas, font, 14, 12, color, f"{datetime.now().strftime('%m/%d/%Y')}")
+            graphics.DrawText(canvas, top_font, 14, 12, color, f"{self.poll_api('%m/%d/%Y')}")
             # Bottom Line
-            font = graphics.Font()
-            font.CharacterWidth(10)
-            font.LoadFont("submodules/rgbmatrix/fonts/5x8.bdf")
-            graphics.DrawText(canvas, font, 13, 20, color, f"{datetime.now().strftime('%I:%M:%S')}")
+            graphics.DrawText(canvas, bottom_font, 13, 20, color, f"{self.poll_api('%I:%M:%S')}")
             canvas = self.matrix.SwapOnVSync(canvas)
             counter = counter + 1
             time.sleep(1)

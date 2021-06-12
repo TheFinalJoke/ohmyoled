@@ -53,6 +53,7 @@ class Matrix(ABSMatrix):
         self.config = config
         self.options = self.poll_rgbmatrix()
         self.matrix = RGBMatrix(options=self.poll_rgbmatrix())
+        self.logger = logger
 
     def poll_rgbmatrix(self):
         options = self.config['matrix']
@@ -70,11 +71,15 @@ class Matrix(ABSMatrix):
         font = graphics.Font()
         font.LoadFont(f"submodules/rgbmatrix/fonts/{font_file}")
         return font
+    
+    def get_logger(self):
+        return logger
 
 class Canvas(Matrix):
     def __init__(self, matrix) -> None:
         super().__init__()
         self.matrix = matrix
+        self.logger = logger
         self.canvas = self.matrix.CreateFrameCanvas()
 
 class MatrixBase(Matrix):
