@@ -31,16 +31,22 @@ pos = offscreen_canvas.width
 while True:
     offscreen_canvas.Clear()
     font = graphics.Font()
-    font.CharacterWidth(10)
-    font.LoadFont("submodules/rgbmatrix/fonts/7x13.bdf")
-    red = graphics.Color(0,0,255)
-    print(datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'))
-    stuff = graphics.DrawText(offscreen_canvas, font, pos, 10, red, datetime.now().strftime('%H:%M:%S'))
-    pos -= 1
-    if (pos + stuff < 0):
-        pos = offscreen_canvas.width
+    font.CharacterWidth(20)
+    font.LoadFont("submodules/rgbmatrix/fonts/tom-thumb.bdf")
+    red = graphics.Color(74,3,54)
+    #print(datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'))
+    #stuff = graphics.DrawText(offscreen_canvas, font, 2, 10, red, datetime.now().strftime('%H:%M:%S'))
+    #pos -= 1
+    #if (pos + stuff < 0):
+    #    pos = offscreen_canvas.width
     #graphics.DrawText(matrix, font, num, 16, red, datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'))
-    time.sleep(.01)
+    #time.sleep(.01)
+    #while True:
+    graphics.DrawText(offscreen_canvas, font, 14, 12, red, f"{datetime.now().strftime('%m/%d/%Y')}")
+    font = graphics.Font()
+    font.CharacterWidth(10)
+    font.LoadFont("submodules/rgbmatrix/fonts/5x8.bdf")
+    graphics.DrawText(offscreen_canvas, font, 13, 20, red, f"{datetime.now().strftime('%I:%M:%S')}")
     offscreen_canvas = matrix.SwapOnVSync(offscreen_canvas)
     # matrix.SetImage(image.convert('RGB'))
 #graphics.DrawLine(matrix, 5, 7, 22, 13, red)

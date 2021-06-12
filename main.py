@@ -3,10 +3,15 @@
 import asyncio
 from asyncio.runners import run
 import configparser
+from typing import Optional
 from matrix.matrix import Matrix
 from requests import api
 #import termplotlib as tpl
-
+from rgbmatrix import (
+    RGBMatrixOptions, 
+    RGBMatrix,
+    graphics
+)
 from lib.run import Runner
 from lib.weather import WeatherApi, Weather
 from lib.stock.stocks import StockApi, Stock
@@ -80,7 +85,17 @@ class Main():
         if 'sport' in polled_apis:
             polled_apis['sport'] = Sport(polled_apis['sport'].result())
         return polled_apis
-
+    def poll_rgbmatrix(self):
+        options = self.config['matrix']
+        rgboptions = RGBMatrixOptions()
+        rgboptions.cols = 64
+        rgboptions.rows = 32
+        rgboptions.chain_length = options.getint('parallel')
+        rgboptions.parallel = options.getint('chain_length')
+        rgboptions.gpio_slowdown = options.getint('oled_slowdown')
+        rgboptions.brightness = options.getint('brightness')
+        rgboptions.hardware_mapping = 'adafruit-hat'
+        return rgboptions
     async def init_matrix(self, matrix):
         modules = [TimeMatrix(matrix)]
         return modules
@@ -92,10 +107,12 @@ class Main():
         # Display Marix 
         # And Then Loop forever 
         self.logger.info("Starting OhMyOled")
-        matrix = Matrix(self.config)
-        matrixes = await self.init_matrix(matrix.matrix)
-        for matrix in matrixes:
-            matrix.render()
+        matrix = RGBMatrix(options=self.poll_rgbmatrix())
+        matrixes = await self.init_matrix(matrix)
+        while True:
+            for matrix in matrixes:
+                matrix.render()
+                print("pass")
         #apis = await self.poll_apis()
         #objs = self.build_obj(apis)
         #breakpoint()

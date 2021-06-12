@@ -6,7 +6,7 @@ from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 import sys
 import time 
 
-class TimeMatrix(MatrixBase):
+class TimeMatrix(Canvas):
     def __init__(self, matrix) -> None:
         self.matrix = matrix
     def poll_api(self):
@@ -21,13 +21,23 @@ class TimeMatrix(MatrixBase):
             self.logger.critical("Font file is not found")
             sys.exit(1)
         canvas = self.matrix.CreateFrameCanvas()
-        graphics.DrawText(canvas, font, 2, 16, graphics.Color(0,0,255), timestamp)
         counter = 0
         while counter < 5:
-            self.matrix.SwapOnVSync(canvas)
-            time.sleep(1)
+            canvas.Clear()
+            # Top Line
+            font = graphics.Font()
+            font.CharacterWidth(20)
+            font.LoadFont("submodules/rgbmatrix/fonts/tom-thumb.bdf")
+            color = graphics.Color(74,3,54)    
+            graphics.DrawText(canvas, font, 14, 12, color, f"{datetime.now().strftime('%m/%d/%Y')}")
+            # Bottom Line
+            font = graphics.Font()
+            font.CharacterWidth(10)
+            font.LoadFont("submodules/rgbmatrix/fonts/5x8.bdf")
+            graphics.DrawText(canvas, font, 13, 20, color, f"{datetime.now().strftime('%I:%M:%S')}")
+            canvas = self.matrix.SwapOnVSync(canvas)
             counter = counter + 1
-        print('done')
+            time.sleep(1)
 
 
         

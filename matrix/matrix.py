@@ -57,29 +57,32 @@ class Matrix(ABSMatrix):
     def poll_rgbmatrix(self):
         options = self.config['matrix']
         rgboptions = RGBMatrixOptions()
-        rgbmatrix.cols = 32
-        rgbmatrix.rows = 64
+        rgboptions.cols = 64
+        rgboptions.rows = 32
         rgboptions.chain_length = options.getint('parallel')
         rgboptions.parallel = options.getint('chain_length')
         rgboptions.gpio_slowdown = options.getint('oled_slowdown')
         rgboptions.brightness = options.getint('brightness')
         rgboptions.hardware_mapping = 'adafruit-hat'
         return rgboptions
-
-class Canvas(Matrix):
-    def __init__(self, config) -> None:
-        super().__init__()
-        self.canvas = self.matrix.CreateFrameCanvas()
-        
-class MatrixBase(Matrix):
-    def __init__(self, config) -> None:
-        super().__init__()
-        self.config = config
-        self.logger = logger
-        self.logger.setLevel(logging.DEBUG)
+    
     def get_font(self, font_file):
         font = graphics.Font()
         font.LoadFont(f"submodules/rgbmatrix/fonts/{font_file}")
         return font
+
+class Canvas(Matrix):
+    def __init__(self, matrix) -> None:
+        super().__init__()
+        self.matrix = matrix
+        self.canvas = self.matrix.CreateFrameCanvas()
+
+class MatrixBase(Matrix):
+    def __init__(self, matrix) -> None:
+        super().__init__()
+        self.matrix = matrix
+        self.logger = logger
+        self.logger.setLevel(logging.DEBUG)
+
     def get_logger(self):
         return self.logger
