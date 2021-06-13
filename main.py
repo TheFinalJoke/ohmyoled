@@ -97,7 +97,7 @@ class Main():
         rgboptions.hardware_mapping = 'adafruit-hat'
         return rgboptions
     async def init_matrix(self, matrix):
-        modules = [TimeMatrix(matrix)]
+        modules = [TimeMatrix(matrix, logger)]
         self.logger.info("Initalized matrixes")
         return modules
     async def main_run(self):

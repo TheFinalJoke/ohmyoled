@@ -13,21 +13,6 @@ from rgbmatrix import (
     RGBMatrix,
     graphics
 )
-import rgbmatrix
-
-stream_formatter = logging.Formatter(
-    "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
-)
-sh = logging.StreamHandler()
-filehandler = logging.FileHandler("/home/nickshorter/ohmyoled.log","a")
-sh.setFormatter(stream_formatter)
-filehandler.setFormatter(stream_formatter)
-logger = logging.getLogger(__name__)
-logger.addHandler(sh)
-logger.addHandler(filehandler)
-
-
-
 
 class ABSMatrix():
     def __init__(self) -> None:
@@ -48,7 +33,7 @@ class FontException(Exception):
     pass
 
 class Matrix(ABSMatrix):
-    def __init__(self, config) -> None:
+    def __init__(self, config, logger) -> None:
         super().__init__()
         self.config = config
         self.options = self.poll_rgbmatrix()
@@ -73,21 +58,18 @@ class Matrix(ABSMatrix):
         return font
     
     def get_logger(self):
-        return logger
+        return self.logger
 
 class Canvas(Matrix):
     def __init__(self, matrix) -> None:
         super().__init__()
         self.matrix = matrix
-        self.logger = logger
         self.canvas = self.matrix.CreateFrameCanvas()
 
 class MatrixBase(Matrix):
     def __init__(self, matrix) -> None:
         super().__init__()
         self.matrix = matrix
-        self.logger = logger
-        self.logger.setLevel(logging.DEBUG)
 
     def get_logger(self):
         return self.logger

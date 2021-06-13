@@ -7,13 +7,15 @@ import sys
 import time 
 
 class TimeMatrix(Canvas):
-    def __init__(self, matrix) -> None:
+    def __init__(self, matrix, logger) -> None:
         self.matrix = matrix
-        self.logger = self.get_logger()
+        self.logger = logger
+        self.logger.debug("Time Matrix Initalized")
     def poll_api(self, fmt: str):
         return datetime.now().strftime(fmt)
     def render(self):
         try:
+            self.logger.info("Running Module TimeMatrix")
             top_font = self.get_font("tom-thumb.bdf")
             bottom_font = self.get_font("5x8.bdf")
             if not top_font or not bottom_font:
