@@ -114,18 +114,17 @@ class Main():
         self.logger.info("Starting Matrixes...")
         while True:
             for matrix in matrixes:
-                matrix.render()
-        #apis = await self.poll_apis()
-        #objs = self.build_obj(apis)
-        #breakpoint()
-            #asyncio.ensure_future(self.show_stock(apis))
-        #print(apis)
-            #await asyncio.sleep(5)
+                poll = matrix.poll_api()
+                matrix.render(poll)
+                
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     if TESTING:
+        logger.info("Testing is ENABLED")
+        logger.info("Using local config lib/config/ohmyoled.conf")
         config.read('lib/config/ohmyoled.conf')
     else:
+        logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
         config.read('/etc/ohmyoled/ohmyoled.conf')
     main = Main(config)
     loop = asyncio.get_event_loop()
@@ -133,6 +132,6 @@ if __name__ == "__main__":
         loop.create_task(main.main_run())
         loop.run_forever()
     except KeyboardInterrupt:
-        print("Key Interrupt")
+        logger.critical("Key Interrupt")
     finally:
         loop.stop()
