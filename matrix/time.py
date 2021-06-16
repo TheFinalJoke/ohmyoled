@@ -3,6 +3,7 @@
 from matrix.matrix import Matrix, MatrixBase, FontException, Canvas
 from datetime import date, datetime
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
+from PIL import Image, ImageDraw, ImageFont
 import sys
 import time 
 
@@ -35,14 +36,21 @@ class TimeMatrix(Canvas):
         canvas = self.matrix.CreateFrameCanvas()
         counter = 0
         while counter < 5:
-            self.logger.debug(f'Counter for module run {counter}')
             canvas.Clear()
+            self.logger.debug(f'Counter for module run {counter}')
+            image = Image.new("RGB", (64, 32))
+            #image = Image.open(image_file)
+            draw = ImageDraw.Draw(image)
             # Top Line
-            color = graphics.Color(74,3,54)    
-            graphics.DrawText(canvas, top_font, 14, 12, color, f"{self.return_time('%m/%d/%Y')}")
+            color = graphics.Color(74,3,54)
+            font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
+            draw.text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=(74,3,54,255))    
             # Bottom Line
-            graphics.DrawText(canvas, bottom_font, 13, 20, color, f"{self.return_time('%I:%M:%S')}")
-            canvas = self.matrix.SwapOnVSync(canvas)
+            draw.text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=(74,3,54,255))
+            image.thumbnail((self.matrix.width, self.matrix.height), Image.ANTIALIAS)
+
+            self.matrix.SetImage(image.convert('RGB'))
+            #canvas = self.matrix.SwapOnVSync(canvas)
             counter = counter + 1
             time.sleep(1)
 
