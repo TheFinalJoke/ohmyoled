@@ -40,7 +40,6 @@ class TimeMatrix(Canvas):
             canvas.Clear()
             self.logger.debug(f'Counter for module run {counter}')
             image = Image.new("RGB", (64, 32))
-            #image = Image.open(image_file)
             draw = ImageDraw.Draw(image)
             # Top Line
             color = graphics.Color(74,3,54)
