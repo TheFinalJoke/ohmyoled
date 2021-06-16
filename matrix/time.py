@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from PIL.Image import Image
 from matrix.matrix import Matrix, MatrixBase, FontException, Canvas
 from datetime import date, datetime
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
@@ -15,7 +16,7 @@ class TimeMatrix(Canvas):
     def return_time(self, fmt: str):
         return datetime.now().strftime(fmt) 
 
-    def poll_api(self):
+    async def poll_api(self):
         """
         Function that does not poll since this a time
         """
