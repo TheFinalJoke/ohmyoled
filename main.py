@@ -3,12 +3,21 @@
 import asyncio
 from asyncio.runners import run
 import configparser
+from typing import Optional
+from matrix.matrix import Matrix
 from requests import api
-import termplotlib as tpl
-
+#import termplotlib as tpl
+from rgbmatrix import (
+    RGBMatrixOptions, 
+    RGBMatrix,
+    graphics
+)
 from lib.run import Runner
 from lib.weather import WeatherApi, Weather
 from lib.stock.stocks import StockApi, Stock
+from lib.sports.sports import SportApi, Sport
+from matrix.time import TimeMatrix
+from matrix.weathermatrix import WeatherMatrix
 
 TESTING = True
 """
@@ -55,6 +64,9 @@ class Main():
                 if section == 'stock':
                     self.logger.debug("Stock module was Selected from config")
                     api_modules.update({'stock': StockApi(self.config)})
+                if section == 'sport':
+                    self.logger.debug("Sport Module was passed into config")
+                    api_modules.update({"sport": SportApi(self.config)})
         return api_modules
 
     async def poll_apis(self):
@@ -71,29 +83,57 @@ class Main():
             polled_apis['weather'] = Weather(polled_apis['weather'].result())
         if 'stock' in polled_apis:
             polled_apis['stock'] = Stock(polled_apis['stock'].result())
+        if 'sport' in polled_apis:
+            polled_apis['sport'] = Sport(polled_apis['sport'].result())
         return polled_apis
-
-    async def show_stock(self, api):
-        x = [1,2,3,4,5]
-        y = [1,2,3,4,5]
-        fig = tpl.figure()
-        fig.plot(x, y, label="line", width=50, height=15)
-        fig.show()
-
+    def poll_rgbmatrix(self):
+        options = self.config['matrix']
+        rgboptions = RGBMatrixOptions()
+        rgboptions.cols = 64
+        rgboptions.rows = 32
+        rgboptions.chain_length = options.getint('parallel')
+        rgboptions.parallel = options.getint('chain_length')
+        rgboptions.gpio_slowdown = options.getint('oled_slowdown')
+        rgboptions.brightness = options.getint('brightness')
+        rgboptions.hardware_mapping = 'adafruit-hat'
+        return rgboptions
+    async def init_matrix(self, matrix):
+        verified_modules = [TimeMatrix(matrix, logger)]
+        modules = self.get_modules_to_run()
+        if 'weather' in modules:
+            self.logger.debug("Initialized Weather")
+            verified_modules.append(WeatherMatrix(matrix, modules['weather'], logger))
+        if 'stock' in modules:
+            pass
+        if 'sport' in modules:
+            pass
+        self.logger.info("Initalized matrixes")
+        return verified_modules
     async def main_run(self):
-        #while True:
+        # Get matrix objects
+        # Same time Display Loading Screen
+        # Loop through matrix
+        # Poll Api
+        # Display Marix 
+        # And Then Loop forever 
         self.logger.info("Starting OhMyOled")
-        apis = await self.poll_apis()
-        objs = self.build_obj(apis)
-        breakpoint()
-            #asyncio.ensure_future(self.show_stock(apis))
-        #print(apis)
-            #await asyncio.sleep(5)
+        matrix = RGBMatrix(options=self.poll_rgbmatrix())
+        self.logger.debug("Built Options for RGBMatrix")
+        matrixes = await self.init_matrix(matrix)
+        self.logger.info("Starting Matrixes...")
+        while True:
+            for matrix in matrixes:
+                poll = await matrix.poll_api()
+                matrix.render(poll)
+                
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     if TESTING:
+        logger.info("Testing is ENABLED")
+        logger.info("Using local config lib/config/ohmyoled.conf")
         config.read('lib/config/ohmyoled.conf')
     else:
+        logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
         config.read('/etc/ohmyoled/ohmyoled.conf')
     main = Main(config)
     loop = asyncio.get_event_loop()
@@ -101,6 +141,6 @@ if __name__ == "__main__":
         loop.create_task(main.main_run())
         loop.run_forever()
     except KeyboardInterrupt:
-        print("Key Interrupt")
+        logger.critical("Key Interrupt")
     finally:
         loop.stop()
