@@ -64,3 +64,9 @@ class Runner(RunnerABS):
             async with session.get(url, headers=headers) as resp:
                 data = await resp.json()
         return data
+    async def get_img(self, url, headers: Dict[str, str]={}):
+        self.logger.debug(f'Getting data with URL {url}')
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                data = await resp
+        return data

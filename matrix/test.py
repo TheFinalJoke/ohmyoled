@@ -5,19 +5,21 @@ from datetime import datetime
 
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics, FrameCanvas
 from PIL import ImageDraw, Image, ImageFont
-"""
+
 if len(sys.argv) < 2:
     sys.exit("Require an image argument")
 else:
     image_file = sys.argv[1]
+
+#image = Image.new("RGB", (64, 32))
+image = Image.open(image_file)
 """
-image = Image.new("RGB", (64, 32))
-#image = Image.open(image_file)
 draw = ImageDraw.Draw(image)
 font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
 draw.text((1, 5), "hello", font=font)
 #draw.rectangle((0, 0, 63, 31), fill=(0, 0, 0), outline=(0, 0, 255))
 # Configuration for the matrix
+"""
 options = RGBMatrixOptions()
 options.rows = 32
 options.cols = 64
