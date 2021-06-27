@@ -6,6 +6,40 @@ import os
 from requests import Response
 from typing import Dict, Tuple
 from datetime import datetime 
+from enum import Enum
+import csv
+
+def get_weather_csv():
+    csv_path = 'lib/weather/ecIcons_utf8.csv'
+    return list(csv.DictReader(open(csv_path)))
+def build_weather_icons():
+    csv = get_weather_csv()
+    icon = {}
+    for icn in csv:
+        icon.update({icn["OWMCode"]: WeatherIcon(icn['OWMCode'], icn['Description'], icn['fontcode'], icn['font'])})
+    return icon
+
+class WeatherIcon():
+    def __init__(self, owm_id, description, fontcode, font) -> None:
+        self.owm_id = owm_id
+        self.description = description
+        self.fontcode = fontcode
+        self.font = font
+
+    @property
+    def get_owm_id(self):
+        return self.owm_id
+    @property
+    def get_description(self):
+        return self.description
+    @property
+    def get_fontcode(self):
+        return self.fontcode
+    @property
+    def get_font(self):
+        return self.font
+    
+
 
 class WeatherApi(Runner):
     """
@@ -73,6 +107,8 @@ class WeatherApi(Runner):
         self.logger.info("Using to get Weather")
         args = await self.parse_args()
         api_data = await self.get_data(args)
+        icn_url = f"http://openweathermap.org/img/wn/{api_data['weather'][0]['icon']}.png"
+        api_data['weather'][0].update({'url': icn_url, "file": f"imgs/weather_icons/{api_data['weather'][0]['icon']}.png"})
         return {"weather": api_data}
 
 class Weather(Caller):
@@ -96,7 +132,22 @@ class Weather(Caller):
         self._time = datetime.fromtimestamp(self.api_json.get('dt'))
         self._sunrise = datetime.fromtimestamp(self.api_json['sys'].get('sunrise'))
         self._sunset = datetime.fromtimestamp(self.api_json['sys'].get('sunset'))
+        self._icn_url = self._weather[0].get('url')
+        self._icn_img = self._weather[0].get('file')
 
+    def set_icn_url(self, url):
+        self._icn_url = url
+    @property
+    def get_icn_url(self):
+        return self._icn_url
+
+    def set_icn_img(self, img):
+        self._icn_img = img
+    
+    @property
+    def get_icn_img(self):
+        return self._icn_img
+    
     def set_place(self, place):
         self._place = place
     
@@ -189,4 +240,4 @@ class Weather(Caller):
         return self._sunset
     
     def calculate_duration_of_daylight(self):
-        return self._sunset - self._sunrise
+        return self._sunset - self._time
