@@ -85,7 +85,8 @@ class Matrix(ABSMatrix):
 
     def render_image(self):
         self.matrix.SetImage(self.get_image)
-    
+    def draw_rectangle(self):
+        self.draw.rectangle([(0,0), (63,31)])
     def draw_text(self, align, text, font, fill=None):
         self.draw.text(
             align,
@@ -93,6 +94,8 @@ class Matrix(ABSMatrix):
             font=font,
             fill=fill
         )
+    def draw_textBox(self):
+        pass
     def clear(self):
         self.matrix.Clear()
 
