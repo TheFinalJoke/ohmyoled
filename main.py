@@ -14,6 +14,7 @@ from rgbmatrix import (
 )
 from lib.run import Runner
 from lib.weather.weather import WeatherApi, Weather
+from matrix.stock.stockmatrix import StockMatrix
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
 from matrix.time import TimeMatrix
@@ -105,7 +106,8 @@ class Main():
             self.logger.debug("Initialized Weather")
             verified_modules.append(WeatherMatrix(matrix, modules['weather'], logger))
         if 'stock' in modules:
-            pass
+            self.logger.debug("Initialized Stock")
+            verified_modules.append(StockMatrix(matrix, modules['stock'], logger))
         if 'sport' in modules:
             pass
         self.logger.info("Initalized matrixes")
