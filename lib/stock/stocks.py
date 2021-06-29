@@ -74,6 +74,7 @@ class Stock(Caller):
             self._highest_price = self.quote['h']
             self._lowest_price = self.quote['l']
             self._previous_close = self.quote['pc']
+            self._symbol = self.quote['symbol']
         if 'Historical' in self.stock_data:
             self.historical = self.stock_data.get('Historical')
             self._hist_close_prices = self.historical['c']
@@ -82,6 +83,11 @@ class Stock(Caller):
             self._hist_opening_prices = self.historical['o']
             self._hist_volume = self.historical['v']
             self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
+            self._symbol = self.historical['symbol']
+    
+    @property
+    def get_symbol(self):
+        return self._symbol
     @property
     def get_quote_open_price(self):
         return self._open_price

@@ -5,19 +5,21 @@ from datetime import datetime
 
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics, FrameCanvas
 from PIL import ImageDraw, Image, ImageFont
+
 """
 if len(sys.argv) < 2:
     sys.exit("Require an image argument")
 else:
     image_file = sys.argv[1]
-"""
-image = Image.new("RGB", (64, 32))
-#image = Image.open(image_file)
+
+#image = Image.new("RGB", (64, 32))
+image = Image.open(image_file)
 draw = ImageDraw.Draw(image)
 font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
 draw.text((1, 5), "hello", font=font)
 #draw.rectangle((0, 0, 63, 31), fill=(0, 0, 0), outline=(0, 0, 255))
 # Configuration for the matrix
+"""
 options = RGBMatrixOptions()
 options.rows = 32
 options.cols = 64
@@ -30,8 +32,23 @@ options.hardware_mapping = 'adafruit-hat'  # If you have an Adafruit HAT: 'adafr
 matrix = RGBMatrix(options=options)
 offscreen_canvas = matrix.CreateFrameCanvas()
 
+image = Image.new("RGB", (64, 32))
+#image = Image.open()
+draw = ImageDraw.Draw(image)
 #RGBMatrix(options = options)
 pos = offscreen_canvas.width
+import termplotlib as tpl
+import numpy
+
+x = numpy.linspace(0, 2 * numpy.pi, 10)
+y = numpy.sin(x)
+
+fig = tpl.figure()
+fig.plot(x, y, label="data", width=50, height=15)
+draw.text((0.0), fig)
+matrix.SetImage(image.convert('RGB'))
+#fig.show()
+
 """
 while True:
     offscreen_canvas.Clear()
@@ -57,10 +74,12 @@ while True:
 #graphics.DrawLine(matrix, 5, 7, 22, 13, red)
 #graphics.DrawCircle(matrix, 15, 15, 10, red)
 """
+"""
 # Make image fit our screen.
 image.thumbnail((matrix.width, matrix.height), Image.ANTIALIAS)
 
 matrix.SetImage(image.convert('RGB'))
+"""
 try:
     print("Press CTRL-C to stop.")
     while True:

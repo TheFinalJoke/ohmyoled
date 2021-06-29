@@ -13,7 +13,8 @@ from rgbmatrix import (
     graphics
 )
 from lib.run import Runner
-from lib.weather import WeatherApi, Weather
+from lib.weather.weather import WeatherApi, Weather
+from matrix.stock.stockmatrix import StockMatrix
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
 from matrix.time import TimeMatrix
@@ -97,20 +98,22 @@ class Main():
         rgboptions.brightness = options.getint('brightness')
         rgboptions.hardware_mapping = 'adafruit-hat'
         return rgboptions
+
     async def init_matrix(self, matrix):
-        verified_modules = [TimeMatrix(matrix, logger)]
+        verified_modules = [TimeMatrix(matrix)]
         modules = self.get_modules_to_run()
         if 'weather' in modules:
             self.logger.debug("Initialized Weather")
             verified_modules.append(WeatherMatrix(matrix, modules['weather'], logger))
         if 'stock' in modules:
-            pass
+            self.logger.debug("Initialized Stock")
+            verified_modules.append(StockMatrix(matrix, modules['stock'], logger))
         if 'sport' in modules:
             pass
         self.logger.info("Initalized matrixes")
         return verified_modules
     async def main_run(self):
-        # Get matrix objects
+        # Get matrix objectsa
         # Same time Display Loading Screen
         # Loop through matrix
         # Poll Api
