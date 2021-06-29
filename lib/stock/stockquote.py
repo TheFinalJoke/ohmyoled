@@ -25,5 +25,6 @@ class SQuote(Runner):
         """
         symbol = self.config.get('symbol')
         api_data = await self.get_data(self.url_builder(symbol=symbol))
+        api_data['symbol'] = symbol
         return api_data
         

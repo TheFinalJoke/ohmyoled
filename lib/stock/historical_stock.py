@@ -27,4 +27,5 @@ class HistoricalStock(Runner):
     async def run(self) -> Dict:
         url = self.url_builder()
         api_data = await self.get_data(url)
+        api_data['symbol'] = self.config.get('symbol')
         return api_data
