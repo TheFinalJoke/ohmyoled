@@ -1,25 +1,18 @@
 #!/usr/bin/env python3
 
 import asyncio
-from asyncio.runners import run
 import configparser
-from typing import Optional
-from matrix.matrix import Matrix
-from requests import api
-#import termplotlib as tpl
 from rgbmatrix import (
     RGBMatrixOptions, 
-    RGBMatrix,
-    graphics
+    RGBMatrix
 )
-from lib.run import Runner
 from lib.weather.weather import WeatherApi, Weather
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 
-TESTING = True
+TESTING = False
 """
 This file for now is for testing the library
 and the calls to apis 
@@ -110,13 +103,8 @@ class Main():
             pass
         self.logger.info("Initalized matrixes")
         return verified_modules
+
     async def main_run(self):
-        # Get matrix objectsa
-        # Same time Display Loading Screen
-        # Loop through matrix
-        # Poll Api
-        # Display Marix 
-        # And Then Loop forever 
         self.logger.info("Starting OhMyOled")
         matrix = RGBMatrix(options=self.poll_rgbmatrix())
         self.logger.debug("Built Options for RGBMatrix")
