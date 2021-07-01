@@ -14,7 +14,7 @@ apt install -y build-essential git python3-setuptools python3-pip python3-dev py
 apt-get install build-essential libssl-dev libffi-dev python-dev -y 
 
 cd /usr/local/bin/ 
-if [[ -z /usr/local/bin/Python-3.8.9.tgz]]
+if [[ -z /usr/local/bin/Python-3.8.9.tgz ]]
 then 
 echo "Installing Python3.8.9"
 wget  http://python.org/ftp/python/3.8.9/Python-3.8.9.tgz 
