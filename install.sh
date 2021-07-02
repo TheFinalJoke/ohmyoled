@@ -13,7 +13,7 @@ sleep 5
 apt install -y build-essential git python3-setuptools python3-pip python3-dev python3-pillow python3-numpy python3-gpiozero python3-cairosvg libatlas3-base libatlas-base-dev libraqm-dev jq pastebinit neofetch zsh dbus
 
 cd /usr/local/bin/ 
-if [[ -z /usr/local/bin/Python-3.8.9.tgz ]]
+if [ ! -f /usr/local/bin/Python-3.8.9.tgz ]
 then 
 echo "Installing Python3.8.9"
 wget  http://python.org/ftp/python/3.8.9/Python-3.8.9.tgz 
