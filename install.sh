@@ -34,9 +34,9 @@ echo "Installing Pip3 Requirements"
 python3 -m pip install -r requirements.txt --no-cache-dir
 
 git submodule update --init --recursive
-git config submodule.matrix.ignore all
+git config submodule.rgbmatrix.ignore all
 
-cd submodules/matrix || exit
+cd submodules/rgbmatrix || exit
 echo "$(tput setaf 4)Running rgbmatrix installation...$(tput setaf 9)"
 apt-get install build-essential libssl-dev libffi-dev python-dev -y 
 
