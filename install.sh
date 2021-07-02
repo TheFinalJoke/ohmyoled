@@ -38,12 +38,11 @@ git config submodule.rgbmatrix.ignore all
 
 cd submodules/rgbmatrix || exit
 echo "$(tput setaf 4)Running rgbmatrix installation...$(tput setaf 9)"
-apt-get install build-essential libssl-dev libffi-dev python-dev -y 
 
 make build-python PYTHON="$(which python3)"
 make install-python PYTHON="$(which python3)"
 cd bindings || exit 
-pip3 install --force-reinstall -e python/
+python3 -m pip install --force-reinstall -e python/
 
 cd ../../../ || exit
 
