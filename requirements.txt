@@ -7,7 +7,7 @@ geocoder==1.38.1
 gpiozero==1.5.1
 noaa-sdk>=0.1.18
 printtools==1.2
-PyInstaller==3.8
+PyInstaller==3.6
 python-tsl2591==0.2.0
 questionary>=1.5.2
 regex>=2020.4.4
