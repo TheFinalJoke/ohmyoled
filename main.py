@@ -13,7 +13,7 @@ from lib.sports.sports import SportApi, Sport
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 
-TESTING = False
+TESTING = True
 """
 This file for now is for testing the library
 and the calls to apis 
