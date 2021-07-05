@@ -10,8 +10,7 @@ apt update && apt upgrade -y
 echo "It Could take 10-20 Mins"
 echo "Installing Build Essentials"
 sleep 5
-apt install -y build-essential git python3-setuptools python3-pip python3-dev python3-pillow python3-numpy python3-gpiozero python3-cairosvg libatlas3-base libatlas-base-dev libraqm-dev jq pastebinit neofetch zsh dbus
-
+apt install -y build-essential git python3-setuptools python3-pip python3-dev python3-pillow python3-numpy python3-gpiozero python3-cairosvg libatlas3-base libatlas-base-dev libraqm-dev jq pastebinit neofetch zsh dbus libjpeg-dev zlib1g-dev
 cd /usr/local/bin/ 
 if [ ! -f /usr/local/bin/Python-3.8.9.tgz ]
 then 
@@ -42,7 +41,7 @@ echo "$(tput setaf 4)Running rgbmatrix installation...$(tput setaf 9)"
 make build-python PYTHON="$(which python3)"
 make install-python PYTHON="$(which python3)"
 cd bindings || exit 
-python3 -m pip install --force-reinstall -e python/
+python3 -m pip install -e python/ -I
 
 cd ../../../ || exit
 
