@@ -32,7 +32,7 @@ rm /usr/bin/lsb_release
 /usr/bin/python3 -m pip install --upgrade pip
 cd $SOURCE_DIR
 echo "Installing Pip3 Requirements"
-python3 -m pip install -r requirements.txt --no-cache-dir --verbose --ignore-installed
+pip3 install ohmyoled==0.1.0
 
 git submodule update --init --recursive
 git config submodule.rgbmatrix.ignore all
