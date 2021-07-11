@@ -12,7 +12,7 @@ echo "It Could take 10-20 Mins"
 echo "On RASPBERRY PI ZERO It Could take longer than 20 mins"
 echo "Installing Build Essentials"
 sleep 5
-apt install -y build-essential git python3-setuptools python3-pip python3-dev python3-pillow python3-numpy python3-gpiozero python3-cairosvg libatlas3-base libatlas-base-dev libraqm-dev jq pastebinit neofetch zsh dbus libjpeg-dev zlib1g-dev
+apt install -y build-essential git libssl-dev libffi-dev python3-openssl python-dev python3-setuptools python3-pip python3-dev python3-pillow python3-numpy python3-gpiozero python3-cairosvg libatlas3-base libatlas-base-dev libraqm-dev jq pastebinit neofetch zsh dbus libjpeg-dev zlib1g-dev
 cd /usr/local/bin/ 
 if [ ! -f /usr/local/bin/Python-3.8.9.tgz ]
 then 
