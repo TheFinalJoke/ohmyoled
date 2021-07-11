@@ -21,7 +21,7 @@ wget  http://python.org/ftp/python/3.8.9/Python-3.8.9.tgz
 tar -zxvf /usr/local/bin/Python-3.8.9.tgz
 cd /usr/local/bin/Python-3.8.9
 ./configure --enable-optimizations
-make altinstall
+make altinstall -j $(nproc)
 unlink /usr/bin/python3
 
 
@@ -32,7 +32,7 @@ rm /usr/bin/lsb_release
 /usr/bin/python3 -m pip install --upgrade pip
 cd $SOURCE_DIR
 echo "Installing Pip3 Requirements"
-pip3 install ohmyoled==0.1.0
+python3 -m pip install ohmyoled==0.1.0 --verbose
 
 git submodule update --init --recursive
 git config submodule.rgbmatrix.ignore all
