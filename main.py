@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 
 import asyncio
-from asyncio.runners import run
 import configparser
-from typing import Optional
-from matrix.matrix import Matrix
-from requests import api
-#import termplotlib as tpl
 from rgbmatrix import (
     RGBMatrixOptions, 
-    RGBMatrix,
-    graphics
+    RGBMatrix
 )
-from lib.run import Runner
 from lib.weather.weather import WeatherApi, Weather
 from matrix.stock.stockmatrix import StockMatrix
 from lib.stock.stocks import StockApi, Stock
@@ -33,7 +26,7 @@ stream_formatter = logging.Formatter(
     "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
 )
 sh = logging.StreamHandler()
-filehandler = logging.FileHandler("/home/nickshorter/ohmyoled.log","a")
+filehandler = logging.FileHandler("/var/log/ohmyoled.log","a")
 sh.setFormatter(stream_formatter)
 filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)
@@ -112,13 +105,8 @@ class Main():
             pass
         self.logger.info("Initalized matrixes")
         return verified_modules
+
     async def main_run(self):
-        # Get matrix objectsa
-        # Same time Display Loading Screen
-        # Loop through matrix
-        # Poll Api
-        # Display Marix 
-        # And Then Loop forever 
         self.logger.info("Starting OhMyOled")
         matrix = RGBMatrix(options=self.poll_rgbmatrix())
         self.logger.debug("Built Options for RGBMatrix")
