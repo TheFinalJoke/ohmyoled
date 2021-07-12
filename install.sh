@@ -114,9 +114,10 @@ Run=False
 
 # Runs Quote data for stocks
 # quote=True
-
+############## Not Supported yet ##################
 # Historical and days need
 # historical=True
 # days_ago=30
+###################################################
 EOF
 echo "Installation complete"
