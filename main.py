@@ -2,6 +2,7 @@
 
 import asyncio
 import configparser
+import os
 from rgbmatrix import (
     RGBMatrixOptions, 
     RGBMatrix
@@ -13,7 +14,7 @@ from lib.sports.sports import SportApi, Sport
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 
-TESTING = False
+TESTING = True
 """
 This file for now is for testing the library
 and the calls to apis 
@@ -63,23 +64,6 @@ class Main():
                     api_modules.update({"sport": SportApi(self.config)})
         return api_modules
 
-    async def poll_apis(self):
-        modules = self.get_modules_to_run()
-        self.logger.info('Creating asyncio tasks for polling')
-        for task in modules:
-            modules[task] = asyncio.create_task(modules[task].run())
-        await asyncio.gather(*modules.values())
-        return modules
-
-    def build_obj(self, polled_apis):
-        #TODO(thefinaljoke): When Convert to Python3.10 Use match Statment
-        if 'weather' in polled_apis:
-            polled_apis['weather'] = Weather(polled_apis['weather'].result())
-        if 'stock' in polled_apis:
-            polled_apis['stock'] = Stock(polled_apis['stock'].result())
-        if 'sport' in polled_apis:
-            polled_apis['sport'] = Sport(polled_apis['sport'].result())
-        return polled_apis
     def poll_rgbmatrix(self):
         options = self.config['matrix']
         rgboptions = RGBMatrixOptions()
