@@ -1,0 +1,1 @@
+pyinstaller --name ohmyoled --onefile main.py --distpath .
