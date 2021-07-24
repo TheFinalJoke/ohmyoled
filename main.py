@@ -14,7 +14,6 @@ from lib.sports.sports import SportApi, Sport
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 
-TESTING = False
 """
 This file for now is for testing the library
 and the calls to apis 
@@ -103,13 +102,8 @@ class Main():
                 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
-    if TESTING:
-        logger.info("Testing is ENABLED")
-        logger.info("Using local config lib/config/ohmyoled.conf")
-        config.read('lib/config/ohmyoled.conf')
-    else:
-        logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
-        config.read('/etc/ohmyoled/ohmyoled.conf')
+    logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
+    config.read('/etc/ohmyoled/ohmyoled.conf')
     main = Main(config)
     loop = asyncio.get_event_loop()
     try:

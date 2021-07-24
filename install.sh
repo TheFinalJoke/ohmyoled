@@ -7,6 +7,9 @@ echo "Are you root?"
 exit 2
 fi
 apt update && apt upgrade -y
+apt install -y fonts-noto-mono
+
+mv -v $SOURCE_DIR/ohmyoled /usr/local/bin/
 
 echo "Creating Systemd File"
 cat <<EOF >> /usr/lib/systemd/system/ohmyoled.service
@@ -14,9 +17,9 @@ cat <<EOF >> /usr/lib/systemd/system/ohmyoled.service
 Description=OhMyOLED Service
 
 [Service]
-ExecStart=/usr/bin/python3 $SOURCE_DIR/main.py 
+ExecStart=/usr/local/bin/ohmyoled 
 User=root
-WorkingDirectory=$SOURCE_DIR
+WorkingDirectory=/usr/local/bin/
 
 [Install]
 WantedBy=multi-user.target

@@ -10,7 +10,7 @@ from enum import Enum
 import csv
 
 def get_weather_csv():
-    csv_path = 'lib/weather/ecIcons_utf8.csv'
+    csv_path = '/etc/ohmyoled/ecIcons_utf8.csv'
     return list(csv.DictReader(open(csv_path)))
 def build_weather_icons():
     csv = get_weather_csv()

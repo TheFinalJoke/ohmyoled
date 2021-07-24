@@ -6,7 +6,7 @@ block_cipher = None
 a = Analysis(['main.py'],
              pathex=['/home/nickshorter/ohmyoled'],
              binaries=[],
-             datas=[],
+             datas=[('fonts/retro_computer.ttf', 'fonts/retro_computer.ttf'), ('fonts/weathericons.ttf', 'fonts/weathericons.ttf')],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
@@ -31,3 +31,4 @@ exe = EXE(pyz,
           upx_exclude=[],
           runtime_tmpdir=None,
           console=True )
+
