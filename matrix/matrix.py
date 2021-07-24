@@ -53,7 +53,7 @@ class Matrix(ABSMatrix):
     
     def get_font_graphics(self, font_file):
         font = graphics.Font()
-        font.LoadFont(f"fonts/{font_file}")
+        font.LoadFont(f"/etc/ohmyoled/fonts/{font_file}")
         return font
 
     def get_logger(self):

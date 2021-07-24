@@ -1,0 +1,6 @@
+*__pycache__*
+*.egg-info
+ohmyoled-*
+*.tar.gz
+*.eggs
+*build
