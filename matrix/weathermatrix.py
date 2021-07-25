@@ -35,9 +35,9 @@ class WeatherMatrix(Matrix):
         else:
             return (0, 76, 255)
     def render_temp(self, api):
-        font = ImageFont.truetype("fonts/retro_computer.ttf", 7)
+        font = ImageFont.truetype("/usr/share/fonts/retro_computer.ttf", 7)
         metric = "\uf045"
-        self.draw_text((0, 10), "T:", font=ImageFont.truetype("fonts/retro_computer.ttf", 7))
+        self.draw_text((0, 10), "T:", font=ImageFont.truetype("/usr/share/fonts/retro_computer.ttf", 7))
         self.draw_text((10, 10), f"{str(int(api.get_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
         self.draw_text((30, 10), "R:", font=font)
         self.draw_text((40, 10), f"{str(int(api.get_feels_like))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
@@ -47,7 +47,7 @@ class WeatherMatrix(Matrix):
         self.draw_text((40, 20), f"{str(int(api.get_min_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
     
     def render_icon(self, api):
-        font = ImageFont.truetype("fonts/weathericons.ttf", 9)
+        font = ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9)
         owm_wxcode = int(api.get_weather[0]['id'])
         if owm_wxcode in range(200,299):
             # Thunderstorm Class
@@ -65,7 +65,7 @@ class WeatherMatrix(Matrix):
             # Snow Class
             owm_icon = 600
             color = (255,255,255)
-        elif owm_wxcode == (800):
+        elif owm_wxcode == 800:
             # Sunny
             owm_icon = 800
             color = (220, 149, 3)
@@ -78,27 +78,27 @@ class WeatherMatrix(Matrix):
         weather_icon = self.icons[str(owm_icon)]
         self.draw_text((50, 0), weather_icon.get_font, font, fill=color)
     def render_location(self, api: Weather):
-        font = ImageFont.truetype("fonts/retro_computer.ttf",6)
+        font = ImageFont.truetype("/usr/share/fonts/retro_computer.ttf",6)
         self.draw_text((2, 1), api.get_place, font, (0, 254, 0))
     def render_humidity (self, api: Weather):
-        font = ImageFont.truetype("fonts/retro_computer.ttf", 7)
+        font = ImageFont.truetype("/usr/share/fonts/retro_computer.ttf", 7)
         self.draw_text((0, 7), "H:", font)
         self.draw_text((10, 7), f"{api.get_humidity} %", font, fill=(7, 250, 246))
     def render_wind(self, api: Weather):
-        font = ImageFont.truetype("fonts/retro_computer.ttf", 7)
+        font = ImageFont.truetype("/usr/share/fonts/retro_computer.ttf", 7)
         speed = api.get_wind['speed']
         deg = api.get_wind['deg']
-        self.draw_text((1, 13), "\uf050", font=ImageFont.truetype("fonts/weathericons.ttf", 9))
+        self.draw_text((1, 13), "\uf050", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9))
         self.draw_text((15, 14), f"{str(int(deg))}", font, fill=(201, 1, 253))
-        self.draw_text((32, 14), "\uf042", font=ImageFont.truetype("fonts/weathericons.ttf", 9), fill=(201, 1, 253))
+        self.draw_text((32, 14), "\uf042", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9), fill=(201, 1, 253))
         self.draw_text((36, 14), f"{str(int(speed))}mph", font, fill=(201, 1, 253))
     def render_time(self, api: Weather):
-        font = ImageFont.truetype("fonts/retro_computer.ttf", 7)
+        font = ImageFont.truetype("/usr/share/fonts/retro_computer.ttf", 7)
         sunrise = api.get_sunrise.strftime("%H:%M")
         sunset = api.get_sunset.strftime("%H:%M")
-        self.draw_text((1, 18), "\uf058", font=ImageFont.truetype("fonts/weathericons.ttf", 11), fill=(255, 255, 0))
+        self.draw_text((1, 18), "\uf058", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 11), fill=(255, 255, 0))
         self.draw_text((5, 22), sunrise, font=font)
-        self.draw_text((32, 18), "\uf044", font=ImageFont.truetype("fonts/weathericons.ttf", 11), fill=(255, 145, 0))
+        self.draw_text((32, 18), "\uf044", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 11), fill=(255, 145, 0))
         self.draw_text((37, 22), sunset, font=font)
     def render(self, api: Weather):
         self.logger.info("Rendering Weather Matrix")
