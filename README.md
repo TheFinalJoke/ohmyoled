@@ -2,21 +2,19 @@
 
 # Prerequistes:
 
-You will have to install git
-
+Download the binary and support files
+Go to releases and download the most recent tag
 ```
-#!/bin/bash
-sudo apt install git -y 
+wget https://github.com/TheFinalJoke/ohmyoled/releases/download/$tag/ohmyoled-$tag.tar.gz
 ```
-
-Clone the repo
+Uncompress the File
 ```
-git clone https://github.com/TheFinalJoke/ohmyoled.git
+tar -zxvf ohmyoled-$tag.tar.gz
 ```
-
 Run the Install Script
 ```
 #!/bin/bash
+cd ohmyoled-$tag
 chmod 755 install.sh
 sudo ./install.sh
 ```
@@ -24,7 +22,7 @@ sudo ./install.sh
 # Run The Script 
 
 ```
-sudo systemctl start ohmyoled.service
+sudo systemctl enable --now ohmyoled.service
 ```
 
 # Configuration 
