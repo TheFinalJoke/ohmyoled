@@ -14,6 +14,8 @@ cp -v lib/weather/ecIcons_utf8.csv ohmyoled-$VERSION
 
 cp -v install.sh ohmyoled-$VERSION
 
+cp -vr fonts/ ohmyoled-$VERSION
+
 echo "Compressing ohmyoled"
 tar -zcvf ohmyoled-$VERSION.tar.gz ohmyoled-$VERSION
 
