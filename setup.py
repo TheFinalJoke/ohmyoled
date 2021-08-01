@@ -25,7 +25,7 @@ setup(
         "APScheduler>=3.6.3",
         "lastversion>=1.1.6",
         "nameparser==1.0.6",
-        "pillow==8.3.0",
+        "pillow==7.1.2",
         "dbus-next",
         "aiohttp",
         "iso6709",
