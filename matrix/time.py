@@ -30,8 +30,8 @@ class TimeMatrix(MatrixBase):
             font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
             self.set_image(Image.new("RGB", (64, 32)))
             self.set_draw(ImageDraw.Draw(self.get_image))
-            self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=(74,3,54,255))
-            self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=(74,3,54,255))
+            self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=(255,255,255,255))
+            self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=(255,255,255,255))
             self.render_image()
             counter = counter + 1
             time.sleep(1)
