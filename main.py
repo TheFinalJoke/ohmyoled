@@ -11,6 +11,7 @@ from lib.weather.weather import WeatherApi, Weather
 from matrix.stock.stockmatrix import StockMatrix
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
+from matrix.matrix import Matrix
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 
