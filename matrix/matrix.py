@@ -85,8 +85,11 @@ class Matrix(ABSMatrix):
 
     def render_image(self):
         self.matrix.SetImage(self.get_image)
-    def draw_rectangle(self):
-        self.draw.rectangle([(0,0), (63,31)])
+    def draw_rectangle(self, position):
+        """
+        [List(Tuple,)]
+        """
+        self.draw.rectangle(position)
     def draw_text(self, align, text, font, fill=None):
         self.draw.text(
             align,

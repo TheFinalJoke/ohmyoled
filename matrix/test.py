@@ -37,19 +37,8 @@ image = Image.new("RGB", (64, 32))
 draw = ImageDraw.Draw(image)
 #RGBMatrix(options = options)
 pos = offscreen_canvas.width
-import termplotlib as tpl
-import numpy
-
-x = numpy.linspace(0, 2 * numpy.pi, 10)
-y = numpy.sin(x)
-
-fig = tpl.figure()
-fig.plot(x, y, label="data", width=50, height=15)
-draw.text((0.0), fig)
 matrix.SetImage(image.convert('RGB'))
-#fig.show()
 
-"""
 while True:
     offscreen_canvas.Clear()
     font = graphics.Font()
@@ -71,18 +60,3 @@ while True:
     graphics.DrawText(offscreen_canvas, font, 13, 20, red, f"{datetime.now().strftime('%I:%M:%S')}")
     offscreen_canvas = matrix.SwapOnVSync(offscreen_canvas)
     # matrix.SetImage(image.convert('RGB'))
-#graphics.DrawLine(matrix, 5, 7, 22, 13, red)
-#graphics.DrawCircle(matrix, 15, 15, 10, red)
-"""
-"""
-# Make image fit our screen.
-image.thumbnail((matrix.width, matrix.height), Image.ANTIALIAS)
-
-matrix.SetImage(image.convert('RGB'))
-"""
-try:
-    print("Press CTRL-C to stop.")
-    while True:
-        time.sleep(100)
-except KeyboardInterrupt:
-    sys.exit(0)
