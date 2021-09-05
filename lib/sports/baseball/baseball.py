@@ -23,10 +23,8 @@ class Baseball(Runner):
         self.headers.update({'x-apisports-host': 'v1.baseball.api-sports.io'})
         urls = {}
         base = "https://v1.baseball.api-sports.io/"
-        if 'standings' in args:
-            urls.update({'standings': base + f'standings?league=1&season=2021'})
-        if 'next_game' in args:
-            urls.update({'next_game': base + f"games?team={self.config.getint('team_id')}&league=1&season=2021&timezone=America/Chicago"})
+        urls.update({'standings': base + f'standings?league=1&season=2021'})
+        urls.update({'next_game': base + f"games?team={self.config.getint('team_id')}&league=1&season=2021&timezone=America/Chicago"})
         return urls
     
     async def run(self):

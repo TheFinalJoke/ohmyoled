@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from PIL.Image import Image
-from matrix.matrix import Matrix, MatrixBase, FontException, Canvas
+from matrix.matrix import Matrix, MatrixBase, FontException
 from datetime import date, datetime
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics
 from PIL import Image, ImageDraw, ImageFont
@@ -25,7 +25,7 @@ class TimeMatrix(MatrixBase):
     def render(self, poll):
         self.logger.info("Running Module TimeMatrix")
         counter = 0
-        while counter < 5:
+        while counter < 15:
             self.logger.debug(f'Counter for module run {counter}')
             font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
             self.set_image(Image.new("RGB", (64, 32)))
