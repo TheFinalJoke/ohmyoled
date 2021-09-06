@@ -4,6 +4,7 @@ from lib.run import Runner, Caller
 import sys
 import os
 from requests import Response
+import geocoder
 from typing import Dict, Tuple
 from datetime import datetime 
 from enum import Enum
@@ -63,7 +64,10 @@ class WeatherApi(Runner):
         """
         Check if zipcode or city in config file
         """
-        if 'zipcode' in self.weather:
+        if 'current_location' in self.weather:
+            self.logger.debug("Using Current location via ipstack")
+            return await self.url_builder(current_location=True)
+        elif 'zipcode' in self.weather:
             self.logger.debug(f"Using Zipcode {self.weather.getint('zipcode')}")
             return await self.url_builder(zipcode=self.weather.getint('zipcode'))
         else:
@@ -71,29 +75,37 @@ class WeatherApi(Runner):
             return await self.url_builder(location=self.weather['city'])
 
 
-    async def get_long_and_lat(self, location: str) -> Tuple:
+    async def get_long_and_lat(self, location: str=None, zipcode: int=None) -> Tuple:
         """
         Searches for Longitude and latitude for Given City
         """
         try: 
-            self.logger.debug("Getting Longitude and Latitude")
-            url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
-            response = await self.get_data(url)
-            lon = response.get('coord').get('lon')
-            lat = response.get('coord').get('lat')
-            return lon, lat
+            if location:
+                self.logger.debug("Getting Longitude and Latitude")
+                url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
+                response = await self.get_data(url)
+                lon = response.get('coord').get('lon')
+                lat = response.get('coord').get('lat')
+                return lon, lat
         except Exception as e:
             sys.exit("No City Found")
-
-    async def url_builder(self, location=None, zipcode=None):
+    def get_current_location(self):
+        g = geocoder.ip('me')
+        return g.latlng[1], g.latlng[0]
+    
+    async def url_builder(self, location=None, zipcode=None, current_location=False):
         """
         Builds Url to poll the Api
         """
-        if location:
+        if current_location:
+            lon, lat = self.get_current_location()
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+        elif location:
             lon, lat = await self.get_long_and_lat(location)
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
-            url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={self.token}&units={self.weather.get('format')}"
+            lis_location = geocoder.location(str(zipcode)).latlng
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lis_location[1]}&lon={lis_location[0]}&appid={self.token}&units={self.weather.get('format')}"
         return url
     
     async def run(self):
@@ -107,8 +119,8 @@ class WeatherApi(Runner):
         self.logger.info("Using to get Weather")
         args = await self.parse_args()
         api_data = await self.get_data(args)
-        icn_url = f"http://openweathermap.org/img/wn/{api_data['weather'][0]['icon']}.png"
-        api_data['weather'][0].update({'url': icn_url, "file": f"imgs/weather_icons/{api_data['weather'][0]['icon']}.png"})
+        geoloc = geocoder.arcgis(method='reverse', location=f"{api_data['lat']}, {api_data['lon']}")
+        api_data['name'] = geoloc.city
         return {"weather": api_data}
 
 class Weather(Caller):
@@ -118,7 +130,8 @@ class Weather(Caller):
     def __init__(self, api: Dict) -> None:
         super().__init__()
         self.api = api
-        self.api_json = api['weather']
+        breakpoint()
+        self.api_json = api
         self._place = self.api_json.get('name')
         self._weather = self.api_json.get('weather')
         self._conditions = self._weather[0].get('main')
