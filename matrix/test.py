@@ -39,6 +39,10 @@ draw = ImageDraw.Draw(image)
 
 width, height = draw.multiline_textsize(text)
 print(width, height)
+test_image = Image.new("RGB", (64,32))
+test_draw = ImageDraw.Draw(test_image)
+# test_draw.text((32,0), "hello", font=scrolling_font)
+
 ycounter = 0
 while True:
     ypos += 1 
@@ -56,7 +60,8 @@ while True:
                 draw = ImageDraw.Draw(image)
                 # FOUND IT YAASS
                 # - Y position - yposition to offset the image
-                draw.multiline_text((-xpos, -ypos-ypos), text, font=scrolling_font, fill=(255,255,255), spacing=1) if ycounter > 1 else draw.multiline_text((-xpos, 0), text, font=scrolling_font, fill=(255,255,255), spacing=1)
+                image.paste(test_image)
+                draw.multiline_text((-xpos-xpos, -ypos-ypos), text, font=scrolling_font, fill=(255,255,255), spacing=1) if ycounter > 1 else draw.multiline_text((-xpos-xpos, 0), text, font=scrolling_font, fill=(255,255,255), spacing=1)
                 scrolling_matrix.SetImage(image)
                 time.sleep(3) if pause else time.sleep(0)
                 xpos += 1

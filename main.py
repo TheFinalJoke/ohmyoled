@@ -73,7 +73,7 @@ class Main():
         return rgboptions
 
     async def init_matrix(self, matrix):
-        verified_modules = [TimeMatrix(matrix)]
+        verified_modules = [] #[TimeMatrix(matrix)]
         modules = self.get_modules_to_run()
         if 'weather' in modules:
             self.logger.debug("Initialized Weather")

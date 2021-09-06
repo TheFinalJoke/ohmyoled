@@ -140,6 +140,8 @@ class Matrix(ABSMatrix):
         [List(Tuple,)]
         """
         self.draw.rectangle(position)
+    def draw_line(self, pos):
+        self.draw.line(pos)
 
     def draw_text(self, align, text, font, fill=None) -> None:
         self.draw.text(
