@@ -9,7 +9,9 @@ setup(
     author="thefinaljoke",
     install_requires=[
         "wheel",
-        "numpy==1.20.3",
+        "cython",
+        "numpy",
+        "noaa-sdk",
         "env-canada==0.0.35",
         "ephem==3.7.7.0",
         "fastjsonschema>=2.14.4",
