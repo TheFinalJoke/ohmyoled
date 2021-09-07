@@ -4,6 +4,7 @@ from lib.run import Runner, Caller
 import sys
 import os
 from requests import Response
+import geocoder
 from typing import Dict, Tuple
 from datetime import datetime 
 from enum import Enum
@@ -63,7 +64,10 @@ class WeatherApi(Runner):
         """
         Check if zipcode or city in config file
         """
-        if 'zipcode' in self.weather:
+        if 'current_location' in self.weather:
+            self.logger.debug("Using Current location via ipstack")
+            return await self.url_builder(current_location=True)
+        elif 'zipcode' in self.weather:
             self.logger.debug(f"Using Zipcode {self.weather.getint('zipcode')}")
             return await self.url_builder(zipcode=self.weather.getint('zipcode'))
         else:
@@ -71,29 +75,37 @@ class WeatherApi(Runner):
             return await self.url_builder(location=self.weather['city'])
 
 
-    async def get_long_and_lat(self, location: str) -> Tuple:
+    async def get_long_and_lat(self, location: str=None, zipcode: int=None) -> Tuple:
         """
         Searches for Longitude and latitude for Given City
         """
         try: 
-            self.logger.debug("Getting Longitude and Latitude")
-            url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
-            response = await self.get_data(url)
-            lon = response.get('coord').get('lon')
-            lat = response.get('coord').get('lat')
-            return lon, lat
+            if location:
+                self.logger.debug("Getting Longitude and Latitude")
+                url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
+                response = await self.get_data(url)
+                lon = response.get('coord').get('lon')
+                lat = response.get('coord').get('lat')
+                return lon, lat
         except Exception as e:
             sys.exit("No City Found")
-
-    async def url_builder(self, location=None, zipcode=None):
+    def get_current_location(self):
+        g = geocoder.ip('me')
+        return g.latlng[1], g.latlng[0]
+    
+    async def url_builder(self, location=None, zipcode=None, current_location=False):
         """
         Builds Url to poll the Api
         """
-        if location:
+        if current_location:
+            lon, lat = self.get_current_location()
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+        elif location:
             lon, lat = await self.get_long_and_lat(location)
-            url = f"http://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
-            url = f"http://api.openweathermap.org/data/2.5/weather?zip={str(zipcode)},US&appid={self.token}&units={self.weather.get('format')}"
+            lis_location = geocoder.location(str(zipcode)).latlng
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lis_location[1]}&lon={lis_location[0]}&appid={self.token}&units={self.weather.get('format')}"
         return url
     
     async def run(self):
@@ -107,9 +119,9 @@ class WeatherApi(Runner):
         self.logger.info("Using to get Weather")
         args = await self.parse_args()
         api_data = await self.get_data(args)
-        icn_url = f"http://openweathermap.org/img/wn/{api_data['weather'][0]['icon']}.png"
-        api_data['weather'][0].update({'url': icn_url, "file": f"imgs/weather_icons/{api_data['weather'][0]['icon']}.png"})
-        return {"weather": api_data}
+        geoloc = geocoder.arcgis(method='reverse', location=f"{api_data['lat']}, {api_data['lon']}")
+        api_data['name'] = geoloc.city
+        return api_data
 
 class Weather(Caller):
     """
@@ -118,35 +130,48 @@ class Weather(Caller):
     def __init__(self, api: Dict) -> None:
         super().__init__()
         self.api = api
-        self.api_json = api['weather']
+        self.api_json = api
         self._place = self.api_json.get('name')
-        self._weather = self.api_json.get('weather')
+        self._current = self.api_json.get('current')
+        self._weather = self._current.get('weather')
         self._conditions = self._weather[0].get('main')
         self._weather_icon = self._weather[0].get('icon')
-        self._temp = self.api_json.get('main').get('temp')
-        self._feels_like = self.api_json['main'].get('feels_like')
-        self._min_temp = self.api_json['main'].get('temp_min')
-        self._max_temp = self.api_json['main'].get('temp_max')
-        self._humidity = self.api_json['main'].get('humidity')
-        self._wind = self.api_json.get('wind')
-        self._time = datetime.fromtimestamp(self.api_json.get('dt'))
-        self._sunrise = datetime.fromtimestamp(self.api_json['sys'].get('sunrise'))
-        self._sunset = datetime.fromtimestamp(self.api_json['sys'].get('sunset'))
-        self._icn_url = self._weather[0].get('url')
-        self._icn_img = self._weather[0].get('file')
+        self._temp = self._current.get('temp')
+        self._feels_like = self._current.get('feels_like')
+        self._daily = self.api_json.get('daily')[0]
+        self._min_temp = self._daily['temp']['min']
+        self._max_temp = self._daily['temp']['max']
+        self._humidity = self._current.get('humidity')
+        self._wind_speed = self._current.get('wind_speed')
+        self._wind_deg = self._current.get('wind_deg')
+        self._time = datetime.fromtimestamp(self._current.get('dt'))
+        self._sunrise = datetime.fromtimestamp(self._current.get('sunrise'))
+        self._sunset = datetime.fromtimestamp(self._current.get('sunset'))
+        self._pop = self._daily['pop']
+        self._uv = self._daily['uvi']
 
-    def set_icn_url(self, url):
-        self._icn_url = url
     @property
-    def get_icn_url(self):
-        return self._icn_url
-
-    def set_icn_img(self, img):
-        self._icn_img = img
+    def get_wind_speed(self):
+        return self._wind_speed
+    
+    def set_wind_speed(self, speed):
+        self._wind_speed = speed
     
     @property
-    def get_icn_img(self):
-        return self._icn_img
+    def get_daily(self):
+        return self._daily
+    
+    @property
+    def get_wind_deg(self):
+        return self._wind_deg
+    
+    @property
+    def get_precipitation(self):
+        return self._pop
+    
+    @property
+    def get_uv(self):
+        return self._uv
     
     def set_place(self, place):
         self._place = place
