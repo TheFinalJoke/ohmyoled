@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, get_args
 from lib.run import Runner, Caller
 from lib.sports.football import Football
 from lib.sports.baseball.baseball import Baseball
@@ -73,6 +73,7 @@ class Sport(Caller):
             self._teams = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
             self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
             self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
+            self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
             
             
     def build_standings(self):
@@ -96,7 +97,8 @@ class Sport(Caller):
                 'game_id': game.get('id'),
                 'timestamp': game.get('timestamp'),
                 'status': game['status']['short'],
-                'teams': game['teams']
+                'teams': game['teams'],
+                'score': game['scores']
             })
         return main
 
@@ -155,3 +157,10 @@ class Sport(Caller):
     @property
     def get_status(self):
         return self._status
+    
+    @property
+    def get_scores(self):
+        return self._game_result
+    
+    def get_specific_score(self, game_id):
+        return self._game_result.get(game_id)

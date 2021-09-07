@@ -7,18 +7,15 @@ from rgbmatrix import (
     RGBMatrixOptions, 
     RGBMatrix
 )
-from lib.weather.weather import WeatherApi, Weather
+from lib.weather.weather import WeatherApi
 from matrix.stock.stockmatrix import StockMatrix
 from matrix.stock.historicalstockmatrix import HistoricalStockMatrix
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
+from matrix.matrix import Matrix
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
-
-"""
-This file for now is for testing the library
-and the calls to apis 
-"""
+from matrix.sport.sportmatrix import SportMatrix
 from abc import abstractmethod
 import requests
 import logging
@@ -87,7 +84,8 @@ class Main():
             verified_modules.append(StockMatrix(matrix, modules['stock'], logger))
             verified_modules.append(HistoricalStockMatrix(matrix, modules['stock'], logger))
         if 'sport' in modules:
-            pass
+            self.logger.debug("Initialized Sports")
+            verified_modules.append(SportMatrix(matrix, modules['sport'], logger))
         self.logger.info("Initalized matrixes")
         return verified_modules
 
