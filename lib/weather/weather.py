@@ -121,7 +121,7 @@ class WeatherApi(Runner):
         api_data = await self.get_data(args)
         geoloc = geocoder.arcgis(method='reverse', location=f"{api_data['lat']}, {api_data['lon']}")
         api_data['name'] = geoloc.city
-        return {"weather": api_data}
+        return api_data
 
 class Weather(Caller):
     """
@@ -130,36 +130,48 @@ class Weather(Caller):
     def __init__(self, api: Dict) -> None:
         super().__init__()
         self.api = api
-        breakpoint()
         self.api_json = api
         self._place = self.api_json.get('name')
-        self._weather = self.api_json.get('weather')
+        self._current = self.api_json.get('current')
+        self._weather = self._current.get('weather')
         self._conditions = self._weather[0].get('main')
         self._weather_icon = self._weather[0].get('icon')
-        self._temp = self.api_json.get('main').get('temp')
-        self._feels_like = self.api_json['main'].get('feels_like')
-        self._min_temp = self.api_json['main'].get('temp_min')
-        self._max_temp = self.api_json['main'].get('temp_max')
-        self._humidity = self.api_json['main'].get('humidity')
-        self._wind = self.api_json.get('wind')
-        self._time = datetime.fromtimestamp(self.api_json.get('dt'))
-        self._sunrise = datetime.fromtimestamp(self.api_json['sys'].get('sunrise'))
-        self._sunset = datetime.fromtimestamp(self.api_json['sys'].get('sunset'))
-        self._icn_url = self._weather[0].get('url')
-        self._icn_img = self._weather[0].get('file')
+        self._temp = self._current.get('temp')
+        self._feels_like = self._current.get('feels_like')
+        self._daily = self.api_json.get('daily')[0]
+        self._min_temp = self._daily['temp']['min']
+        self._max_temp = self._daily['temp']['max']
+        self._humidity = self._current.get('humidity')
+        self._wind_speed = self._current.get('wind_speed')
+        self._wind_deg = self._current.get('wind_deg')
+        self._time = datetime.fromtimestamp(self._current.get('dt'))
+        self._sunrise = datetime.fromtimestamp(self._current.get('sunrise'))
+        self._sunset = datetime.fromtimestamp(self._current.get('sunset'))
+        self._pop = self._daily['pop']
+        self._uv = self._daily['uvi']
 
-    def set_icn_url(self, url):
-        self._icn_url = url
     @property
-    def get_icn_url(self):
-        return self._icn_url
-
-    def set_icn_img(self, img):
-        self._icn_img = img
+    def get_wind_speed(self):
+        return self._wind_speed
+    
+    def set_wind_speed(self, speed):
+        self._wind_speed = speed
     
     @property
-    def get_icn_img(self):
-        return self._icn_img
+    def get_daily(self):
+        return self._daily
+    
+    @property
+    def get_wind_deg(self):
+        return self._wind_deg
+    
+    @property
+    def get_precipitation(self):
+        return self._pop
+    
+    @property
+    def get_uv(self):
+        return self._uv
     
     def set_place(self, place):
         self._place = place
