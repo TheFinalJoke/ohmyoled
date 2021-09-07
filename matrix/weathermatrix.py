@@ -85,7 +85,7 @@ class WeatherMatrix(Matrix):
         self.draw_text((2, 8), "H:", font)
         self.draw_text((10, 8), f"{api.get_humidity}%", font, fill=(7, 250, 246))
         self.draw_text((27, 8), f"P:", font)
-        self.draw_text((34, 8), f"{int(api.get_precipitation * 100)}%", font, fill=(7, 250, 246))
+        self.draw_text((34, 8), f"{int(api.get_precipitation)}%", font, fill=(7, 250, 246))
     def render_wind(self, api: Weather):
         font = ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF", 8)
         speed = api.get_wind_speed
