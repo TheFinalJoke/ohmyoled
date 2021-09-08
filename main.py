@@ -74,7 +74,7 @@ class Main():
         return rgboptions
 
     async def init_matrix(self, matrix):
-        verified_modules = [] # [TimeMatrix(matrix)]
+        verified_modules = [TimeMatrix(matrix)]
         modules = self.get_modules_to_run()
         if 'weather' in modules:
             self.logger.debug("Initialized Weather")
@@ -82,7 +82,8 @@ class Main():
         if 'stock' in modules:
             self.logger.debug("Initialized Stock")
             verified_modules.append(StockMatrix(matrix, modules['stock'], logger))
-            verified_modules.append(HistoricalStockMatrix(matrix, modules['stock'], logger))
+            # This Might not be able to be supported
+            # verified_modules.append(HistoricalStockMatrix(matrix, modules['stock'], logger))
         if 'sport' in modules:
             self.logger.debug("Initialized Sports")
             verified_modules.append(SportMatrix(matrix, modules['sport'], logger))

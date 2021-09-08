@@ -1,11 +1,31 @@
 #!/usr/bin/env python
 import time
 import sys
-from datetime import datetime
+import datetime
 
 from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics, FrameCanvas
 from PIL import ImageDraw, Image, ImageFont
+bottom_options = RGBMatrixOptions()
+bottom_options.rows = 32
+bottom_options.cols = 64
+bottom_options.chain_length = 1
+bottom_options.parallel = 1
+bottom_options.gpio_slowdown = 5
+bottom_options.brightness = 60
+bottom_options.hardware_mapping = 'adafruit-hat'  # If you have an Adafruit HAT: 'adafruit-hat'
 
+scrolling_matrix = RGBMatrix(options=bottom_options)
+time_stamps = [datetime.datetime(2021, 8, 30, 19, 0), datetime.datetime(2021, 8, 31, 19, 0), datetime.datetime(2021, 9, 1, 19, 0), datetime.datetime(2021, 9, 2, 19, 0), datetime.datetime(2021, 9, 3, 19, 0), datetime.datetime(2021, 9, 4, 19, 0), datetime.datetime(2021, 9, 5, 19, 0), datetime.datetime(2021, 9, 6, 19, 0)]
+close_prices = [122.8155, 123.0363342, 123.1214334105, 123.34281770849219, 123.42812890112556, 123.18127264332331, 122.93491009803665, 122.68904027784059]
+fake = [4,2,1,4,5,6,5]
+for t, c in zip(range(len(close_prices)), close_prices):
+    print(t,round(c, 2))
+stuff = [(t,round(c, 2)) for t,c in zip(range(len(fake)), fake)]
+image = Image.new("RGB", (64, 32))
+draw = ImageDraw.Draw(image)
+draw.point(stuff)
+scrolling_matrix.SetImage(image)
+time.sleep(30)
 """
 if len(sys.argv) < 2:
     sys.exit("Require an image argument")
@@ -19,7 +39,7 @@ font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf",
 draw.text((1, 5), "hello", font=font)
 #draw.rectangle((0, 0, 63, 31), fill=(0, 0, 0), outline=(0, 0, 255))
 # Configuration for the matrix
-"""
+
 # Can not Make 2 matrixes and/or 2 images
 bottom_options = RGBMatrixOptions()
 bottom_options.rows = 32
@@ -77,4 +97,4 @@ while True:
     scrolling_matrix.SetImage(image, offset_y=-ypos)
 
     time.sleep(.05)
-
+"""
