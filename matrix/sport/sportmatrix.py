@@ -5,7 +5,7 @@ import time
 from typing import List, Dict, Tuple
 from collections import deque
 from datetime import datetime, timedelta
-from PIL import ImageFont, Image
+from PIL import ImageFont, Image, ImageDraw
 from lib.sports.sports import Sport
 from matrix.matrix import Matrix
 from lib.sports.baseball.baseball import Baseball
@@ -79,6 +79,11 @@ class SportMatrix(Matrix):
         home = nextgame_data['teams']['home']
         home.update(nextgame_data['score']['home'])
         return home
+    def build_next_game(self, api):
+        if 'baseball' in api.sport:
+            game_image = self.make_new_image((62, 32))
+            game_draw = ImageDraw.Draw(game_image)
+    
     def render_baseball_standings(self, api):
         self.clear()
         self.reload_image()
@@ -89,28 +94,19 @@ class SportMatrix(Matrix):
             # Can't Have multiple images and or buffers
             american, national = self.baseball_divisions(api.standings)
             american.extend(national)
-            text = "\n".join(american)
+            text = " ".join(american)
             img_width, img_height = self.get_text_size(text)
             self.logger.info("Displaying Standings")
-            ypos = 0
-            while ypos < 100:
-                ypos += 1
-                if ypos == 1 or ypos % 8 == 0:
-                    xpos = 0
-                    pause = True
-                    while xpos < img_width:
-                        if xpos > 100:
-                            break
-                        self.reload_image()
-                        self.draw_multiline_text((-xpos, -ypos-ypos), text, font=scrolling_font, fill=color, spacing=1) if ypos > 1 else self.draw_multiline_text((-xpos, 0), text, font=scrolling_font, fill=color, spacing=1)
-                        self.render_image()
-                        time.sleep(3) if pause else time.sleep(0)
-                        xpos += 1 
-                        pause = False
+            xpos = 0
+            while xpos < 2700:
                 self.reload_image()
-                self.image_resize(64, img_height)
-                self.draw_multiline_text((0, -ypos), text, font=scrolling_font, fill=color, spacing=1)
-                self.render_image(yoffset=-ypos)
+                self.draw_text((-xpos, 25), text, font=scrolling_font, fill=color) 
+                self.render_image()
+                xpos +=1
+                if xpos == 1:
+                    time.sleep(3)
+                else:
+                    time.sleep(.05)
     def render_baseball_nextgame(self, api):
         self.clear()
         self.reload_image()
