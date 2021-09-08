@@ -9,6 +9,7 @@ from rgbmatrix import (
 )
 from lib.weather.weather import WeatherApi
 from matrix.stock.stockmatrix import StockMatrix
+from matrix.stock.historicalstockmatrix import HistoricalStockMatrix
 from lib.stock.stocks import StockApi, Stock
 from lib.sports.sports import SportApi, Sport
 from matrix.matrix import Matrix
@@ -81,6 +82,8 @@ class Main():
         if 'stock' in modules:
             self.logger.debug("Initialized Stock")
             verified_modules.append(StockMatrix(matrix, modules['stock'], logger))
+            # This Might not be able to be supported
+            # verified_modules.append(HistoricalStockMatrix(matrix, modules['stock'], logger))
         if 'sport' in modules:
             self.logger.debug("Initialized Sports")
             verified_modules.append(SportMatrix(matrix, modules['sport'], logger))

@@ -8,7 +8,7 @@ import os
 from PIL import Image
 from PIL import ImageDraw
 from PIL import ImageFont
-from matrix.matrix import Matrix, MatrixBase, FontException, Canvas
+from matrix.matrix import Matrix, MatrixBase, FontException
 from lib.stock.stocks import Stock
 
 class HistoricalStockMatrix(Matrix):
@@ -24,7 +24,9 @@ class HistoricalStockMatrix(Matrix):
         self.draw_text((0, 0), f"{api.get_symbol}", font)
     
     def render(self, api):
-        self.logger.info("Started Render for Stock Matrix")
+        self.logger.info("Started Render for Historical Stock Matrix")
         self.clear()
         self.reload_image()
         self.render_symbol(api)
+        self.render_image()
+        time.sleep(10)
