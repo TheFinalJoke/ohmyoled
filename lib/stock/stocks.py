@@ -6,6 +6,7 @@ from lib.stock.stockquote import SQuote
 from lib.stock.historical_stock import HistoricalStock
 from datetime import date, datetime
 import os 
+import json
 import sys
 
 class StockApi(Runner):
@@ -81,6 +82,26 @@ class Stock(Caller):
         self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
         self._description = self.quote['description']
         self._name = self._description['name']
+    def __repr__(self) -> str:
+        datetimes = [dates.strftime("%Y-%m-%d %H:%M:%S") for dates in self._hist_timestamps]
+        attrs = [
+            f"symbol={self._symbol}",
+            f"open_price={self._open_price}",
+            f"current_price={self._current_price}",
+            f"highest_price={self._highest_price}",
+            f"lowest_price={self._lowest_price}",
+            f"previous_close_price={self._previous_close}",
+            f"hist_close_prices={json.dumps(self._hist_close_prices, indent=2)}",
+            f"hist_low_prices={json.dumps(self._hist_low_prices, indent=2)}",
+            f"hist_high_prices={json.dumps(self._hist_high_prices, indent=2)}",
+            f"hist_open_prices={json.dumps(self._hist_opening_prices, indent=2)}",
+            f"hist_volume={json.dumps(self._hist_volume, indent=2)}",
+            f"hist_timestamps={json.dumps(datetimes, indent=2)}",
+            f"description={json.dumps(self._description, indent=2)}",
+            f"name={self._name}"
+        ]
+        joined_attrs = ',\n'.join(attrs)
+        return f"Stock(\n{joined_attrs})"
 
     @property
     def get_name(self):

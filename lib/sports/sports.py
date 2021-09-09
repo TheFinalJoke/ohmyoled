@@ -4,7 +4,8 @@ from lib.sports.football import Football
 from lib.sports.baseball.baseball import Baseball
 from lib.sports.basketball.basketball import Basketball
 from lib.sports.hockey.hockey import Hockey
-import os 
+import os
+import json
 import sys
 
 class SportApi(Runner):
@@ -75,7 +76,26 @@ class Sport(Caller):
             self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
             self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
             
-            
+    def __repr__(self):
+        attrs = [
+            f"length={self._length}",
+            f"positions={json.dumps(self._positions, indent=2)}",
+            f'leagues={json.dumps(self._leagues, indent=2)}',
+            f"games_played={json.dumps(self._games_played, indent=2)}",
+            f"wins={json.dumps(self._wins, indent=2)}",
+            f"wins_percentage={json.dumps(self._wins_percentage, indent=2)}",
+            f"losses={json.dumps(self._losses, indent=2)}",
+            f"loss_percentage={json.dumps(self._loss_percentage, indent=2)}",
+            f"game_ids={json.dumps(self._game_ids, indent=2)}",
+            f"timestamps={json.dumps(self._timestamps, indent=2)}",
+            f"teams={json.dumps(self._teams, indent=2)}",
+            f"vs={json.dumps(self._vs, indent=2)}",
+            f"status={json.dumps(self._status, indent=2)}",
+            f"game_result={json.dumps(self._game_result, indent=2)}"
+        ]
+        joined = "\t\n".join(attrs)
+        return f"Sport(\n{joined})"
+    
     def build_standings(self):
         #counter = 0
         position = []

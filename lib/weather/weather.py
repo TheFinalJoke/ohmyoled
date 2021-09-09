@@ -3,6 +3,7 @@
 from lib.run import Runner, Caller
 import sys
 import os
+import json
 from requests import Response
 import geocoder
 from typing import Dict, Tuple
@@ -150,6 +151,30 @@ class Weather(Caller):
         self._pop = self._daily['pop']
         self._uv = self._daily['uvi']
 
+    def __repr__(self) -> str:
+        attrs = [
+            f"name={self._place}",
+            f"current={json.dumps(self._current, indent=2)}",
+            f"weather={json.dumps(self._weather, indent=2)}",
+            f"conditions={self._conditions}",
+            f"weather_icon={self._weather_icon}",
+            f"temp={self._temp}",
+            f"feels_like={self._feels_like}",
+            f"daily={json.dumps(self._daily, indent=2)}",
+            f"min_temp={self._min_temp}",
+            f"max_temp={self._max_temp}",
+            f"humidity={self._humidity}",
+            f"wind_speed={self._wind_speed}",
+            f"wind_deg={self._wind_deg}",
+            f"time={self._time}",
+            f"sunrise={self._sunrise}",
+            f"sunset={self._sunset}",
+            f"precipitation={self._pop}",
+            f"uv={self._uv}"
+        ]
+        joined_attrs = ',\n'.join(attrs)
+        return f"Weather(\n{joined_attrs})"
+    
     @property
     def get_wind_speed(self):
         return self._wind_speed
