@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from datetime import datetime
 from typing import List, Dict, Tuple
 from collections import deque
 from datetime import datetime, timedelta
@@ -79,11 +80,13 @@ class SportMatrix(Matrix):
         home = nextgame_data['teams']['home']
         home.update(nextgame_data['score']['home'])
         return home
-    def build_next_game(self, api):
+    def check_if_sport_off_season(self):
+        pass
+    def build_next_status(self, api):
         if 'baseball' in api.sport:
             game_image = self.make_new_image((62, 32))
             game_draw = ImageDraw.Draw(game_image)
-    
+            status = ""
     def render_baseball_standings(self, api):
         self.clear()
         self.reload_image()
@@ -103,22 +106,29 @@ class SportMatrix(Matrix):
                 self.draw_text((-xpos, 25), text, font=scrolling_font, fill=color) 
                 self.render_image()
                 xpos +=1
-                if xpos == 1:
-                    time.sleep(3)
-                else:
-                    time.sleep(.05)
+                time.sleep(3) if xpos == 1 else time.sleep(.05)
+    def check_offseason(self, api):
+        start_time, end_time = api.get_timestamps[0][1], api.get_timestamps[-1][1]
+        if datetime.fromtimestamp(start_time) <= datetime.now() <= datetime.fromtimestamp(end_time):
+            return True
+        return False
+
     def render_baseball_nextgame(self, api):
         self.clear()
         self.reload_image()
         self.draw_rectangle([(0,0), (63, 31)])
         self.draw_line([(32,0), (32,32)])
-        font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
-        self.draw_text((28, 14), "VS", font=font)
-        nextgame = self.determine_nextgame(api.next_game)
-        away_data = self.away_team(nextgame_data=nextgame)
-        home_data = self.home_team(nextgame)
+        if self.check_offseason(api):
+            font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
+            self.draw_text((28, 14), "VS", font=font)
+            nextgame = self.determine_nextgame(api.next_game)
+            away_data = self.away_team(nextgame_data=nextgame)
+            home_data = self.home_team(nextgame)
+            breakpoint()
+        else:
+            font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+            self.draw_multiline_text((0, 0), "Baseball\nOffseason", font=font)
         self.render_image()
-        breakpoint()
             
     def render(self, api):
         self.clear()
@@ -129,8 +139,8 @@ class SportMatrix(Matrix):
             # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
             # Else Display next game
             # Only do standings right now
-            self.render_baseball_standings(api)
-            # self.render_baseball_nextgame(api)
+            # self.render_baseball_standings(api)
+            self.render_baseball_nextgame(api)
         if 'basketball' in api.sport:
             sportmatrix = BasketballMatrix(self.matrix, api, self.logger)
         if 'hockey' in api.sport:

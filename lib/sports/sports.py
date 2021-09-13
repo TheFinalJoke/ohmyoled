@@ -52,6 +52,7 @@ class SportApi(Runner):
 class Sport(Caller):
     def __init__(self, api) -> None:
         super().__init__()
+        self.api_type = ""
         self.api = api
         self.full_sport = self.api['Sport']
         self.sport = [*self.full_sport]
@@ -74,8 +75,8 @@ class Sport(Caller):
             self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
             self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
             self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
-            
-            
+    def initalize_obj(self, api):
+        pass
     def build_standings(self):
         #counter = 0
         position = []
@@ -164,3 +165,6 @@ class Sport(Caller):
     
     def get_specific_score(self, game_id):
         return self._game_result.get(game_id)
+
+class APISports(Sport):
+    pass
