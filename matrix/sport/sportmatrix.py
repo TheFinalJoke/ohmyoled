@@ -101,12 +101,22 @@ class SportMatrix(Matrix):
         score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
         middle_draw.multiline_text((10,0), f"{status}\n{score[0]}-{score[1]}", font=font)
         return middle_image, (15, 0)
-
+    def build_finished_game_image(self, nextgame):
+        middle_image = self.make_new_image((34,16))
+        middle_draw = ImageDraw.Draw(middle_image)
+        font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
+        status = nextgame['status']
+        score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
+        middle_draw.multiline_text((10,0), f"{status}\n{score[0]}-{score[1]}", font=font)
+        return middle_image, (15, 0)
+        
     def check_offseason(self, api):
-        start_time, end_time = api.get_timestamps[0][1], api.get_timestamps[-1][1]
-        if datetime.fromtimestamp(start_time) <= datetime.now() <= datetime.fromtimestamp(end_time):
-            return True
-        return False
+        try:
+            start_time, end_time = api.get_timestamps[0][1], api.get_timestamps[-1][1]
+            if datetime.fromtimestamp(start_time) <= datetime.now() <= datetime.fromtimestamp(end_time):
+                return True
+        except Exception:
+            return False
     def build_next_game_image(self, nextgame):
         middle_image = self.make_new_image((34,16))
         middle_draw = ImageDraw.Draw(middle_image)
@@ -126,20 +136,14 @@ class SportMatrix(Matrix):
         return (home_logo, (-2,0)), (away_logo, (50, 0))
 
     def build_middle_nextgame(self, api):
-        if self.check_offseason(api):
-            nextgame = self.determine_nextgame(api.next_game)
-            if "IN" in nextgame['status']: 
-                return self.build_in_game_image(nextgame)
-            elif "NS" == nextgame['status']:
-                return self.build_next_game_image(nextgame)
-            elif "FT" == nextgame['status']:
-                pass
-            else:
-                pass
-        else:
-            font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
-            self.draw_multiline_text((0, 0), "Baseball\nOffseason", font=font)
-    
+        nextgame = self.determine_nextgame(api.next_game)
+        if "IN" in nextgame['status']: 
+            return self.build_in_game_image(nextgame)
+        elif "NS" == nextgame['status']:
+            return self.build_next_game_image(nextgame)
+        elif "FT" == nextgame['status']:
+            return self.build_finished_game_image(nextgame)
+
     def build_middle_image(self, api):
         nextgame = self.determine_nextgame(api.next_game)
         home_image, away_image = self.build_home_away_image(nextgame)
@@ -204,51 +208,64 @@ class SportMatrix(Matrix):
             # Else Display next game
             # Only do standings right now
             self.logger.info("Found Baseball, Displaying Baseball Matrix")
-            self.logger.info("Displaying Standings")
-            xpos = 0
-            xpos_for_top = 0 
-            while xpos < 2700:
-                self.reload_image()
-                images = (
-                    self.build_standings_image(api, xpos),
-                    self.build_middle_image(api),
-                    self.build_top_image(api, xpos_for_top),
-                )
-                for image, position in images:
-                    self.paste_image(image, position)
+            if self.check_offseason(api):
+                xpos = 0
+                xpos_for_top = 0 
+                while xpos < 2700:
+                    self.reload_image()
+                    images = (
+                        self.build_standings_image(api, xpos),
+                        self.build_middle_image(api),
+                        self.build_top_image(api, xpos_for_top),
+                    )
+                    for image, position in images:
+                        self.paste_image(image, position)
+                    self.render_image()
+                    xpos +=1
+                    xpos_for_top += 1
+                    if xpos_for_top == 100:
+                        xpos_for_top = 0
+                    time.sleep(3) if xpos == 1 else time.sleep(.05)
+            else:
+                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
                 self.render_image()
-                xpos +=1
-                xpos_for_top += 1
-                if xpos_for_top == 100:
-                    xpos_for_top = 0
-                time.sleep(3) if xpos == 1 else time.sleep(.05)
-            # Create High Level image and put 2 lower level images
-            #nextgame_image = self.render_baseball_nextgame(api)
+                time.sleep(30)
         if 'basketball' in api.sport:
-             # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
+            # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
             # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
             # Else Display next game
             # Only do standings right now
-            breakpoint()
-            self.logger.info("Found Baseball, Displaying Baseball Matrix")
-            self.logger.info("Displaying Standings")
-            xpos = 0
-            xpos_for_top = 0 
-            while xpos < 2700:
-                self.reload_image()
-                images = (
-                    self.build_standings_image(api, xpos),
-                    self.build_middle_image(api),
-                    self.build_top_image(api, xpos_for_top),
-                )
-                for image, position in images:
-                    self.paste_image(image, position)
+            self.logger.info("Found Basketball, Displaying Basketball Matrix")
+            if self.check_offseason(api):
+                xpos = 0
+                xpos_for_top = 0 
+                while xpos < 2700:
+                    self.reload_image()
+                    images = (
+                        self.build_standings_image(api, xpos),
+                        self.build_middle_image(api),
+                        self.build_top_image(api, xpos_for_top),
+                    )
+                    for image, position in images:
+                        self.paste_image(image, position)
+                    self.render_image()
+                    xpos +=1
+                    xpos_for_top += 1
+                    if xpos_for_top == 100:
+                        xpos_for_top = 0
+                    time.sleep(3) if xpos == 1 else time.sleep(.05)
+            else:
+                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
                 self.render_image()
-                xpos +=1
-                xpos_for_top += 1
-                if xpos_for_top == 100:
-                    xpos_for_top = 0
-                time.sleep(3) if xpos == 1 else time.sleep(.05)
+                time.sleep(30)
         if 'hockey' in api.sport:
-            sportmatrix = HockeyMatrix(self.matrix, api, self.logger)
-
+            self.logger.info("Found Hockey, Displaying Hockey Matrix")
+            if self.check_offseason(api):
+                sportmatrix = HockeyMatrix(self.matrix, api, self.logger)
+            else:
+                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                self.draw_multiline_text((0, 0), "Hockey\nOffseason", font=font)
+                self.render_image()
+                time.sleep(30)
