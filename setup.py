@@ -31,6 +31,7 @@ setup(
         "dbus-next",
         "aiohttp",
         "iso6709",
+        "sportsipy",
         ],
     setup_requires=["pytest-runner"],
     tests_require=["pytest==4.4.1"],

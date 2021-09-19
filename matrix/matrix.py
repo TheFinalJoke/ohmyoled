@@ -61,6 +61,9 @@ class Matrix(ABSMatrix):
 
     def add_image_to_images(self, image: Image) -> None:
         self.images.append(image)
+    
+    def paste_image(self, image: Image, position: Tuple[int, int]) -> None:
+        self.image.paste(image, position)
 
     def reset_image_queue(self) -> None:
         self.images = deque([self.image])

@@ -42,7 +42,7 @@ class SportApi(Runner):
             self.logger.debug('Got basketball in config')
             basketball = Basketball(self.token, self.config['sport'], self.headers)
             basketball_return = await basketball.run()
-            sport_data['Sport'].update({'baseketball': basketball_return})
+            sport_data['Sport'].update({'basketball': basketball_return})
         elif 'hockey' == self.sport.get('sport').lower():
             self.logger.debug('Got Hockey from Config')
             hockey = Hockey(self.token, self.config['sport'], self.headers)
@@ -53,6 +53,7 @@ class SportApi(Runner):
 class Sport(Caller):
     def __init__(self, api) -> None:
         super().__init__()
+        self.api_type = ""
         self.api = api
         self.full_sport = self.api['Sport']
         self.sport = [*self.full_sport]
@@ -75,7 +76,6 @@ class Sport(Caller):
             self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
             self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
             self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
-            
     def __repr__(self):
         attrs = [
             f"length={self._length}",
@@ -101,7 +101,7 @@ class Sport(Caller):
         position = []
         # Can Be Empty Must try and except for that
         for pos in self.main_sport['standings'].get('response')[0]:
-            if pos.get('stage') != "MLB - Regular Season":
+            if pos.get('stage') != "MLB - Regular Season" or pos.get('stage') != "NBA - Regular Season":
                 continue
             position.append({'name': pos.get('team').get('name'),
                     'position': pos.get('position'),
@@ -184,3 +184,6 @@ class Sport(Caller):
     
     def get_specific_score(self, game_id):
         return self._game_result.get(game_id)
+
+class APISports(Sport):
+    pass
