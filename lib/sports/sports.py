@@ -76,9 +76,6 @@ class Sport(Caller):
             self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
             self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
             self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
-    def initalize_obj(self, api):
-        pass
-            
     def __repr__(self):
         attrs = [
             f"length={self._length}",
@@ -104,7 +101,7 @@ class Sport(Caller):
         position = []
         # Can Be Empty Must try and except for that
         for pos in self.main_sport['standings'].get('response')[0]:
-            if pos.get('stage') != "MLB - Regular Season":
+            if pos.get('stage') != "MLB - Regular Season" or pos.get('stage') != "NBA - Regular Season":
                 continue
             position.append({'name': pos.get('team').get('name'),
                     'position': pos.get('position'),

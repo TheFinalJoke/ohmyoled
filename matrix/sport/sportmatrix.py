@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import asyncio
+import os
 import time
+import urllib.request
 from datetime import datetime
 from typing import List, Dict, Tuple
 from collections import deque
@@ -12,7 +14,7 @@ from matrix.matrix import Matrix
 from lib.sports.baseball.baseball import Baseball
 from lib.sports.basketball.basketball import Basketball
 from lib.sports.hockey.hockey import Hockey
-
+from matrix.sport.team_mapping import BASEBALL_TEAMS, BASKETBALL_TEAMS
 class BaseballMatrix(Matrix):
     def __init__(self, matrix, api, logger) -> None:
         self.matrix = matrix
@@ -65,13 +67,17 @@ class SportMatrix(Matrix):
 
     def determine_nextgame(self, nextgame_api):
         now = datetime.now()
-        last_16 = now - timedelta(hours=16)
         status = ("FT", "ABD")
         for game in nextgame_api:
-            if last_16 <= datetime.fromtimestamp(game['timestamp']) <= now:
+            if "IN" in game['status']:
+                # During the game
+                return game
+            if game['status'] == "FT" and datetime.fromtimestamp(game['timestamp']).date() == datetime.today().date():
+                # Same Day will display for the rest of the day
                 return game
             if game['status'] not in status:
                 return game
+    
     def away_team(self, nextgame_data):
         away = nextgame_data['teams']['away']
         away.update(nextgame_data['score']['away'])
@@ -80,69 +86,169 @@ class SportMatrix(Matrix):
         home = nextgame_data['teams']['home']
         home.update(nextgame_data['score']['home'])
         return home
-    def check_if_sport_off_season(self):
-        pass
-    def build_next_status(self, api):
-        if 'baseball' in api.sport:
-            game_image = self.make_new_image((62, 32))
-            game_draw = ImageDraw.Draw(game_image)
-            status = ""
-    def render_baseball_standings(self, api):
-        self.clear()
-        self.reload_image()
-        scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
-        if 'baseball'in api.sport:
-            self.logger.info("Found Baseball, Displaying Baseball Matrix")
-            color = (156,163,173)
-            # Can't Have multiple images and or buffers
-            american, national = self.baseball_divisions(api.standings)
-            american.extend(national)
-            text = " ".join(american)
-            img_width, img_height = self.get_text_size(text)
-            self.logger.info("Displaying Standings")
-            xpos = 0
-            while xpos < 2700:
-                self.reload_image()
-                self.draw_text((-xpos, 25), text, font=scrolling_font, fill=color) 
-                self.render_image()
-                xpos +=1
-                time.sleep(3) if xpos == 1 else time.sleep(.05)
+
+    def get_logo(self, logo_url, name):
+        file_name = f"/tmp/{name}.png"
+        if not os.path.isfile(file_name):
+            urllib.request.urlretrieve(logo_url, file_name)
+        return file_name
+        
+    def build_in_game_image(self, nextgame):
+        middle_image = self.make_new_image((34,16))
+        middle_draw = ImageDraw.Draw(middle_image)
+        font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
+        status = nextgame['status']
+        score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
+        middle_draw.multiline_text((10,0), f"{status}\n{score[0]}-{score[1]}", font=font)
+        return middle_image, (15, 0)
+
     def check_offseason(self, api):
         start_time, end_time = api.get_timestamps[0][1], api.get_timestamps[-1][1]
         if datetime.fromtimestamp(start_time) <= datetime.now() <= datetime.fromtimestamp(end_time):
             return True
         return False
+    def build_next_game_image(self, nextgame):
+        middle_image = self.make_new_image((34,16))
+        middle_draw = ImageDraw.Draw(middle_image)
+        font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
+        time = datetime.fromtimestamp(nextgame['timestamp']).strftime("%I:%M%p %a")
+        time = "\n   ".join(time.split())
+        middle_draw.multiline_text((0,0), f'{time}', font=font)
+        return middle_image, (15, 0)
 
-    def render_baseball_nextgame(self, api):
-        self.clear()
-        self.reload_image()
-        self.draw_rectangle([(0,0), (63, 31)])
-        self.draw_line([(32,0), (32,32)])
+    def build_home_away_image(self, nextgame):
+        home_data = self.home_team(nextgame)
+        home_logo = Image.open(self.get_logo(home_data['logo'], home_data['id']))
+        home_logo.thumbnail((16,16))
+        away_data = self.away_team(nextgame)
+        away_logo = Image.open(self.get_logo(away_data['logo'], away_data['id']))
+        away_logo.thumbnail((16,16))
+        return (home_logo, (-2,0)), (away_logo, (50, 0))
+
+    def build_middle_nextgame(self, api):
         if self.check_offseason(api):
-            font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
-            self.draw_text((28, 14), "VS", font=font)
             nextgame = self.determine_nextgame(api.next_game)
-            away_data = self.away_team(nextgame_data=nextgame)
-            home_data = self.home_team(nextgame)
-            breakpoint()
+            if "IN" in nextgame['status']: 
+                return self.build_in_game_image(nextgame)
+            elif "NS" == nextgame['status']:
+                return self.build_next_game_image(nextgame)
+            elif "FT" == nextgame['status']:
+                pass
+            else:
+                pass
         else:
             font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
             self.draw_multiline_text((0, 0), "Baseball\nOffseason", font=font)
-        self.render_image()
-            
+    
+    def build_middle_image(self, api):
+        nextgame = self.determine_nextgame(api.next_game)
+        home_image, away_image = self.build_home_away_image(nextgame)
+        middle_image = self.build_middle_nextgame(api)
+        master_middle_image = self.make_new_image((64, 16))
+        master_middle_image.paste(home_image[0], home_image[1])
+        master_middle_image.paste(away_image[0], away_image[1])
+        master_middle_image.paste(middle_image[0], middle_image[1])
+        return master_middle_image, (0,9)
+    
+    def build_top_home_away_images(self, nextgame, xpos):
+        font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
+        top_home_image = self.make_new_image((22,8))
+        top_home_draw = ImageDraw.Draw(top_home_image)
+        top_away_image = self.make_new_image((22,8))
+        top_away_draw = ImageDraw.Draw(top_away_image)
+        hometeam = nextgame['teams']['home']['name']
+        awayteam = nextgame['teams']['away']['name']
+        top_home_draw.text((-xpos,0), hometeam, font=font)
+        top_away_draw.text((-xpos,0), awayteam, font=font)
+        return top_home_image, top_away_image
+
+    def build_top_image(self, api, xpos):
+        nextgame = self.determine_nextgame(api.next_game)
+        master_top_image = self.make_new_image((64, 8))
+        home_image, away_image = self.build_top_home_away_images(nextgame, xpos)
+        top_middle_image = self.make_new_image((22,8))
+        top_middle_draw = ImageDraw.Draw(top_middle_image)
+        top_middle_draw.text((5,0), "VS", font=ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8))
+        master_top_image.paste(home_image, (0,0))
+        master_top_image.paste(away_image, (44,0))
+        master_top_image.paste(top_middle_image, (22,0))
+        return master_top_image, (0,0)
+    
+    def build_standings_image(self, api, xpos) -> Tuple[int, int]:
+        """,
+        This is most bottom Image
+        """
+        standings_image = Image.new("RGB", (64,8))
+        standings_draw = ImageDraw.Draw(standings_image)
+        scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
+        color = (156,163,173)
+        # Can't Have multiple images and or buffers
+        american, national = self.baseball_divisions(api.standings)
+        american.extend(national)
+        text = " ".join(american)
+        img_width, img_height = self.get_text_size(text)
+        standings_draw.text(
+            (-xpos, 0), 
+            text, 
+            font=scrolling_font, 
+            fill=color
+        )
+        return standings_image, (0, 25)
+
     def render(self, api):
         self.clear()
         self.reload_image()
-        scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         if 'baseball'in api.sport:
             # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
             # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
             # Else Display next game
             # Only do standings right now
-            # self.render_baseball_standings(api)
-            self.render_baseball_nextgame(api)
+            self.logger.info("Found Baseball, Displaying Baseball Matrix")
+            self.logger.info("Displaying Standings")
+            xpos = 0
+            xpos_for_top = 0 
+            while xpos < 2700:
+                self.reload_image()
+                images = (
+                    self.build_standings_image(api, xpos),
+                    self.build_middle_image(api),
+                    self.build_top_image(api, xpos_for_top),
+                )
+                for image, position in images:
+                    self.paste_image(image, position)
+                self.render_image()
+                xpos +=1
+                xpos_for_top += 1
+                if xpos_for_top == 100:
+                    xpos_for_top = 0
+                time.sleep(3) if xpos == 1 else time.sleep(.05)
+            # Create High Level image and put 2 lower level images
+            #nextgame_image = self.render_baseball_nextgame(api)
         if 'basketball' in api.sport:
-            sportmatrix = BasketballMatrix(self.matrix, api, self.logger)
+             # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
+            # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
+            # Else Display next game
+            # Only do standings right now
+            breakpoint()
+            self.logger.info("Found Baseball, Displaying Baseball Matrix")
+            self.logger.info("Displaying Standings")
+            xpos = 0
+            xpos_for_top = 0 
+            while xpos < 2700:
+                self.reload_image()
+                images = (
+                    self.build_standings_image(api, xpos),
+                    self.build_middle_image(api),
+                    self.build_top_image(api, xpos_for_top),
+                )
+                for image, position in images:
+                    self.paste_image(image, position)
+                self.render_image()
+                xpos +=1
+                xpos_for_top += 1
+                if xpos_for_top == 100:
+                    xpos_for_top = 0
+                time.sleep(3) if xpos == 1 else time.sleep(.05)
         if 'hockey' in api.sport:
             sportmatrix = HockeyMatrix(self.matrix, api, self.logger)
 
