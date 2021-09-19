@@ -58,11 +58,20 @@ class Runner(RunnerABS):
         super().__init__()
         self.config = config
         self.runner_logger = logger
+    def run_non_async_request(self, url):
+        response = requests.get(url)
+        return response
     async def get_data(self, url, headers: Dict[str, str]={}):
         self.logger.debug(f'Getting data with URL {url}')
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
                 data = await resp.json()
+        return data
+    async def get_non_json_data(self, url, headers: Dict[str, str]={}):
+        self.logger.debug(f'Getting data with URL {url}')
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers) as resp:
+                data = await resp.text()
         return data
     async def get_img(self, url, headers: Dict[str, str]={}):
         self.logger.debug(f'Getting data with URL {url}')
