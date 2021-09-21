@@ -66,7 +66,7 @@ class WeatherApi(Runner):
         Check if zipcode or city in config file
         """
         if 'current_location' in self.weather:
-            self.logger.debug("Using Current location via ipstack")
+            self.logger.debug("Using Current location via ipinfo")
             return await self.url_builder(current_location=True)
         elif 'zipcode' in self.weather:
             self.logger.debug(f"Using Zipcode {self.weather.getint('zipcode')}")
@@ -88,25 +88,31 @@ class WeatherApi(Runner):
                 lon = response.get('coord').get('lon')
                 lat = response.get('coord').get('lat')
                 return lon, lat
+            else:
+                raise Exception("Zip Code not Supported")
         except Exception as e:
+            self.logger.critical(e)
             sys.exit("No City Found")
     def get_current_location(self):
-        g = geocoder.ip('me')
-        return g.latlng[1], g.latlng[0]
+        url = 'http://ipinfo.io/json'
+        response = self.run_non_async_request(url)
+        return response.json()
     
     async def url_builder(self, location=None, zipcode=None, current_location=False):
         """
         Builds Url to poll the Api
         """
         if current_location:
-            lon, lat = self.get_current_location()
+            ip_json = self.get_current_location()
+            lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         elif location:
             lon, lat = await self.get_long_and_lat(location)
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
-            lis_location = geocoder.location(str(zipcode)).latlng
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lis_location[1]}&lon={lis_location[0]}&appid={self.token}&units={self.weather.get('format')}"
+            ip_json = self.get_current_location()
+            lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         return url
     
     async def run(self):
@@ -120,8 +126,7 @@ class WeatherApi(Runner):
         self.logger.info("Using to get Weather")
         args = await self.parse_args()
         api_data = await self.get_data(args)
-        geoloc = geocoder.arcgis(method='reverse', location=f"{api_data['lat']}, {api_data['lon']}")
-        api_data['name'] = geoloc.city
+        api_data['name'] = self.get_current_location()['city']
         return api_data
 
 class Weather(Caller):
