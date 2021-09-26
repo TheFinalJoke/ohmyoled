@@ -15,37 +15,6 @@ from lib.sports.baseball.baseball import Baseball
 from lib.sports.basketball.basketball import Basketball
 from lib.sports.hockey.hockey import Hockey
 from matrix.sport.team_mapping import BASEBALL_TEAMS, BASKETBALL_TEAMS
-class BaseballMatrix(Matrix):
-    def __init__(self, matrix, api, logger) -> None:
-        self.matrix = matrix
-        self.api = api
-        self.logger = logger
-    def render_standings(self):
-        """
-        Split the screen and then Roll the screen
-        """
-        self.draw_rectangle()
-    def render_sport(self):
-        self.render_standings()
-        time.sleep(10)
-
-class BasketballMatrix(Matrix):
-    def __init__(self, matrix, api, logger) -> None:
-        self.matrix = matrix
-        self.api = api
-        self.logger = logger
-
-    def render_sport(self):
-        return 
-
-class HockeyMatrix(Matrix):
-    def __init__(self, matrix, api, logger) -> None:
-        self.matrix = matrix
-        self.api = api
-        self.logger = logger
-
-    def render_sport(self):
-        return 
 
 class SportMatrix(Matrix):
     def __init__(self, matrix, api, logger) -> None:
@@ -70,10 +39,12 @@ class SportMatrix(Matrix):
         status = ("FT", "ABD")
         for game in nextgame_api:
             if "IN" in game['status']:
+                self.logger.debug(f"In Game")
                 # During the game
                 return game
             if game['status'] == "FT" and datetime.fromtimestamp(game['timestamp']).date() == datetime.today().date():
                 # Same Day will display for the rest of the day
+                self.logger.debug("Game is finished but still same day")
                 return game
             if game['status'] not in status:
                 return game
@@ -98,7 +69,9 @@ class SportMatrix(Matrix):
         middle_draw = ImageDraw.Draw(middle_image)
         font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         status = nextgame['status']
+        self.logger.debug(f"status: {status}")
         score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
+        self.logger.debug(f"Score: {score}")
         middle_draw.multiline_text((12,0), f" {status}\n{score[0]}-{score[1]}", font=font)
         return middle_image, (15, 0)
     def build_finished_game_image(self, nextgame):
@@ -269,7 +242,8 @@ class SportMatrix(Matrix):
         if 'hockey' in api.sport:
             self.logger.info("Found Hockey, Displaying Hockey Matrix")
             if self.check_offseason(api):
-                sportmatrix = HockeyMatrix(self.matrix, api, self.logger)
+                pass
+                #sportmatrix = HockeyMatrix(self.matrix, api, self.logger)
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                 self.draw_multiline_text((0, 0), "Hockey\nOffseason", font=font)
