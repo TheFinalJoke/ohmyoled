@@ -190,7 +190,6 @@ class SportMatrix(Matrix):
         american, national = self.baseball_divisions(api.standings)
         american.extend(national)
         text = " ".join(american)
-        img_width, img_height = self.get_text_size(text)
         standings_draw.text(
             (-xpos, 0), 
             text, 
@@ -225,7 +224,7 @@ class SportMatrix(Matrix):
                     xpos_for_top += 1
                     if xpos_for_top == 100:
                         xpos_for_top = 0
-                    time.sleep(3) if xpos == 1 else time.sleep(.05)
+                    time.sleep(3) if xpos == 1 else time.sleep(.03)
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                 self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)

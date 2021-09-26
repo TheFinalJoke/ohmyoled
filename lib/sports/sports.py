@@ -101,7 +101,7 @@ class Sport(Caller):
         position = []
         # Can Be Empty Must try and except for that
         for pos in self.main_sport['standings'].get('response')[0]:
-            if pos.get('stage') != "MLB - Regular Season" or pos.get('stage') != "NBA - Regular Season":
+            if pos.get('stage') != "MLB - Regular Season":
                 continue
             position.append({'name': pos.get('team').get('name'),
                     'position': pos.get('position'),
