@@ -26,8 +26,7 @@ filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)
 logger.addHandler(sh)
 logger.addHandler(filehandler)
-logger.setLevel(logging.DEBUG)
-
+logger.setLevel(logging.INFO)
 class ABSMatrix():
     def __init__(self) -> None:
         pass 
@@ -50,7 +49,7 @@ class Matrix(ABSMatrix):
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
-
+        self.logger.debug(f"Logger is set to {self.logger.getEffectiveLevel()}")
     def get_font_graphics(self, font_file):
         font = graphics.Font()
         font.LoadFont(f"/etc/ohmyoled/fonts/{font_file}")

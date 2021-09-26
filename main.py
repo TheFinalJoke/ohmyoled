@@ -20,6 +20,7 @@ from abc import abstractmethod
 import requests
 import logging
 
+
 stream_formatter = logging.Formatter(
     "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
 )
@@ -30,12 +31,16 @@ filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)
 logger.addHandler(sh)
 logger.addHandler(filehandler)
-logger.setLevel(logging.DEBUG)
 
 class Main():
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
+        if self.config['basic'].getboolean('testing'):
+            self.logger.setLevel(self.config['basic'].getint('loglevel'))
+        else:
+            self.logger.setLevel(10)
+        self.logger.debug(f"Logger is set to {self.logger.getEffectiveLevel()}")
     def parse_config_file(self):
         module = {}
         self.logger.info("Parsing config file")
@@ -112,5 +117,7 @@ if __name__ == "__main__":
         loop.run_forever()
     except KeyboardInterrupt:
         logger.critical("Key Interrupt")
+    except Exception as e:
+        logger.critical(e)
     finally:
         loop.stop()
