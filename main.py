@@ -20,6 +20,7 @@ from abc import abstractmethod
 import requests
 import logging
 
+
 stream_formatter = logging.Formatter(
     "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
 )
@@ -30,12 +31,16 @@ filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)
 logger.addHandler(sh)
 logger.addHandler(filehandler)
-logger.setLevel(logging.DEBUG)
 
 class Main():
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
+        if self.config['basic'].getboolean('testing'):
+            self.logger.setLevel(self.config['basic'].getint('loglevel'))
+        else:
+            self.logger.setLevel(10)
+        self.logger.debug(f"Logger is set to {self.logger.getEffectiveLevel()}")
     def parse_config_file(self):
         module = {}
         self.logger.info("Parsing config file")
@@ -50,6 +55,9 @@ class Main():
         self.logger.info("Getting Modules")
         for section, runtime in parsed.items():
             if runtime:
+                if section == 'time':
+                    self.logger.debug("Time midule selected from config")
+                    api_modules.update({'time': " "})
                 if section == 'weather':
                     self.logger.debug("Weather Module Selected From Config")
                     api_modules.update({'weather': WeatherApi(self.config)})
@@ -74,8 +82,11 @@ class Main():
         return rgboptions
 
     async def init_matrix(self, matrix):
-        verified_modules = [TimeMatrix(matrix)]
+        verified_modules = []
         modules = self.get_modules_to_run()
+        if 'time' in modules:
+            self.logger.debug("Initialized Time")
+            verified_modules.append(TimeMatrix(matrix, self.config['time']))
         if 'weather' in modules:
             self.logger.debug("Initialized Weather")
             verified_modules.append(WeatherMatrix(matrix, modules['weather'], logger))
@@ -112,5 +123,7 @@ if __name__ == "__main__":
         loop.run_forever()
     except KeyboardInterrupt:
         logger.critical("Key Interrupt")
+    except Exception as e:
+        logger.critical(e)
     finally:
         loop.stop()

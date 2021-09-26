@@ -4,11 +4,8 @@ from lib.run import Runner, Caller
 import sys
 import os
 import json
-from requests import Response
-import geocoder
 from typing import Dict, Tuple
 from datetime import datetime 
-from enum import Enum
 import csv
 
 def get_weather_csv():
@@ -80,6 +77,7 @@ class WeatherApi(Runner):
         """
         Searches for Longitude and latitude for Given City
         """
+        self.logger.debug("Getting Lat and Long")
         try: 
             if location:
                 self.logger.debug("Getting Longitude and Latitude")
@@ -102,6 +100,7 @@ class WeatherApi(Runner):
         """
         Builds Url to poll the Api
         """
+        self.logger.debug("Building url...")
         if current_location:
             ip_json = self.get_current_location()
             lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
