@@ -55,6 +55,9 @@ class Main():
         self.logger.info("Getting Modules")
         for section, runtime in parsed.items():
             if runtime:
+                if section == 'time':
+                    self.logger.debug("Time midule selected from config")
+                    api_modules.update({'time': " "})
                 if section == 'weather':
                     self.logger.debug("Weather Module Selected From Config")
                     api_modules.update({'weather': WeatherApi(self.config)})
@@ -79,8 +82,11 @@ class Main():
         return rgboptions
 
     async def init_matrix(self, matrix):
-        verified_modules = [TimeMatrix(matrix)]
+        verified_modules = []
         modules = self.get_modules_to_run()
+        if 'time' in modules:
+            self.logger.debug("Initialized Time")
+            verified_modules.append(TimeMatrix(matrix, self.config['time']))
         if 'weather' in modules:
             self.logger.debug("Initialized Weather")
             verified_modules.append(WeatherMatrix(matrix, modules['weather'], logger))
