@@ -3,7 +3,7 @@
 import asyncio
 import time
 from typing import Dict
-
+from datetime import datetime
 import os
 from PIL import Image
 from PIL import ImageDraw
@@ -67,8 +67,12 @@ class WeatherMatrix(Matrix):
             color = (255,255,255)
         elif owm_wxcode == 800:
             # Sunny
-            owm_icon = 800
-            color = (220, 149, 3)
+            if api.get_sunset > datetime.now():
+                owm_icon = 800
+                color = (220, 149, 3)
+            else:
+                owm_icon = 806
+                color = (255,255,255)
         elif owm_wxcode in range(801,805):
             # Rain Class
             owm_icon = 801
