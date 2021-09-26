@@ -3,12 +3,8 @@
 import asyncio
 import time
 from typing import Dict
-
-import os
-from PIL import Image
-from PIL import ImageDraw
 from PIL import ImageFont
-from matrix.matrix import Matrix, MatrixBase, FontException
+from matrix.matrix import Matrix
 from lib.stock.stocks import Stock
 
 class StockMatrix(Matrix):
@@ -50,4 +46,4 @@ class StockMatrix(Matrix):
         self.render_highest_price(api)
         self.render_lowest_price(api)
         self.render_image()
-        time.sleep(10)
+        time.sleep(30)
