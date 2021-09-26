@@ -19,7 +19,7 @@ class StockMatrix(Matrix):
     def render_symbol(self, api) -> None:
         font = ImageFont.truetype("fonts/04B_03B_.TTF", 8)
         self.draw_text(
-            (1, 0), 
+            (0, 1), 
             f"{api.get_symbol.upper()}", 
             font, 
             fill=(0, 89, 255)
