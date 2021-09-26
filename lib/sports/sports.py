@@ -8,6 +8,7 @@ import os
 import json
 import sys
 
+# TODO @thefinaljoke More abstract to use different apis 
 class SportApi(Runner):
     def __init__(self, config):
         super().__init__(config)
@@ -99,9 +100,15 @@ class Sport(Caller):
     def build_standings(self):
         #counter = 0
         position = []
+        regular_season_check = (
+            "MLB - Regular Season", 
+            "NBA - Regular Season",
+            "NHL - Regular Season",
+            "NFL - Regular Season"
+        )
         # Can Be Empty Must try and except for that
         for pos in self.main_sport['standings'].get('response')[0]:
-            if pos.get('stage') != "MLB - Regular Season":
+            if not pos.get('stage') in regular_season_check:
                 continue
             position.append({'name': pos.get('team').get('name'),
                     'position': pos.get('position'),

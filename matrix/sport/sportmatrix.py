@@ -99,7 +99,7 @@ class SportMatrix(Matrix):
         font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         status = nextgame['status']
         score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
-        middle_draw.multiline_text((10,0), f"{status}\n{score[0]}-{score[1]}", font=font)
+        middle_draw.multiline_text((12,0), f" {status}\n{score[0]}-{score[1]}", font=font)
         return middle_image, (15, 0)
     def build_finished_game_image(self, nextgame):
         middle_image = self.make_new_image((34,16))
@@ -107,7 +107,7 @@ class SportMatrix(Matrix):
         font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         status = nextgame['status']
         score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
-        middle_draw.multiline_text((10,0), f"{status}\n{score[0]}-{score[1]}", font=font)
+        middle_draw.multiline_text((12,0), f"  {status}\n{score[0]}-{score[1]}", font=font)
         return middle_image, (15, 0)
         
     def check_offseason(self, api):
@@ -122,16 +122,23 @@ class SportMatrix(Matrix):
         middle_draw = ImageDraw.Draw(middle_image)
         font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         time = datetime.fromtimestamp(nextgame['timestamp']).strftime("%I:%M%p %a")
-        time = "\n   ".join(time.split())
+        formatted_time = time.split()
+        formatted_time[0] = f" {formatted_time[0]}"
+        time = "\n   ".join(formatted_time)
         middle_draw.multiline_text((0,0), f'{time}', font=font)
         return middle_image, (15, 0)
 
     def build_home_away_image(self, nextgame):
+        self.logger.debug(f"Building Home away image")
         home_data = self.home_team(nextgame)
+        self.logger.debug(f"Home Data {home_data}")
         home_logo = Image.open(self.get_logo(home_data['logo'], home_data['id']))
+        self.logger.debug(f"Got Logo {home_logo}")
         home_logo.thumbnail((16,16))
         away_data = self.away_team(nextgame)
+        self.logger.debug(f"Away Data: {away_data}")
         away_logo = Image.open(self.get_logo(away_data['logo'], away_data['id']))
+        self.logger.debug(f"Away Logo {away_logo}")
         away_logo.thumbnail((16,16))
         return (home_logo, (-2,0)), (away_logo, (50, 0))
 
