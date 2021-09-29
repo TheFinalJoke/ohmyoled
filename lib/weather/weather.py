@@ -196,7 +196,7 @@ class Weather(Caller):
     
     @property
     def get_precipitation(self):
-        return self._pop
+        return self._pop * 100
     
     @property
     def get_uv(self):

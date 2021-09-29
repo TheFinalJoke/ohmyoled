@@ -20,7 +20,6 @@ class WeatherMatrix(Matrix):
         self.api = api
         self.logger = logger
         self.icons = build_weather_icons()
-
     async def poll_api(self) -> Weather:
         return Weather(await self.api.run())
     def get_temp_color(self, temp):
