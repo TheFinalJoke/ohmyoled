@@ -178,7 +178,7 @@ class SportMatrix(Matrix):
         )
         return standings_image, (0, 25)
 
-    def render(self, api):
+    async def render(self, api, loop):
         self.clear()
         self.reload_image()
         if 'baseball'in api.sport:
@@ -199,7 +199,7 @@ class SportMatrix(Matrix):
                     )
                     for image, position in images:
                         self.paste_image(image, position)
-                    self.render_image()
+                    await self.render_image()
                     xpos +=1
                     xpos_for_top += 1
                     if xpos_for_top == 100:
@@ -208,7 +208,7 @@ class SportMatrix(Matrix):
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                 self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
-                self.render_image()
+                await self.render_image()
                 time.sleep(30)
         if 'basketball' in api.sport:
             # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data

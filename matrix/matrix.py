@@ -1,10 +1,9 @@
 #!/usr/bin/python3
 
 # ABS_Matrix -> Matrix_Module
-#
-#
-#
 from abc import abstractmethod
+import asyncio
+import functools
 import configparser
 import logging
 from sys import exec_prefix
@@ -134,8 +133,18 @@ class Matrix(ABSMatrix):
         self.set_image(self.image.resize((width, height), Image.ANTIALIAS))
         self.set_draw(ImageDraw.Draw(self.image))
 
-    def render_image(self, xoffset=0, yoffset=0):
-        self.matrix.SetImage(self.get_image, offset_y=yoffset, offset_x=xoffset)
+    async def render_image(self, loop=None, xoffset=0, yoffset=0):
+        if not loop:
+            loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            functools.partial(
+                self.matrix.SetImage,
+                self.get_image,
+                offset_x=xoffset,
+                offset_y=yoffset
+            )
+        )
     
     def draw_rectangle(self, position: List[Tuple]):
         """
