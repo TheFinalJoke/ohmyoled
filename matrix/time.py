@@ -24,7 +24,7 @@ class TimeMatrix(MatrixBase):
         """
         Function that does not poll since this a time
         """
-        self.logger.debug("No Api call reqiured for time module")
+        self.logger.info("No Api call reqiured for time module")
         return None
     
     def build_fmt(self) -> str:

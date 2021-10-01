@@ -81,7 +81,7 @@ class WeatherApi(Runner):
         self.logger.debug("Getting Lat and Long")
         try: 
             if location:
-                self.logger.debug("Getting Longitude and Latitude")
+                self.logger.debug("Computing Longitude and Latitude")
                 url = f'http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}'
                 response = await self.get_data(url)
                 lon = response.get('coord').get('lon')
@@ -117,7 +117,7 @@ class WeatherApi(Runner):
         return url
     
     async def run(self) -> Dict:
-        self.logger.info("Using to get Weather")
+        self.logger.info("Running Api for Weather")
         args = await self.parse_args()
         api_data = await self.get_data(args)
         api_data['name'] = self.get_current_location()['city']
