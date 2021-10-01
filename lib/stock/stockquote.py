@@ -26,7 +26,7 @@ class SQuote(Runner):
         """
         returns current stock Quotes and Price
         """
-        self.logger.info("Running Stock Data")
+        self.logger.info("Running Stock Api")
         symbol = self.config.get('symbol')
         api_data = await self.get_data(self.url_builder(symbol=symbol))
         api_data['symbol'] = symbol
