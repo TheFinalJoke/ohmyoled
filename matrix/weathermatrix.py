@@ -105,7 +105,7 @@ class WeatherMatrix(Matrix):
         self.draw_text((7, 23), sunrise, font=font)
         self.draw_text((35, 18), "\uf044", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 11), fill=(255, 145, 0))
         self.draw_text((40, 23), sunset, font=font)
-    def render(self, api: Weather):
+    async def render(self, api: Weather, loop):
         self.logger.info("Rendering Weather Matrix")
         self.logger.debug("Clearing Image")
         self.clear()
@@ -115,7 +115,7 @@ class WeatherMatrix(Matrix):
         self.render_icon(api)
         self.render_location(api)
         self.logger.info("Loading Screen 1 of Matrix")
-        self.render_image()
+        await self.render_image()
         time.sleep(30)
         self.clear()
         self.logger.debug("Reloading Image in matrix")
@@ -126,6 +126,6 @@ class WeatherMatrix(Matrix):
         self.render_wind(api)
         self.render_time(api)
         self.logger.info("Loading Screen 2 of Matrix")
-        self.render_image()
+        await self.render_image()
         time.sleep(30)
 

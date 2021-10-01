@@ -148,7 +148,7 @@ class StockMatrix(Matrix):
             fill=(255,0,0)
         )
     
-    def render(self, api) -> None:
+    async def render(self, api, loop) -> None:
         self.logger.info("Started Render for Stock Matrix")
         self.clear()
         self.reload_image()
@@ -157,5 +157,5 @@ class StockMatrix(Matrix):
         self.render_previous_close(api)
         self.render_highest_price(api)
         self.render_lowest_price(api)
-        self.render_image()
+        await self.render_image()
         time.sleep(30)

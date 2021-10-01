@@ -30,7 +30,7 @@ class TimeMatrix(MatrixBase):
     def build_fmt(self):
         return "%I:%M:%S %p" if TimeFormat.TWELEVE else "%H:%M:%S"  
 
-    def render(self, poll):
+    async def render(self, poll, loop):
         # Build something that Loads in corner for all the modules loaded
         self.logger.info("Running Module TimeMatrix")
         counter = 0
@@ -41,6 +41,6 @@ class TimeMatrix(MatrixBase):
             self.set_draw(ImageDraw.Draw(self.get_image))
             self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=eval(self.config.get('color')))
             self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=eval(self.config.get('color')))
-            self.render_image()
+            await self.render_image()
             counter = counter + 1
             time.sleep(1)
