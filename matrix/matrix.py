@@ -4,14 +4,12 @@
 from abc import abstractmethod
 import asyncio
 import functools
-import configparser
 import logging
 from sys import exec_prefix
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 from typing import Deque, Tuple, List
 from collections import deque
 from rgbmatrix import (
-    RGBMatrixOptions, 
     RGBMatrix,
     graphics
 )

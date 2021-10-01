@@ -17,20 +17,20 @@ class TimeMatrix(MatrixBase):
         self.config = config
         self.logger.debug("Time Matrix Initalized")
     
-    def return_time(self, fmt: str):
+    def return_time(self, fmt: str) -> datetime:
         return datetime.now().strftime(fmt) 
 
-    async def poll_api(self):
+    async def poll_api(self) -> None:
         """
         Function that does not poll since this a time
         """
         self.logger.debug("No Api call reqiured for time module")
         return None
     
-    def build_fmt(self):
+    def build_fmt(self) -> str:
         return "%I:%M:%S %p" if TimeFormat.TWELEVE else "%H:%M:%S"  
 
-    async def render(self, poll, loop):
+    async def render(self, poll: None, loop):
         # Build something that Loads in corner for all the modules loaded
         self.logger.info("Running Module TimeMatrix")
         counter = 0
