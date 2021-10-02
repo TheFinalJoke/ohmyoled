@@ -6,6 +6,7 @@ from lib.stock.stockquote import SQuote
 from lib.stock.historical_stock import HistoricalStock
 from datetime import date, datetime
 import os 
+import json
 import sys
 
 class StockApi(Runner):
@@ -47,15 +48,13 @@ class StockApi(Runner):
         """
         self.logger.info("Getting Stock")
         stock_data = {"Stock": {}}
-        if "historical" in self.stock and self.stock.getboolean("historical"):
-            self.logger.debug("Config has historical data for stocks")
-            hist_stock = HistoricalStock(self.token, self.config['stock'])
-            stock_data["Stock"].update({"Historical": await hist_stock.run()})
-        if "quote" in self.stock and self.stock.getboolean("quote"):
-            self.logger.debug("Getting Quote data")
-            quote = SQuote(self.token, self.config['stock'])
-            stock_api_return = await quote.run()
-            stock_data["Stock"].update({"Quote": stock_api_return})
+        self.logger.debug("Config has historical data for stocks")
+        hist_stock = HistoricalStock(self.token, self.config['stock'])
+        stock_data["Stock"].update({"Historical": await hist_stock.run()})
+        self.logger.debug("Getting Quote data")
+        quote = SQuote(self.token, self.config['stock'])
+        stock_api_return = await quote.run()
+        stock_data["Stock"].update({"Quote": stock_api_return})
         return stock_data
     
 class Stock(Caller):
@@ -67,24 +66,49 @@ class Stock(Caller):
     def __init__(self, stock_data):
         self.stock_data = stock_data
         self.stock_data = self.stock_data.get('Stock')
-        if 'Quote' in self.stock_data:
-            self.quote = self.stock_data.get('Quote')
-            self._open_price = self.quote['o']
-            self._current_price = self.quote['c']
-            self._highest_price = self.quote['h']
-            self._lowest_price = self.quote['l']
-            self._previous_close = self.quote['pc']
-            self._symbol = self.quote['symbol']
-        if 'Historical' in self.stock_data:
-            self.historical = self.stock_data.get('Historical')
-            self._hist_close_prices = self.historical['c']
-            self._hist_high_prices = self.historical['h']
-            self._hist_low_prices = self.historical['l']
-            self._hist_opening_prices = self.historical['o']
-            self._hist_volume = self.historical['v']
-            self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
-            self._symbol = self.historical['symbol']
-    
+        self.quote = self.stock_data.get('Quote')
+        self._open_price = self.quote['o']
+        self._current_price = self.quote['c']
+        self._highest_price = self.quote['h']
+        self._lowest_price = self.quote['l']
+        self._previous_close = self.quote['pc']
+        self._symbol = self.quote['symbol']
+        self.historical = self.stock_data.get('Historical')
+        self._hist_close_prices = self.historical['c']
+        self._hist_high_prices = self.historical['h']
+        self._hist_low_prices = self.historical['l']
+        self._hist_opening_prices = self.historical['o']
+        self._hist_volume = self.historical['v']
+        self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
+        self._description = self.quote['description']
+        self._name = self._description['name']
+    def __repr__(self) -> str:
+        datetimes = [dates.strftime("%Y-%m-%d %H:%M:%S") for dates in self._hist_timestamps]
+        attrs = [
+            f"symbol={self._symbol}",
+            f"open_price={self._open_price}",
+            f"current_price={self._current_price}",
+            f"highest_price={self._highest_price}",
+            f"lowest_price={self._lowest_price}",
+            f"previous_close_price={self._previous_close}",
+            f"hist_close_prices={json.dumps(self._hist_close_prices, indent=2)}",
+            f"hist_low_prices={json.dumps(self._hist_low_prices, indent=2)}",
+            f"hist_high_prices={json.dumps(self._hist_high_prices, indent=2)}",
+            f"hist_open_prices={json.dumps(self._hist_opening_prices, indent=2)}",
+            f"hist_volume={json.dumps(self._hist_volume, indent=2)}",
+            f"hist_timestamps={json.dumps(datetimes, indent=2)}",
+            f"description={json.dumps(self._description, indent=2)}",
+            f"name={self._name}"
+        ]
+        joined_attrs = ',\n'.join(attrs)
+        return f"Stock(\n{joined_attrs})"
+
+    @property
+    def get_name(self):
+        return self._name
+    @property
+    def get_description(self):
+        return self._description
     @property
     def get_symbol(self):
         return self._symbol

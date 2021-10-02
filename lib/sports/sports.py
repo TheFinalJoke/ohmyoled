@@ -1,12 +1,14 @@
-from typing import List, Tuple
+from typing import List, Tuple, get_args
 from lib.run import Runner, Caller
 from lib.sports.football import Football
 from lib.sports.baseball.baseball import Baseball
 from lib.sports.basketball.basketball import Basketball
 from lib.sports.hockey.hockey import Hockey
-import os 
+import os
+import json
 import sys
 
+# TODO @thefinaljoke More abstract to use different apis 
 class SportApi(Runner):
     def __init__(self, config):
         super().__init__(config)
@@ -41,7 +43,7 @@ class SportApi(Runner):
             self.logger.debug('Got basketball in config')
             basketball = Basketball(self.token, self.config['sport'], self.headers)
             basketball_return = await basketball.run()
-            sport_data['Sport'].update({'baseketball': basketball_return})
+            sport_data['Sport'].update({'basketball': basketball_return})
         elif 'hockey' == self.sport.get('sport').lower():
             self.logger.debug('Got Hockey from Config')
             hockey = Hockey(self.token, self.config['sport'], self.headers)
@@ -52,6 +54,7 @@ class SportApi(Runner):
 class Sport(Caller):
     def __init__(self, api) -> None:
         super().__init__()
+        self.api_type = ""
         self.api = api
         self.full_sport = self.api['Sport']
         self.sport = [*self.full_sport]
@@ -73,14 +76,39 @@ class Sport(Caller):
             self._teams = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
             self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
             self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
-            
-            
+            self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
+    def __repr__(self):
+        attrs = [
+            f"length={self._length}",
+            f"positions={json.dumps(self._positions, indent=2)}",
+            f'leagues={json.dumps(self._leagues, indent=2)}',
+            f"games_played={json.dumps(self._games_played, indent=2)}",
+            f"wins={json.dumps(self._wins, indent=2)}",
+            f"wins_percentage={json.dumps(self._wins_percentage, indent=2)}",
+            f"losses={json.dumps(self._losses, indent=2)}",
+            f"loss_percentage={json.dumps(self._loss_percentage, indent=2)}",
+            f"game_ids={json.dumps(self._game_ids, indent=2)}",
+            f"timestamps={json.dumps(self._timestamps, indent=2)}",
+            f"teams={json.dumps(self._teams, indent=2)}",
+            f"vs={json.dumps(self._vs, indent=2)}",
+            f"status={json.dumps(self._status, indent=2)}",
+            f"game_result={json.dumps(self._game_result, indent=2)}"
+        ]
+        joined = "\t\n".join(attrs)
+        return f"Sport(\n{joined})"
+    
     def build_standings(self):
         #counter = 0
         position = []
+        regular_season_check = (
+            "MLB - Regular Season", 
+            "NBA - Regular Season",
+            "NHL - Regular Season",
+            "NFL - Regular Season"
+        )
         # Can Be Empty Must try and except for that
         for pos in self.main_sport['standings'].get('response')[0]:
-            if pos.get('stage') != "MLB - Regular Season":
+            if not pos.get('stage') in regular_season_check:
                 continue
             position.append({'name': pos.get('team').get('name'),
                     'position': pos.get('position'),
@@ -96,7 +124,8 @@ class Sport(Caller):
                 'game_id': game.get('id'),
                 'timestamp': game.get('timestamp'),
                 'status': game['status']['short'],
-                'teams': game['teams']
+                'teams': game['teams'],
+                'score': game['scores']
             })
         return main
 
@@ -155,3 +184,13 @@ class Sport(Caller):
     @property
     def get_status(self):
         return self._status
+    
+    @property
+    def get_scores(self):
+        return self._game_result
+    
+    def get_specific_score(self, game_id):
+        return self._game_result.get(game_id)
+
+class APISports(Sport):
+    pass

@@ -18,13 +18,18 @@ class SQuote(Runner):
         base = 'https://finnhub.io/api/v1/'
         url = base + f'quote?symbol={symbol.upper()}&token={self.token}'
         return url
-    
+    def description_url(self, symbol):
+        base = 'https://finnhub.io/api/v1/'
+        url = base + f'stock/profile2?symbol={symbol.upper()}&token={self.token}'
+        return url
     async def run(self) -> Dict:
         """
         returns current stock Quotes and Price
         """
+        self.logger.info("Running Stock Api")
         symbol = self.config.get('symbol')
         api_data = await self.get_data(self.url_builder(symbol=symbol))
         api_data['symbol'] = symbol
+        api_data['description'] = await self.get_data(self.description_url(symbol))
         return api_data
         
