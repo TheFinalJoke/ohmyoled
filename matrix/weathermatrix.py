@@ -64,6 +64,9 @@ class WeatherMatrix(Matrix):
             # Snow Class
             owm_icon = 600
             color: Tuple[int] = (255,255,255)
+        elif owm_wxcode in range(700, 780):
+            owm_icon = 711
+            color: Tuple[int] = (192, 192, 192)
         elif owm_wxcode == 800:
             # Sunny
             if api.get_sunset > datetime.now():
