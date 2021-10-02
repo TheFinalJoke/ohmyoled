@@ -2,22 +2,18 @@
 
 import asyncio
 import configparser
-import os
+import time
 from rgbmatrix import (
     RGBMatrixOptions, 
     RGBMatrix
 )
 from lib.weather.weather import WeatherApi
 from matrix.stock.stockmatrix import StockMatrix
-from matrix.stock.historicalstockmatrix import HistoricalStockMatrix
-from lib.stock.stocks import StockApi, Stock
-from lib.sports.sports import SportApi, Sport
-from matrix.matrix import Matrix
+from lib.stock.stocks import StockApi
+from lib.sports.sports import SportApi
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 from matrix.sport.sportmatrix import SportMatrix
-from abc import abstractmethod
-import requests
 import logging
 
 
@@ -32,6 +28,8 @@ logger = logging.getLogger(__name__)
 logger.addHandler(sh)
 logger.addHandler(filehandler)
 
+class OledExecption(Exception):
+    pass
 class Main():
     def __init__(self, config) -> None:
         self.config = config
@@ -40,6 +38,7 @@ class Main():
             self.logger.setLevel(self.config['basic'].getint('loglevel'))
         else:
             self.logger.setLevel(10)
+        self.poll = None
         self.logger.debug(f"Logger is set to {self.logger.getEffectiveLevel()}")
     def parse_config_file(self):
         module = {}
@@ -100,26 +99,50 @@ class Main():
             verified_modules.append(SportMatrix(matrix, modules['sport'], logger))
         self.logger.info("Initalized matrixes")
         return verified_modules
+    
+    async def run_matrix_worker(self, matrix, polled_data):
+        self.logger.debug("Starting Worker")
+        # Need to make sure these need to be coroutines
+        matrix.render(polled_data)
+    
+    async def poll_api_worker(self, matrix):
+        polled_data = await matrix.poll_api()
+        return polled_data
 
-    async def main_run(self):
-        self.logger.info("Starting OhMyOled")
-        matrix = RGBMatrix(options=self.poll_rgbmatrix())
-        self.logger.debug("Built Options for RGBMatrix")
-        matrixes = await self.init_matrix(matrix)
-        self.logger.info("Starting Matrixes...")
-        while True:
-            for matrix in matrixes:
-                poll = await matrix.poll_api()
-                matrix.render(poll)
+    async def main_run(self, loop):
+        try:
+            self.logger.info("Starting OhMyOled")
+            matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            self.logger.debug("Built Options for RGBMatrix")
+            matrixes = await self.init_matrix(matrix)
+            self.logger.info("Starting Matrixes...")
+            first_poll = True
+            while True:
+                for index, matrix in enumerate(matrixes):
+                    matrix_start_time = time.perf_counter()
+                    if first_poll:
+                        self.poll = await matrix.poll_api()
+                        first_poll = False
+                    if index + 1 >= len(matrixes):
+                        tasks = [asyncio.create_task(matrix.render(self.poll, loop)), asyncio.create_task(matrixes[0].poll_api())]
+                    else:
+                        tasks = [asyncio.create_task(matrix.render(self.poll, loop)), asyncio.create_task(matrixes[index+1].poll_api())]
+                    _, self.poll = await asyncio.gather(*tasks)
+                    matrix_finish_time = time.perf_counter()
+                    logger.info(f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s")
+        except Exception as E:
+            logger.error(E)
+            loop.stop()
                 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
     logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
     config.read('/etc/ohmyoled/ohmyoled.conf')
     main = Main(config)
+
     loop = asyncio.get_event_loop()
     try:
-        loop.create_task(main.main_run())
+        loop.create_task(main.main_run(loop))
         loop.run_forever()
     except KeyboardInterrupt:
         logger.critical("Key Interrupt")
