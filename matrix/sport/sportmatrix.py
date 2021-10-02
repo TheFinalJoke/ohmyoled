@@ -5,7 +5,7 @@ import os
 import time
 import urllib.request
 from datetime import datetime
-from typing import List, Dict, Tuple, Bool
+from typing import List, Dict, Tuple
 from collections import deque
 from PIL import ImageFont, Image, ImageDraw
 from lib.sports.sports import Sport
@@ -16,6 +16,8 @@ class SportMatrix(Matrix):
         self.matrix = matrix
         self.api = api
         self.logger = logger
+    def __str__(self) -> str:
+        return "SportMatrix"
     async def poll_api(self) -> Sport:
         return Sport(await self.api.run())
     
@@ -66,7 +68,7 @@ class SportMatrix(Matrix):
         self.logger.debug(f"status: {status}")
         score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
         self.logger.debug(f"Score: {score}")
-        middle_draw.multiline_text((12,0), f" {status}\n{score[0]}-{score[1]}", font=font)
+        middle_draw.multiline_text((12,0), f"{status}\n{score[0]}-{score[1]}", font=font)
         return middle_image, (15, 0)
 
     def build_finished_game_image(self, nextgame):
@@ -75,7 +77,7 @@ class SportMatrix(Matrix):
         font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         status = nextgame['status']
         score = (nextgame['teams']['home']['total'], nextgame['teams']['away']['total'])
-        middle_draw.multiline_text((12,0), f"  {status}\n{score[0]}-{score[1]}", font=font)
+        middle_draw.multiline_text((12,0), f"{status}\n{score[0]}-{score[1]}", font=font)
         return middle_image, (15, 0)
         
     def check_offseason(self, api) -> bool:
@@ -200,7 +202,7 @@ class SportMatrix(Matrix):
                     xpos_for_top += 1
                     if xpos_for_top == 100:
                         xpos_for_top = 0
-                    time.sleep(3) if xpos == 1 else time.sleep(.03)
+                    time.sleep(3) if xpos == 1 else time.sleep(.001)
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                 self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
@@ -229,7 +231,7 @@ class SportMatrix(Matrix):
                     xpos_for_top += 1
                     if xpos_for_top == 100:
                         xpos_for_top = 0
-                    time.sleep(3) if xpos == 1 else time.sleep(.05)
+                    time.sleep(3) if xpos == 1 else time.sleep(.01)
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                 self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)

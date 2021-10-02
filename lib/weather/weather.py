@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import asyncio
+from logging import currentframe
 from lib.run import Runner, Caller
+from lib.asynclib import make_async
 import sys
 import os
 import json
@@ -12,6 +15,7 @@ import csv
 def get_weather_csv() -> List[Dict[str, str]]:
     csv_path = '/etc/ohmyoled/ecIcons_utf8.csv'
     return list(csv.DictReader(open(csv_path)))
+
 def build_weather_icons() -> str:
     csv = get_weather_csv()
     icon = {}
@@ -92,7 +96,8 @@ class WeatherApi(Runner):
         except Exception as e:
             self.logger.critical(e)
             sys.exit("No City Found")
-
+    
+    @make_async
     def get_current_location(self) -> Dict[str, str]:
         url = 'http://ipinfo.io/json'
         response = self.run_non_async_request(url)
@@ -104,14 +109,14 @@ class WeatherApi(Runner):
         """
         self.logger.debug("Building Weather url...")
         if current_location:
-            ip_json: Dict[str, str] = self.get_current_location()
+            ip_json: Dict[str, str] = await self.get_current_location()
             lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         elif location:
             lon, lat = await self.get_long_and_lat(location)
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         else:
-            ip_json = self.get_current_location()
+            ip_json = await self.get_current_location()
             lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
         return url
@@ -120,7 +125,8 @@ class WeatherApi(Runner):
         self.logger.info("Running Api for Weather")
         args = await self.parse_args()
         api_data = await self.get_data(args)
-        api_data['name'] = self.get_current_location()['city']
+        current_data = await self.get_current_location()
+        api_data['name'] = current_data['city']
         return api_data
 
 class Weather(Caller):

@@ -12,7 +12,9 @@ class StockMatrix(Matrix):
         self.matrix = matrix
         self.api = api
         self.logger = logger
-    
+    def __str__(self) -> str:
+        return "StockMatrix"
+
     async def poll_api(self) -> Stock:
         return Stock(await self.api.run())
 

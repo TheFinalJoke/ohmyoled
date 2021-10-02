@@ -2,22 +2,18 @@
 
 import asyncio
 import configparser
-import sys
+import time
 from rgbmatrix import (
     RGBMatrixOptions, 
     RGBMatrix
 )
 from lib.weather.weather import WeatherApi
 from matrix.stock.stockmatrix import StockMatrix
-from matrix.stock.historicalstockmatrix import HistoricalStockMatrix
-from lib.stock.stocks import StockApi, Stock
-from lib.sports.sports import SportApi, Sport
-from matrix.matrix import Matrix
+from lib.stock.stocks import StockApi
+from lib.sports.sports import SportApi
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 from matrix.sport.sportmatrix import SportMatrix
-from abc import abstractmethod
-import requests
 import logging
 
 
@@ -123,15 +119,17 @@ class Main():
             first_poll = True
             while True:
                 for index, matrix in enumerate(matrixes):
+                    matrix_start_time = time.perf_counter()
                     if first_poll:
                         self.poll = await matrix.poll_api()
                         first_poll = False
                     if index + 1 >= len(matrixes):
                         tasks = [asyncio.create_task(matrix.render(self.poll, loop)), asyncio.create_task(matrixes[0].poll_api())]
                     else:
-                        # Each one build a new function that can be called asynchrounously
                         tasks = [asyncio.create_task(matrix.render(self.poll, loop)), asyncio.create_task(matrixes[index+1].poll_api())]
                     _, self.poll = await asyncio.gather(*tasks)
+                    matrix_finish_time = time.perf_counter()
+                    logger.info(f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s")
         except Exception as E:
             logger.error(E)
             loop.stop()

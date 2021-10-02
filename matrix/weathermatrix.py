@@ -17,6 +17,8 @@ class WeatherMatrix(Matrix):
         self.logger = logger
         self.icons = build_weather_icons()
 
+    def __str__(self) -> str:
+        return "WeatherMatrix"
     async def poll_api(self) -> Weather:
         return Weather(await self.api.run())
     

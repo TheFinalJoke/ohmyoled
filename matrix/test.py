@@ -1,4 +1,5 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""
 import time
 import sys
 import datetime
@@ -69,6 +70,7 @@ master_image.paste(img6, (22, 0))
 master_image.paste(img7, (15, 9))
 scrolling_matrix.SetImage(master_image)
 # Image within an image 
+"""
 """
 scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
 scrolling_matrix = RGBMatrix(options=bottom_options)
@@ -176,4 +178,17 @@ while True:
 
     time.sleep(.05)
 """
-time.sleep(30)
+#time.sleep(30)
+
+import asyncio
+from setuptools import find_packages, setup
+breakpoint()
+#@make_async
+def test1(arg1, arg2):
+    print(arg1, arg2)
+
+def test2(arg1, arg2):
+    print(arg1, arg2)
+
+
+asyncio.run(test1("hello", "world"))
