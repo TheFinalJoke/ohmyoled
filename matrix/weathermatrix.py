@@ -36,14 +36,14 @@ class WeatherMatrix(Matrix):
     
     def render_temp(self, api) -> None:
         font: ImageFont = ImageFont.truetype("/usr/share/fonts/retro_computer.ttf", 7)
-        self.draw_text((0, 10), "T:", font=font)
-        self.draw_text((10, 10), f"{str(int(api.get_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
-        self.draw_text((30, 10), "R:", font=font)
-        self.draw_text((40, 10), f"{str(int(api.get_feels_like))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
-        self.draw_text((1,20), f"H:", font=font)
-        self.draw_text((10, 20), f"{str(int(api.get_max_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
-        self.draw_text((30, 20), f"L:", font=font)
-        self.draw_text((40, 20), f"{str(int(api.get_min_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
+        self.draw_text((0, 8), "T:", font=font)
+        self.draw_text((10, 8), f"{str(int(api.get_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
+        self.draw_text((30, 8), "R:", font=font)
+        self.draw_text((40, 8), f"{str(int(api.get_feels_like))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
+        self.draw_text((1, 18), f"H:", font=font)
+        self.draw_text((10, 18), f"{str(int(api.get_max_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
+        self.draw_text((30, 18), f"L:", font=font)
+        self.draw_text((40, 18), f"{str(int(api.get_min_temp))}F", font=font, fill=self.get_temp_color(int(api.get_temp)))
     
     def render_icon(self, api: Weather) -> None:
         font: ImageFont = ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9)
@@ -112,19 +112,31 @@ class WeatherMatrix(Matrix):
         self.draw_text((7, 23), sunrise, font=font)
         self.draw_text((35, 18), "\uf044", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 11), fill=(255, 145, 0))
         self.draw_text((40, 23), sunset, font=font)
-
+    def render_conditions(self, api: Weather, xpos: int) -> None:
+        self.draw_text((-xpos, 26), f"Conditions: {api.get_conditions}", font=ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF", 8), fill=(255,255,255))
     async def render(self, api: Weather, loop) -> None:
         self.logger.info("Rendering Weather Matrix")
         self.logger.debug("Clearing Image")
         self.clear()
         self.logger.debug("Reloading Image in matrix")
+        xpos = 0
+        self.logger.info("Loading Screen 1 of Matrix")
+        while xpos < 100:
+            self.reload_image()
+            self.render_temp(api)
+            self.render_icon(api)
+            self.render_location(api)
+            self.render_conditions(api, xpos)
+            xpos += 1
+            await self.render_image()
+            time.sleep(3) if xpos == 1 else time.sleep(.05)
         self.reload_image()
         self.render_temp(api)
         self.render_icon(api)
         self.render_location(api)
-        self.logger.info("Loading Screen 1 of Matrix")
+        self.render_conditions(api, 0)
         await self.render_image()
-        time.sleep(30)
+        time.sleep(25)
         self.clear()
         self.logger.debug("Reloading Image in matrix")
         self.reload_image()
