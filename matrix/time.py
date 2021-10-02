@@ -16,7 +16,10 @@ class TimeMatrix(MatrixBase):
         self.matrix = matrix
         self.config = config
         self.logger.debug("Time Matrix Initalized")
-    
+
+    def __str__(self) -> str:
+        return "TimeMatrix"
+
     def return_time(self, fmt: str) -> datetime:
         return datetime.now().strftime(fmt) 
 
@@ -24,7 +27,7 @@ class TimeMatrix(MatrixBase):
         """
         Function that does not poll since this a time
         """
-        self.logger.info("No Api call reqiured for time module")
+        self.logger.info("No Api call required for time module")
         return None
     
     def build_fmt(self) -> str:
