@@ -1,6 +1,6 @@
 from lib.run import Runner
 
-class Football(Runner):
+class FootballRunner(Runner):
     def __init__(self, token, config):
         self.config = config
         self.token = token

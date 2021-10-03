@@ -1,6 +1,6 @@
 from typing import List, Tuple, get_args
 from lib.run import Runner, Caller
-from lib.sports.football import Football
+from lib.sports.football import FootballRunner
 from lib.sports.baseball.baseball import Baseball
 from lib.sports.basketball.basketball import Basketball
 from lib.sports.hockey.hockey import Hockey
@@ -31,7 +31,7 @@ class SportApi(Runner):
         sport_data = {"Sport": {}}
         if 'football' == self.sport.get('sport').lower():
             self.logger.debug("Running football data")
-            football = Football(self.token, self.config['sport'], self.headers)
+            football = FootballRunner(self.token, self.config['sport'], self.headers)
             football_return = await football.run()
             sport_data['Sport'].update({'football': football_return})
         elif 'baseball' == self.sport.get('sport').lower():
