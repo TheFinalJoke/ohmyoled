@@ -3,10 +3,13 @@
 import asyncio
 import configparser
 import time
+import argparse
+import sys
 from rgbmatrix import (
     RGBMatrixOptions, 
     RGBMatrix
 )
+from lib.upgrade.upgrade import Upgrader
 from lib.weather.weather import WeatherApi
 from matrix.stock.stockmatrix import StockMatrix
 from lib.stock.stocks import StockApi
@@ -18,7 +21,7 @@ import logging
 
 
 stream_formatter = logging.Formatter(
-    "%(levelname)s:%(asctime)s:%(module)s:%(message)s"
+    "%(asctime)s:%(module)s: %(message)s"
 )
 sh = logging.StreamHandler()
 filehandler = logging.FileHandler("/var/log/ohmyoled.log","a")
@@ -28,9 +31,15 @@ logger = logging.getLogger(__name__)
 logger.addHandler(sh)
 logger.addHandler(filehandler)
 
+def __version__():
+    return "0.4.0"
 class OledExecption(Exception):
     pass
 class Main():
+
+    def version(cls):
+        return cls.version
+
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
@@ -135,6 +144,25 @@ class Main():
             loop.stop()
                 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run an OhMyOled Matix")
+    parser.add_argument(
+        "-u",
+        "--upgrade",
+        action="store_true")
+    parser.add_argument(
+        '--version',
+        action="store_true"
+    )
+    # This Should pass args to ohmyoled parser for determining json/configparser
+    # Then Return back json and the program should ingest json
+    # But for now we will parse it here and pass args it if upgrades
+    args = parser.parse_args()
+    if args.upgrade:
+        upgrader = Upgrader(args, version=__version__(), logger=logger)
+        asyncio.run(upgrader.run_upgrade())
+    elif args.version:
+        print(__version__())
+        sys.exit(0)
     config = configparser.ConfigParser()
     logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
     config.read('/etc/ohmyoled/ohmyoled.conf')
