@@ -5,12 +5,11 @@ from PIL import ImageFont
 import time
 
 class ErrorMatrix(Matrix):
-    def __init__(self, matrix, config, failed_matrix) -> None:
-        super().__init__(config)
+    def __init__(self, matrix, logger, failed_matrix) -> None:
         self.matrix = matrix
-        self.config = config
+        self.logger = logger
         self.failed_matrix = failed_matrix
-    
+
     def __str__(self):
         return "ErrorMatrix"
 
@@ -18,7 +17,8 @@ class ErrorMatrix(Matrix):
         self.logger.info("Running Error Matrix")
         font: ImageFont = ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF", 8)
         self.clear()
-        txt = f"Error ON \n {self.failed_matrix}"
-        self.draw_text((2, 16), txt, font, color=(255,255,255))
+        txt = f"There was \n An Exception \n {self.failed_matrix}"
+        self.reload_image()
+        self.draw_text((2, 4), txt, font, fill=(255,255,255))
         await self.render_image()
         time.sleep(45)
