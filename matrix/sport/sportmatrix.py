@@ -7,6 +7,7 @@ import urllib.request
 from datetime import datetime
 from typing import List, Dict, Tuple
 from collections import deque
+from matrix.error import ErrorMatrix
 from PIL import ImageFont, Image, ImageDraw
 from lib.sports.sports import Sport
 from matrix.matrix import Matrix
@@ -177,73 +178,95 @@ class SportMatrix(Matrix):
         return standings_image, (0, 25)
 
     async def render(self, api, loop):
-        self.clear()
-        self.reload_image()
-        if 'baseball'in api.sport:
-            # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
-            # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
-            # Else Display next game
-            # Only do standings right now
-            self.logger.info("Found Baseball, Displaying Baseball Matrix")
-            if self.check_offseason(api):
-                xpos = 0
-                xpos_for_top = 0 
-                while xpos < 2700:
-                    self.reload_image()
-                    images = (
-                        self.build_standings_image(api, xpos),
-                        self.build_middle_image(api),
-                        self.build_top_image(api, xpos_for_top),
-                    )
-                    for image, position in images:
-                        self.paste_image(image, position)
+        try:
+            raise Exception
+            self.clear()
+            self.reload_image()
+            if 'baseball'in api.sport:
+                # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
+                # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
+                # Else Display next game
+                # Only do standings right now
+                self.logger.info("Found Baseball, Displaying Baseball Matrix")
+                if self.check_offseason(api):
+                    xpos = 0
+                    xpos_for_top = 0 
+                    while xpos < 2700:
+                        self.reload_image()
+                        images = (
+                            self.build_standings_image(api, xpos),
+                            self.build_middle_image(api),
+                            self.build_top_image(api, xpos_for_top),
+                        )
+                        for image, position in images:
+                            self.paste_image(image, position)
+                        await self.render_image()
+                        xpos +=1
+                        xpos_for_top += 1
+                        if xpos_for_top == 100:
+                            xpos_for_top = 0
+                        time.sleep(3) if xpos == 1 else time.sleep(.001)
+                else:
+                    font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                    self.draw_multiline_text((0, 0), "Baseball\nOffseason", font=font)
                     await self.render_image()
-                    xpos +=1
-                    xpos_for_top += 1
-                    if xpos_for_top == 100:
-                        xpos_for_top = 0
-                    time.sleep(3) if xpos == 1 else time.sleep(.001)
-            else:
-                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
-                self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
-                await self.render_image()
-                time.sleep(30)
-        if 'basketball' in api.sport:
-            # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
-            # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
-            # Else Display next game
-            # Only do standings right now
-            self.logger.info("Found Basketball, Displaying Basketball Matrix")
-            if self.check_offseason(api):
-                xpos = 0
-                xpos_for_top = 0 
-                while xpos < 2700:
-                    self.reload_image()
-                    images = (
-                        self.build_standings_image(api, xpos),
-                        self.build_middle_image(api),
-                        self.build_top_image(api, xpos_for_top),
-                    )
-                    for image, position in images:
-                        self.paste_image(image, position)
+                    time.sleep(30)
+
+            if 'basketball' in api.sport:
+                # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
+                # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
+                # Else Display next game
+                # Only do standings right now
+                self.logger.info("Found Basketball, Displaying Basketball Matrix")
+                if self.check_offseason(api):
+                    xpos = 0
+                    xpos_for_top = 0 
+                    while xpos < 2700:
+                        self.reload_image()
+                        images = (
+                            self.build_standings_image(api, xpos),
+                            self.build_middle_image(api),
+                            self.build_top_image(api, xpos_for_top),
+                        )
+                        for image, position in images:
+                            self.paste_image(image, position)
+                        self.render_image()
+                        xpos +=1
+                        xpos_for_top += 1
+                        if xpos_for_top == 100:
+                            xpos_for_top = 0
+                        time.sleep(3) if xpos == 1 else time.sleep(.01)
+                else:
+                    font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                    self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
                     self.render_image()
-                    xpos +=1
-                    xpos_for_top += 1
-                    if xpos_for_top == 100:
-                        xpos_for_top = 0
-                    time.sleep(3) if xpos == 1 else time.sleep(.01)
-            else:
-                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
-                self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
-                self.render_image()
-                time.sleep(30)
-        if 'hockey' in api.sport:
-            self.logger.info("Found Hockey, Displaying Hockey Matrix")
-            if self.check_offseason(api):
-                pass
-                #sportmatrix = HockeyMatrix(self.matrix, api, self.logger)
-            else:
-                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
-                self.draw_multiline_text((0, 0), "Hockey\nOffseason", font=font)
-                self.render_image()
-                time.sleep(30)
+                    time.sleep(30)
+
+            if 'hockey' in api.sport:
+                self.logger.info("Found Hockey, Displaying Hockey Matrix")
+                if self.check_offseason(api):
+                    xpos = 0
+                    xpos_for_top = 0 
+                    while xpos < 2700:
+                        self.reload_image()
+                        images = (
+                            self.build_standings_image(api, xpos),
+                            self.build_middle_image(api),
+                            self.build_top_image(api, xpos_for_top),
+                        )
+                        for image, position in images:
+                            self.paste_image(image, position)
+                        self.render_image()
+                        xpos +=1
+                        xpos_for_top += 1
+                        if xpos_for_top == 100:
+                            xpos_for_top = 0
+                        time.sleep(3) if xpos == 1 else time.sleep(.01)
+                else:
+                    font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                    self.draw_multiline_text((0, 0), "Hockey\nOffseason", font=font)
+                    await self.render_image()
+                    time.sleep(30)
+        except Exception:
+            error_matrix = ErrorMatrix(self.matrix, self.logger, "Sports Matrix")
+            await error_matrix.render()
