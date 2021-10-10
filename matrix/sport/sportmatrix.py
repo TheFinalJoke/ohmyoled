@@ -262,5 +262,5 @@ class SportMatrix(Matrix):
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                 self.draw_multiline_text((0, 0), "Hockey\nOffseason", font=font)
-                self.render_image()
+                await self.render_image()
                 time.sleep(30)
