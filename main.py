@@ -43,7 +43,7 @@ class Main():
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
-        if self.config['basic'].getboolean('testing'):
+        if not self.config['basic'].getboolean('testing'):
             self.logger.setLevel(self.config['basic'].getint('loglevel'))
         else:
             self.logger.setLevel(10)
