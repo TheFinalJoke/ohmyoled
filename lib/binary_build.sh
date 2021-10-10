@@ -1,5 +1,5 @@
 #!/bin/bash
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Can't put full folders
 echo "Building the binary"
