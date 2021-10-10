@@ -179,7 +179,6 @@ class SportMatrix(Matrix):
 
     async def render(self, api, loop):
         try:
-            raise Exception
             self.clear()
             self.reload_image()
             if 'baseball'in api.sport:
