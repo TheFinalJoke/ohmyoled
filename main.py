@@ -160,6 +160,7 @@ if __name__ == "__main__":
     if args.upgrade:
         upgrader = Upgrader(args, version=__version__(), logger=logger)
         asyncio.run(upgrader.run_upgrade())
+        sys.exit(0)
     elif args.version:
         print(__version__())
         sys.exit(0)
