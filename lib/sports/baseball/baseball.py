@@ -28,7 +28,7 @@ class Baseball(Runner):
         return urls
     
     async def run(self):
-        self.logger.info('Running baseball API')
+        self.logger.info('Running Baseball API')
         parsed = self.parse_args()
         api_data = {}
         for section, url in self.url_builder(parsed).items():
