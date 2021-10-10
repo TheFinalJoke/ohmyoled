@@ -24,13 +24,13 @@ class Hockey(Runner):
         urls = {}
         base = "https://v1.hockey.api-sports.io/"
         if 'standings' in args:
-            urls.update({'standings': base + f'standings?league=57&season=2020'})
+            urls.update({'standings': base + f'standings?league=57&season=2021'})
         if 'next_game' in args:
             urls.update({'next_game': base + f"games?team={self.config.getint('team_id')}&league=57&season=2020&timezone=America/Chicago"})
         return urls
     
     async def run(self):
-        self.logger.info('Running baseball API')
+        self.logger.info('Running Hockey API')
         parsed = self.parse_args()
         api_data = {}
         for section, url in self.url_builder(parsed).items():
