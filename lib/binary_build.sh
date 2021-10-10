@@ -10,6 +10,8 @@ mkdir ohmyoled-$VERSION
 
 mv -v ohmyoled ohmyoled-$VERSION/
 
+cp -v lib/config/ohmyoled.conf ohmyoled-$VERSION
+
 cp -v lib/weather/ecIcons_utf8.csv ohmyoled-$VERSION
 
 cp -v install.sh ohmyoled-$VERSION
