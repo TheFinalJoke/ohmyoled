@@ -158,7 +158,7 @@ class SportMatrix(Matrix):
         return master_top_image, (0,0)
     
     def build_standings_image(self, api, xpos) -> Tuple[int, int]:
-        """,
+        """
         This is most bottom Image
         """
         standings_image = Image.new("RGB", (64,8))
@@ -181,7 +181,9 @@ class SportMatrix(Matrix):
         try:
             self.clear()
             self.reload_image()
-            if 'baseball'in api.sport:
+            if not api.get_error[0]:
+                raise Exception(api.get_error)
+            if 'baseball' in api.sport:
                 # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
                 # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
                 # Else Display next game
@@ -266,6 +268,7 @@ class SportMatrix(Matrix):
                     self.draw_multiline_text((0, 0), "Hockey\nOffseason", font=font)
                     await self.render_image()
                     time.sleep(30)
-        except Exception:
+        except Exception as e:
+            self.logger.error(e)
             error_matrix = ErrorMatrix(self.matrix, self.logger, "Sports Matrix")
             await error_matrix.render()
