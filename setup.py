@@ -10,7 +10,9 @@ setup(
     install_requires=[
         "wheel",
         "cython",
+        "Cython",
         "numpy",
+        "pandas",
         "noaa-sdk",
         "env-canada==0.0.35",
         "ephem==3.7.7.0",
@@ -27,7 +29,7 @@ setup(
         "APScheduler>=3.6.3",
         "lastversion>=1.1.6",
         "nameparser==1.0.6",
-        "pillow==7.1.2",
+        "pillow==8.3.0",
         "dbus-next",
         "aiohttp",
         "iso6709",
