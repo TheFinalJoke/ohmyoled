@@ -1,9 +1,9 @@
 from typing import List, Tuple, get_args
 from lib.run import Runner, Caller
-from lib.sports.football import Football
-from lib.sports.baseball.baseball import Baseball
-from lib.sports.basketball.basketball import Basketball
-from lib.sports.hockey.hockey import Hockey
+from lib.sports.apisports.football.football import Football
+from lib.sports.apisports.baseball.baseball import Baseball
+from lib.sports.apisports.basketball.basketball import Basketball
+from lib.sports.apisports.hockey.hockey import Hockey
 import os
 import json
 import sys
@@ -13,6 +13,7 @@ class SportApi(Runner):
     def __init__(self, config):
         super().__init__(config)
         self.sport = self.config['sport']
+        # Change this to optional for sport token
         try:
             if "sport_token" in self.config['basic']:
                 self.token = self.config['basic'].get('sport_token')
@@ -28,6 +29,10 @@ class SportApi(Runner):
     
     async def run(self):
         self.logger.info("Running Sports")
+        # Instead of using a json and dictionary -> Build individual objects 
+        # For Each API and then Bubble up back to sport to be normalized
+        # Build like a binary Tree
+        # Can Do checks here to bubble up problems
         sport_data = {"Sport": {}}
         if 'football' == self.sport.get('sport').lower():
             self.logger.debug("Running football data")

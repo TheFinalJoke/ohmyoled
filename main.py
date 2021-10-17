@@ -123,6 +123,7 @@ class Main():
             self.logger.info("Starting OhMyOled")
             matrix = RGBMatrix(options=self.poll_rgbmatrix())
             self.logger.debug("Built Options for RGBMatrix")
+            # Make the matrixes to a Queue
             matrixes = await self.init_matrix(matrix)
             self.logger.info("Starting Matrixes...")
             first_poll = True
