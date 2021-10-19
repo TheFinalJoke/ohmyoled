@@ -35,4 +35,5 @@ class Basketball(Runner):
         api_data = {}
         for section, url in self.url_builder(parsed).items():
             api_data.update({section: await self.get_data(url, self.headers)})
+        api_data['sport'] = 'basketball'
         return api_data
