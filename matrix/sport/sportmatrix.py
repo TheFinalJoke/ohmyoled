@@ -9,18 +9,18 @@ from typing import List, Dict, Tuple
 from collections import deque
 from matrix.error import ErrorMatrix
 from PIL import ImageFont, Image, ImageDraw
-from lib.sports.sports import Sport
+from lib.sports.sports import SportFinal
 from matrix.matrix import Matrix
 
 class SportMatrix(Matrix):
-    def __init__(self, matrix, api: Sport, logger: Logger) -> None:
+    def __init__(self, matrix, api, logger: Logger) -> None:
         self.matrix = matrix
         self.api = api
         self.logger = logger
     def __str__(self) -> str:
         return "SportMatrix"
-    async def poll_api(self) -> Sport:
-        return Sport(await self.api.run())
+    async def poll_api(self) -> SportFinal:
+        return SportFinal(await self.api.run())
     
     def baseball_divisions(self, standings: List[Dict]) -> List[str]:
         american_queue = deque(["American League"])
@@ -183,7 +183,7 @@ class SportMatrix(Matrix):
             self.reload_image()
             if not api.get_error[0]:
                 raise Exception(api.get_error)
-            if 'baseball' in api.sport:
+            if 'baseball' in api.get_sport:
                 # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
                 # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
                 # Else Display next game
@@ -213,7 +213,7 @@ class SportMatrix(Matrix):
                     await self.render_image()
                     time.sleep(30)
 
-            if 'basketball' in api.sport:
+            if 'basketball' in api.get_sport:
                 # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
                 # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
                 # Else Display next game
@@ -243,7 +243,7 @@ class SportMatrix(Matrix):
                     self.render_image()
                     time.sleep(30)
 
-            if 'hockey' in api.sport:
+            if 'hockey' in api.get_sport:
                 self.logger.info("Found Hockey, Displaying Hockey Matrix")
                 if self.check_offseason(api):
                     xpos = 0
