@@ -22,25 +22,7 @@ class SportMatrix(Matrix):
         return "SportMatrix"
     async def poll_api(self) -> SportFinal:
         return SportFinal(await self.api.run())
-    
-    def baseball_divisions(self, standings: List[Dict]) -> Tuple[List[str], List[str]]:
-        american_queue = deque(["American League"])
-        national_queue = deque(["National League"])
-        for team in standings:
-            if team["league"] == "American League":
-                american_queue.append(f"{team['position']}: {team['name']}")
-            elif team["league"] == "National League":
-                national_queue.append(f"{team['position']}: {team['name']}")
-        return list(american_queue), list(national_queue)
-    def basketball_divisions(self, standings: List[Dict]) -> Tuple[List[str], List[str]]:
-        western_queue = deque(["Western Conference"])
-        eastern_queue = deque(["Eastern Conference"])
-        for team in standings:
-            if team["league"] == "Western Conference":
-                western_queue.append(f"{team['position']}: {team['name']}")
-            elif team["league"] == "Eastern Conference":
-                eastern_queue.append(f"{team['position']}: {team['name']}")
-        return list(western_queue), list(eastern_queue)
+
     def divisions(self, standings: List[Dict]) -> Tuple[List[str], List[str]]:
         leagues = {league['league']: [] for league in standings}
         for team in standings:
