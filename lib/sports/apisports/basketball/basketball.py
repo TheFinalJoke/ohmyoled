@@ -1,5 +1,6 @@
 from lib.run import Runner
 from datetime import datetime
+from lib.sports.apisports.result import SportApiResult
 
 class Basketball(Runner):
     def __init__(self, token, config, headers):
@@ -24,9 +25,9 @@ class Basketball(Runner):
         urls = {}
         base = "https://v1.basketball.api-sports.io/"
         if 'standings' in args:
-            urls.update({'standings': base + f'standings?league=12&season=2020-2021'})
+            urls.update({'standings': base + f'standings?league=12&season=2019-2020'})
         if 'next_game' in args:
-            urls.update({'next_game': base + f"games?team={self.config.getint('team_id')}&league=12&season=2020-2021&timezone=America/Chicago"})
+            urls.update({'next_game': base + f"games?team={self.config.getint('team_id')}&league=12&season=2019-2020&timezone=America/Chicago"})
         return urls
     
     async def run(self):
@@ -36,4 +37,4 @@ class Basketball(Runner):
         for section, url in self.url_builder(parsed).items():
             api_data.update({section: await self.get_data(url, self.headers)})
         api_data['sport'] = 'basketball'
-        return api_data
+        return SportApiResult(api_data)

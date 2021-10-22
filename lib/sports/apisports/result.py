@@ -13,24 +13,22 @@ class SportApiResult(SportResultBase):
             self._error = self.set_error()
         else:
             self._error = self.set_error()
-            if 'standings' in self.main_sport:
-                self.standings = self.build_standings()
-                self._length = len(self.standings)
-                self._positions = [(team.get('name'), team.get('position')) for team in self.standings]
-                self._leagues =  [(team.get('name'), team.get('league')) for team in self.standings]
-                self._games_played = [(team.get('name'), team.get('games').get('played')) for team in self.standings]
-                self._wins = [(team.get('name'), team['games']['win']['total']) for team in self.standings]
-                self._wins_percentage = [(team.get('name'), team['games']['win']['percentage']) for team in self.standings]
-                self._losses = [(team.get('name'), team['games']['lose']['total']) for team in self.standings]
-                self._loss_percentage = [(team.get('name'), team['games']['lose']['percentage']) for team in self.standings]
-            if 'next_game' in self.main_sport:
-                self.next_game = self.build_nextgame()
-                self._game_ids = [game.get('game_id') for game in self.next_game]
-                self._timestamps = [(game.get('game_id'), game.get('timestamp')) for game in self.next_game]
-                self._teams = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
-                self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
-                self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
-                self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
+            self.standings = self.build_standings()
+            self._length = len(self.standings)
+            self._positions = [(team.get('name'), team.get('position')) for team in self.standings]
+            self._leagues =  [(team.get('name'), team.get('league')) for team in self.standings]
+            self._games_played = [(team.get('name'), team.get('games').get('played')) for team in self.standings]
+            self._wins = [(team.get('name'), team['games']['win']['total']) for team in self.standings]
+            self._wins_percentage = [(team.get('name'), team['games']['win']['percentage']) for team in self.standings]
+            self._losses = [(team.get('name'), team['games']['lose']['total']) for team in self.standings]
+            self._loss_percentage = [(team.get('name'), team['games']['lose']['percentage']) for team in self.standings]            
+            self.next_game = self.build_nextgame()
+            self._game_ids = [game.get('game_id') for game in self.next_game]
+            self._timestamps = [(game.get('game_id'), game.get('timestamp')) for game in self.next_game]
+            self._teams = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
+            self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
+            self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
+            self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
 
     def __repr__(self):
         attrs = [
