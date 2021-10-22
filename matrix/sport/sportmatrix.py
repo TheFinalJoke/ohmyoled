@@ -112,7 +112,8 @@ class SportMatrix(Matrix):
 
     def build_middle_nextgame(self, api) -> Image:
         nextgame = self.determine_nextgame(api.next_game)
-        if "IN" in nextgame['status']: 
+        in_game_status = ("IN", "Q", "OT", "BT", "HT", "P")
+        if nextgame['status'] in in_game_status: 
             return self.build_in_game_image(nextgame)
         elif "NS" == nextgame['status']:
             return self.build_next_game_image(nextgame)
