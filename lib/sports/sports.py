@@ -22,7 +22,7 @@ class SportApi(Runner):
         if self.config['sport']['api'] == "api-sports":
             api_sports = ApiSports(self.config)
             api_result = await api_sports.run_api_sports()
-            return SportFinal(api_result)
+            return api_result
         return
 
 class SportFinal(Caller):

@@ -35,8 +35,7 @@ class ApiSports(SportBase):
         elif 'basketball' == self.sport.get('sport').lower():
             self.logger.debug('Got basketball in config')
             basketball = Basketball(self.token, self.config['sport'], self.headers)
-            basketball_return = await basketball.run()
-            sport_data['Sport'].update({'basketball': basketball_return})
+            sport_data = await basketball.run()
         elif 'hockey' == self.sport.get('sport').lower():
             self.logger.debug('Got Hockey from Config')
             hockey = Hockey(self.token, self.config['sport'], self.headers)

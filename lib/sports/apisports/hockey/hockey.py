@@ -25,7 +25,7 @@ class Hockey(Runner):
         urls = {}
         base = "https://v1.hockey.api-sports.io/"
         if 'standings' in args:
-            urls.update({'standings': base + f'standings?league=57&season=2021'})
+            urls.update({'standings': base + f'standings?league=57&season=2020'})
         if 'next_game' in args:
             urls.update({'next_game': base + f"games?team={self.config.getint('team_id')}&league=57&season=2020&timezone=America/Chicago"})
         return urls
