@@ -33,7 +33,7 @@ logger.addHandler(sh)
 logger.addHandler(filehandler)
 
 def __version__():
-    return "1.1.0"
+    return "1.2.0"
 class OledExecption(Exception):
     pass
 class Main():
