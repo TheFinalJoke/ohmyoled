@@ -1,5 +1,6 @@
 from lib.run import Runner
 from datetime import datetime
+from lib.sports.apisports.result import SportApiResult
 
 class Baseball(Runner):
     def __init__(self, token, config, headers):
@@ -33,4 +34,5 @@ class Baseball(Runner):
         api_data = {}
         for section, url in self.url_builder(parsed).items():
             api_data.update({section: await self.get_data(url, self.headers)})
-        return api_data
+        api_data['sport'] = 'baseball'
+        return SportApiResult(api_data)

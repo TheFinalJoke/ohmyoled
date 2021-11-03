@@ -1,9 +1,6 @@
 from typing import List, Tuple, get_args
+from lib.sports.apisports.apisports import ApiSports
 from lib.run import Runner, Caller
-from lib.sports.football import Football
-from lib.sports.baseball.baseball import Baseball
-from lib.sports.basketball.basketball import Basketball
-from lib.sports.hockey.hockey import Hockey
 import os
 import json
 import sys
@@ -12,195 +9,96 @@ import sys
 class SportApi(Runner):
     def __init__(self, config):
         super().__init__(config)
-        self.sport = self.config['sport']
-        try:
-            if "sport_token" in self.config['basic']:
-                self.token = self.config['basic'].get('sport_token')
-            else:
-                self.token = os.environ['SPORTTOKEN']
-        except KeyError:
-            self.logger.critical("No Sport Token")
-            sys.exit("No Sport Token")
-        self.headers = {'x-apisports-key': 'ebb2c44c416b9a9a0b538e2d73c7dbe6'}
     
     def parse_args(self):
         return super().parse_args()
     
     async def run(self):
         self.logger.info("Running Sports")
-        sport_data = {"Sport": {}}
-        if 'football' == self.sport.get('sport').lower():
-            self.logger.debug("Running football data")
-            football = Football(self.token, self.config['sport'], self.headers)
-            football_return = await football.run()
-            sport_data['Sport'].update({'football': football_return})
-        elif 'baseball' == self.sport.get('sport').lower():
-            self.logger.debug('Running baseball data')
-            baseball = Baseball(self.token, self.config['sport'], self.headers)
-            baseball_return = await baseball.run()
-            sport_data['Sport'].update({'baseball': baseball_return})
-        elif 'basketball' == self.sport.get('sport').lower():
-            self.logger.debug('Got basketball in config')
-            basketball = Basketball(self.token, self.config['sport'], self.headers)
-            basketball_return = await basketball.run()
-            sport_data['Sport'].update({'basketball': basketball_return})
-        elif 'hockey' == self.sport.get('sport').lower():
-            self.logger.debug('Got Hockey from Config')
-            hockey = Hockey(self.token, self.config['sport'], self.headers)
-            hockey_return = await hockey.run()
-            sport_data['Sport'].update({'hockey': hockey_return})
-        return sport_data
+        # Instead of using a json and dictionary -> Build individual objects 
+        # For Each API and then Bubble up back to sport to be normalized
+        # Build like a binary Tree
+        # Can Do checks here to bubble up problems
+        if self.config['sport']['api'] == "api-sports":
+            api_sports = ApiSports(self.config)
+            api_result = await api_sports.run_api_sports()
+            return api_result
+        return
 
-class Sport(Caller):
-    def __init__(self, api) -> None:
-        super().__init__()
-        self.api_type = ""
-        self.api = api
-        self.full_sport = self.api['Sport']
-        self.sport = [*self.full_sport]
-        self.main_sport = self.full_sport[self.sport[0]]
-        if len(self.main_sport['standings']['errors']) != 0:
-            self._error = self.get_error
-        else:
-            if 'standings' in self.main_sport:
-                self.standings = self.build_standings()
-                self._length = len(self.standings)
-                self._positions = [(team.get('name'), team.get('position')) for team in self.standings]
-                self._leagues =  [(team.get('name'), team.get('league')) for team in self.standings]
-                self._games_played = [(team.get('name'), team.get('games').get('played')) for team in self.standings]
-                self._wins = [(team.get('name'), team['games']['win']['total']) for team in self.standings]
-                self._wins_percentage = [(team.get('name'), team['games']['win']['percentage']) for team in self.standings]
-                self._losses = [(team.get('name'), team['games']['lose']['total']) for team in self.standings]
-                self._loss_percentage = [(team.get('name'), team['games']['lose']['percentage']) for team in self.standings]
-            if 'next_game' in self.main_sport:
-                self.next_game = self.build_nextgame()
-                self._game_ids = [game.get('game_id') for game in self.next_game]
-                self._timestamps = [(game.get('game_id'), game.get('timestamp')) for game in self.next_game]
-                self._teams = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
-                self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
-                self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
-                self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
-    def __repr__(self):
-        attrs = [
-            f"length={self._length}",
-            f"positions={json.dumps(self._positions, indent=2)}",
-            f'leagues={json.dumps(self._leagues, indent=2)}',
-            f"games_played={json.dumps(self._games_played, indent=2)}",
-            f"wins={json.dumps(self._wins, indent=2)}",
-            f"wins_percentage={json.dumps(self._wins_percentage, indent=2)}",
-            f"losses={json.dumps(self._losses, indent=2)}",
-            f"loss_percentage={json.dumps(self._loss_percentage, indent=2)}",
-            f"game_ids={json.dumps(self._game_ids, indent=2)}",
-            f"timestamps={json.dumps(self._timestamps, indent=2)}",
-            f"teams={json.dumps(self._teams, indent=2)}",
-            f"vs={json.dumps(self._vs, indent=2)}",
-            f"status={json.dumps(self._status, indent=2)}",
-            f"game_result={json.dumps(self._game_result, indent=2)}"
-        ]
-        joined = "\t\n".join(attrs)
-        return f"Sport(\n{joined})"
-
-    def build_standings(self):
-        #counter = 0
-        position = []
-        regular_season_check = (
-            "MLB - Regular Season", 
-            "NBA - Regular Season",
-            "NHL - Regular Season",
-            "NFL - Regular Season"
-        )
-        # Can Be Empty Must try and except for that
-        for pos in self.main_sport['standings'].get('response')[0]:
-            if not pos.get('stage') in regular_season_check:
-                continue
-            position.append({'name': pos.get('team').get('name'),
-                    'position': pos.get('position'),
-                    'league': pos.get('group').get('name'),
-                    'games': pos.get('games')
-                    })
-        return position
-
-    def build_nextgame(self):
-        main = []
-        for game in self.main_sport['next_game'].get('response'):
-            main.append({
-                'game_id': game.get('id'),
-                'timestamp': game.get('timestamp'),
-                'status': game['status']['short'],
-                'teams': game['teams'],
-                'score': game['scores']
-            })
-        return main
+class SportFinal(Caller):
+    """
+    Final Normalized Object that goes to 
+    The Sport Matrix.
+    """
+    def __init__(self, api_result) -> None:
+        # Any Object from any api object
+        self.api_result = api_result
 
     @property
+    def get_sport(self):
+        return self.api_result.get_sport
+    @property
     def get_error(self):
-        if isinstance(self.main_sport['standings']['errors'], list):
-            return True, ""
-        else:
-            return False, self.main_sport['standings']['errors']['requests']
-    
+        return self.api_result.get_error
     @property 
     def get_length_position_teams(self):
-        return len(self.standings)
+        return len(self.api_result.standings)
     
     @property
     def get_standings(self):
-        return self.standings
+        return self.api_result.standings
     
     @property 
-    def get_position_teams(self):
-        return self._positions
+    def position_teams(self):
+        return self.api_result.position_teams
     
     @property
     def get_leagues(self):
-        return self._leagues
+        return self.api_result.get_leagues
     
     @property
     def get_games_played(self):
-        return self._games_played
+        return self.api_result.games_played
     
     @property
     def get_wins(self):
-        return self._wins
+        return self.api_result.get_wins
     
     @property
     def get_wins_percentage(self):
-        return self._wins_percentage
+        return self.api_result.win_percentage
     
     @property
     def get_losses(self):
-        return self._losses
+        return self.api_result.losses
     
     @property
     def get_loss_percentage(self):
-        return self._loss_percentage
+        return self.api_result.loss_percentage
 
     @property 
     def get_game_ids(self):
-        return self._game_ids
+        return self.api_result.game_ids
     
     @property
     def get_timestamps(self):
-        return self._timestamps
+        return self.api_result.timestamps
     
     @property
     def get_teams(self):
-        return self._teams
+        return self.api_result.teams
     
     @property
     def get_versus(self):
-        return self._vs
+        return self.api_result.vs
     
     @property
     def get_status(self):
-        return self._status
+        return self.api_result.status
     
     @property
     def get_scores(self):
-        return self._game_result
+        return self.api_result.game_result
     
     def get_specific_score(self, game_id):
-        return self._game_result.get(game_id)
-
-class APISports(Sport):
-    pass
+        return self.api_result.game_result.get(game_id)

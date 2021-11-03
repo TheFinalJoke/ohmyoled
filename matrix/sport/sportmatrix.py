@@ -5,33 +5,29 @@ import os
 import time
 import urllib.request
 from datetime import datetime
+from collections import defaultdict
 from typing import List, Dict, Tuple
 from collections import deque
 from matrix.error import ErrorMatrix
 from PIL import ImageFont, Image, ImageDraw
-from lib.sports.sports import Sport
+from lib.sports.sports import SportFinal
 from matrix.matrix import Matrix
 
 class SportMatrix(Matrix):
-    def __init__(self, matrix, api: Sport, logger: Logger) -> None:
+    def __init__(self, matrix, api, logger: Logger) -> None:
         self.matrix = matrix
         self.api = api
         self.logger = logger
     def __str__(self) -> str:
         return "SportMatrix"
-    async def poll_api(self) -> Sport:
-        return Sport(await self.api.run())
-    
-    def baseball_divisions(self, standings: List[Dict]) -> List[str]:
-        american_queue = deque(["American League"])
-        national_queue = deque(["National League"])
-        for team in standings:
-            if team["league"] == "American League":
-                american_queue.append(f"{team['position']}: {team['name']}")
-            elif team["league"] == "National League":
-                national_queue.append(f"{team['position']}: {team['name']}")
-        return list(american_queue), list(national_queue)
+    async def poll_api(self) -> SportFinal:
+        return SportFinal(await self.api.run())
 
+    def divisions(self, standings: List[Dict]) -> Tuple[List[str], List[str]]:
+        leagues = {league['league']: [] for league in standings}
+        for team in standings:
+            leagues[team['league']].append(f"{team['position']}: {team['name']}")
+        return leagues
     def determine_nextgame(self, nextgame_api):
         status: Tuple = ("FT", "ABD")
         for game in nextgame_api:
@@ -116,7 +112,8 @@ class SportMatrix(Matrix):
 
     def build_middle_nextgame(self, api) -> Image:
         nextgame = self.determine_nextgame(api.next_game)
-        if "IN" in nextgame['status']: 
+        in_game_status = ("IN", "Q", "OT", "BT", "HT", "P")
+        if nextgame['status'] in in_game_status: 
             return self.build_in_game_image(nextgame)
         elif "NS" == nextgame['status']:
             return self.build_next_game_image(nextgame)
@@ -166,28 +163,28 @@ class SportMatrix(Matrix):
         scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         color = (156,163,173)
         # Can't Have multiple images and or buffers
-        american, national = self.baseball_divisions(api.standings)
-        american.extend(national)
-        text = " ".join(american)
+        divs = self.divisions(api.get_standings)
+        master = []
+        for league, names in divs.items():
+            master.append(f"{league} " + " ".join(names))
+        text = " ".join(master)
         standings_draw.text(
             (-xpos, 0), 
             text, 
             font=scrolling_font, 
             fill=color
-        )
+            )
+    
         return standings_image, (0, 25)
 
     async def render(self, api, loop):
+
         try:
             self.clear()
             self.reload_image()
             if not api.get_error[0]:
                 raise Exception(api.get_error)
-            if 'baseball' in api.sport:
-                # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
-                # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
-                # Else Display next game
-                # Only do standings right now
+            if 'baseball' in api.get_sport:
                 self.logger.info("Found Baseball, Displaying Baseball Matrix")
                 if self.check_offseason(api):
                     xpos = 0
@@ -213,11 +210,7 @@ class SportMatrix(Matrix):
                     await self.render_image()
                     time.sleep(30)
 
-            if 'basketball' in api.sport:
-                # Check Data if Offseason if yes Diplay Offseason, Otherwise Display Data
-                # Check data if Game is active, if yes Display game -> Score Inning AT bat Maybe?
-                # Else Display next game
-                # Only do standings right now
+            if 'basketball' in api.get_sport:
                 self.logger.info("Found Basketball, Displaying Basketball Matrix")
                 if self.check_offseason(api):
                     xpos = 0
@@ -240,10 +233,10 @@ class SportMatrix(Matrix):
                 else:
                     font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
                     self.draw_multiline_text((0, 0), "Basketball\nOffseason", font=font)
-                    self.render_image()
+                    await self.render_image()
                     time.sleep(30)
 
-            if 'hockey' in api.sport:
+            if 'hockey' in api.get_sport:
                 self.logger.info("Found Hockey, Displaying Hockey Matrix")
                 if self.check_offseason(api):
                     xpos = 0

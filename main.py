@@ -17,6 +17,7 @@ from lib.sports.sports import SportApi
 from matrix.time import TimeMatrix
 from matrix.weathermatrix import WeatherMatrix
 from matrix.sport.sportmatrix import SportMatrix
+import traceback
 import logging
 
 
@@ -24,7 +25,7 @@ stream_formatter = logging.Formatter(
     "%(asctime)s:%(module)s: %(message)s"
 )
 sh = logging.StreamHandler()
-filehandler = logging.FileHandler("/var/log/ohmyoled.log","a")
+filehandler = logging.FileHandler("/var/log/ohmyoled/ohmyoled.log","a")
 sh.setFormatter(stream_formatter)
 filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ logger.addHandler(sh)
 logger.addHandler(filehandler)
 
 def __version__():
-    return "1.1.0"
+    return "1.2.0"
 class OledExecption(Exception):
     pass
 class Main():
@@ -115,14 +116,19 @@ class Main():
         matrix.render(polled_data)
     
     async def poll_api_worker(self, matrix):
-        polled_data = await matrix.poll_api()
-        return polled_data
+        try:
+            polled_data = await matrix.poll_api()
+            return polled_data
+        except:
+            self.logger.error("Error in the Poll_API Worker")
+
 
     async def main_run(self, loop):
         try:
             self.logger.info("Starting OhMyOled")
             matrix = RGBMatrix(options=self.poll_rgbmatrix())
             self.logger.debug("Built Options for RGBMatrix")
+            # Make the matrixes to a Queue
             matrixes = await self.init_matrix(matrix)
             self.logger.info("Starting Matrixes...")
             first_poll = True
@@ -141,6 +147,7 @@ class Main():
                     logger.info(f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s")
         except Exception as E:
             logger.error(E)
+            traceback.print_exc()
             loop.stop()
                 
 if __name__ == "__main__":
