@@ -1,5 +1,5 @@
-from lib.sports.sportbase import SportResultBase
-
+from lib.sports.sportbase import SportResultBase, API
+from typing import Tuple, List, Dict
 import json
 
 class SportApiResult(SportResultBase):
@@ -9,26 +9,27 @@ class SportApiResult(SportResultBase):
         self.api = api
         self.main_sport = api
         self._sport = api['sport']
+        self._api = API.APISPORTS
         if len(self.main_sport['standings']['errors']) != 0:
-            self._error = self.set_error()
+            self._error: Tuple[bool, str] = self.set_error()
         else:
-            self._error = self.set_error()
-            self.standings = self.build_standings()
-            self._length = len(self.standings)
-            self._positions = [(team.get('name'), team.get('position')) for team in self.standings]
-            self._leagues =  [(team.get('name'), team.get('league')) for team in self.standings]
-            self._games_played = [(team.get('name'), team.get('games').get('played')) for team in self.standings]
-            self._wins = [(team.get('name'), team['games']['win']['total']) for team in self.standings]
-            self._wins_percentage = [(team.get('name'), team['games']['win']['percentage']) for team in self.standings]
-            self._losses = [(team.get('name'), team['games']['lose']['total']) for team in self.standings]
-            self._loss_percentage = [(team.get('name'), team['games']['lose']['percentage']) for team in self.standings]            
-            self.next_game = self.build_nextgame()
-            self._game_ids = [game.get('game_id') for game in self.next_game]
-            self._timestamps = [(game.get('game_id'), game.get('timestamp')) for game in self.next_game]
-            self._teams = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
-            self._vs = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
-            self._status = [(game.get('game_id'), game.get('status')) for game in self.next_game]
-            self._game_result = {game.get('game_id'): game.get('score') for game in self.next_game}
+            self._error: Tuple[bool, ] = self.set_error()
+            self.standings: List[Dict[str, str]] = self.build_standings()
+            self._length: int = len(self.standings)
+            self._positions: List[Tuple[str, int]] = [(team.get('name'), team.get('position')) for team in self.standings]
+            self._leagues: List[Tuple[str, str]] =  [(team.get('name'), team.get('league')) for team in self.standings]
+            self._games_played: List[Tuple[str, int]] = [(team.get('name'), team.get('games').get('played')) for team in self.standings]
+            self._wins: List[Tuple[str, int]] = [(team.get('name'), team['games']['win']['total']) for team in self.standings]
+            self._wins_percentage: List[Tuple[str, str]] = [(team.get('name'), team['games']['win']['percentage']) for team in self.standings]
+            self._losses: List[Tuple[str, int]] = [(team.get('name'), team['games']['lose']['total']) for team in self.standings]
+            self._loss_percentage: List[Tuple[str, str]] = [(team.get('name'), team['games']['lose']['percentage']) for team in self.standings]            
+            self.next_game: Dict[str, int] = self.build_nextgame()
+            self._game_ids: List[int] = [game.get('game_id') for game in self.next_game]
+            self._timestamps:  List[Tuple[int, int]] = [(game.get('game_id'), game.get('timestamp')) for game in self.next_game]
+            self._teams: List[Tuple[str, int]] = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
+            self._vs: List[Tuple[int, Tuple[str,str]]] = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
+            self._status: List[Tuple[int, str]] = [(game.get('game_id'), game.get('status')) for game in self.next_game]
+            self._game_result: Dict[int, Dict[str, int]] = {game.get('game_id'): game.get('score') for game in self.next_game}
 
     def __repr__(self):
         attrs = [
@@ -88,6 +89,10 @@ class SportApiResult(SportResultBase):
         else:
             return False, self.main_sport['standings']['errors']['requests']
     
+    @property 
+    def get_api(self) -> API:
+        return self._api
+
     @property
     def get_sport(self):
         return self._sport

@@ -178,7 +178,6 @@ class SportMatrix(Matrix):
         return standings_image, (0, 25)
 
     async def render(self, api, loop):
-
         try:
             self.clear()
             self.reload_image()

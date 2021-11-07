@@ -57,10 +57,10 @@ class Runner(RunnerABS):
         super().__init__()
         self.config = config
         self.runner_logger = logger
-        if self.config['basic'].getboolean('testing'):
+        if not self.config['basic'].getboolean('testing'):
             self.logger.setLevel(self.config['basic'].getint('loglevel'))
         else:
-            self.logger.setLevel(10)
+            self.logger.setLevel(logging.DEBUG)
         self.logger.debug(f"Runner logger is set to {self.logger.getEffectiveLevel()}")
 
     def run_non_async_request(self, url) -> Response:
