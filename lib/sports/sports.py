@@ -1,9 +1,13 @@
-from os import name
+from statistics import mean
 from lib.sports.apisports.apisports import ApiSports
 from lib.sports.sportsipy.sportsipy import SportsipyAPI
+from sportsipy.nhl.teams import Team as nhl_team
 from lib.run import Runner, Caller
-from typing import Tuple, List, Dict
-from lib.sports.sportbase import API
+from dataclasses import dataclass
+from enum import Enum
+from typing import Tuple, List, Dict, Set, Optional
+from datetime import datetime
+from lib.sports.sportbase import API, GameStatus
 import lib.sports.sportbase as base
 import json
 
@@ -31,7 +35,29 @@ class SportApi(Runner):
             return api_result
         return
 
-class SportFinal(Caller):
+@dataclass(repr=True)
+class Sport:
+    team_name: str
+    # Enum Mapping to sport 
+    sport: base.SportStructure
+    # Method of API
+    api: base.API
+    # List of standing in order
+    standings: base.SportStandings
+    # List of games 
+    schedule: List[base.Game]
+    # A Single game representing the next game
+    next_game: base.Game
+    # A List of Wins, with a float of win percentage
+    wins: Tuple[List[base.Game], float]
+    # A List of Losses, with a flost of loss percentage
+    losses: Tuple[List[base.Game], float]
+    # Set of Leagues if Applicable
+    leagues: Set[str] = None
+    # An Error if Applicable
+    error: Optional[str] = None
+
+class SportTransform(Caller):
     """
     Final Normalized Object that goes to 
     The Sport Matrix. This is the final object
@@ -42,31 +68,15 @@ class SportFinal(Caller):
         # Any Object from any api object
         self.api_result = api_result
         breakpoint()
-    def __repr__(self):
-        attrs = [
-            f"length={self._length}",
-            f"positions={json.dumps(self._positions, indent=2)}",
-            f'leagues={json.dumps(self._leagues, indent=2)}',
-            f"games_played={json.dumps(self._games_played, indent=2)}",
-            f"wins={json.dumps(self._wins, indent=2)}",
-            f"wins_percentage={json.dumps(self._wins_percentage, indent=2)}",
-            f"losses={json.dumps(self._losses, indent=2)}",
-            f"loss_percentage={json.dumps(self._loss_percentage, indent=2)}",
-            f"game_ids={json.dumps(self._game_ids, indent=2)}",
-            f"timestamps={json.dumps(self._timestamps, indent=2)}",
-            f"teams={json.dumps(self._teams, indent=2)}",
-            f"vs={json.dumps(self._vs, indent=2)}",
-            f"status={json.dumps(self._status, indent=2)}",
-            f"game_result={json.dumps(self._game_result, indent=2)}"
-        ]
-        joined = "\t\n".join(attrs)
-        return f"SportFinal(\n{joined})"
-
+    
     @property
-    def api(self) -> str:
+    def team_name(self):
+        return self.api_result.team_name
+    @property
+    def api(self) -> Enum:
         return self.api_result.get_api
 
-    def _normalize_sport(self) -> str:
+    def _normalize_sport(self) -> Enum:
         """
         All apis Should return a string in 
         thier result object
@@ -74,7 +84,7 @@ class SportFinal(Caller):
         return self.api_result.get_sport
 
     @property
-    def get_sport(self):
+    def get_sport(self) -> Enum:
         return self._normalize_sport()
     
     def _normalize_error(self) -> Tuple[bool, str]:
@@ -114,78 +124,134 @@ class SportFinal(Caller):
     def get_standings(self):
         return self._normalize_standings()
     
-    def _normalize_positions(self) -> base.SportStandings:
-        if self.api == API.APISPORTS:
-            standings = [
-                base.Team(
-                    name=team[0], 
-                    position=team[1]
-                ) for team in self.api_result.position_teams]
-            return base.SportStandings(positions=standings)
-        elif self.api == API.SPORTSIPY:
-            standings = [
-                base.Team(
-                    name=team[0].name,
-                    position=team[1],
-                ) for team in self.api_result.position_teams]
-            return base.SportStandings(positions=standings)
-    @property 
-    def position_teams(self):
-        return self._normalize_positions()
-    
-    def _normalize_leagues(self):
+    def _normalize_leagues(self) -> Set[str]:
         if not self.api_result.get_leagues:
             return self.api_result.get_leagues
         return {league[1] for league in self.api_result.get_leagues}
     
     @property
-    def get_leagues(self):
+    def get_leagues(self) -> Set[str]:
         return self._normalize_leagues()
-    
-    def _normalize_games_played(self):
+
+    def determine_game_status(self, game) -> base.GameStatus:
+        if game.game == len(self.get_games_played):
+            return base.GameStatus.NotStarted, base.GameResult.NOT_PLAYED
+        elif game.game < len(self.get_games_played):
+            return base.GameStatus.NotStarted, base.GameResult.NOT_PLAYED
+        else:
+            if game.result == "Loss" or game.result == "OTL":
+                return base.GameStatus.Finished, base.GameResult.LOSS
+            else:
+                return base.GameStatus.Finished, base.GameResult.WIN
+            
+
+    def _normalize_schedule(self):
+        schedule = []
+        if self.api == API.SPORTSIPY:
+            for game in self.api_result.get_schedule:
+                game_status, result = self.determine_game_status(game)
+                schedule.append(
+                    base.Game(
+                        team=self.api_result.get_team,
+                        timestamp=game.datetime,
+                        status=game_status,
+                        opposing_team=game.opponent_name,
+                        result=result,
+                        score=base.Score(
+                            team=game.goals_scored,
+                            opposing_team=game.goals_allowed
+                        ) if base.GameStatus.Finished else None
+                    )
+                )
+        return schedule
+
+    @property
+    def get_schedule(self):
+        return self._normalize_schedule()
+
+    def _normalize_games_played(self) -> List[str]:
         if self.api == API.APISPORTS:
             return [game[0] for game in self.api_result.get_games_played]
         elif self.api == API.SPORTSIPY:
-            return
+            return [game.opponent_name for game in self.api_result.get_games_played]
+    
     @property
-    def get_games_played(self):
+    def get_games_played(self) -> List[str]:
         return self._normalize_games_played()
-    ###
+
+    def _normalize_wins(self) -> List[str]:
+        if self.api == API.APISPORTS:
+            return [game[0] for game in self.api_result.get_wins]
+        elif self.api == API.SPORTSIPY:
+            return [game[0] for game in self.api_result.get_wins]
     @property
-    def get_wins(self):
-        return self.api_result.get_wins
+    def get_wins(self) -> List[str]:
+        return self._normalize_wins()
+    
+    def _normalize_win_percentage(self) -> float:
+        if self.api == API.APISPORTS:
+            nums = [float(percent[1]) for percent in self.get_wins_percentage]
+            return mean(nums)
+        elif self.api == API.SPORTSIPY:
+            return self.api_result.get_wins_percentage
+    @property
+    def get_wins_percentage(self) -> float:
+        return self._normalize_win_percentage()
+    
+    def _normalize_losses(self) -> List[str]:
+        if self.api == API.APISPORTS:
+            return [game[0] for game in self.api_result.get_losses]
+        elif self.api == API.SPORTSIPY:
+            return [game[0] for game in self.api_result.get_losses]
     
     @property
-    def get_wins_percentage(self):
-        return self.api_result.win_percentage
+    def get_losses(self) -> List[str]:
+        return self._normalize_losses()
     
+    def _normalize_loss_percentage(self) -> float:
+        if self.api == API.APISPORTS:
+            nums = [float(percent[1]) for percent in self.get_loss_percentage]
+            return mean(nums)
+        elif self.api == API.SPORTSIPY:
+            return self.api_result.get_loss_percentage
+
     @property
-    def get_losses(self):
-        return self.api_result.losses
-    
-    @property
-    def get_loss_percentage(self):
-        return self.api_result.loss_percentage
+    def get_loss_percentage(self) -> float:
+        return self._normalize_loss_percentage()
+
+    def _normalize_game_ids(self) -> Optional[List[int]]:
+        if not hasattr(self.api_result, "game_ids"):
+            return
+        return self.api_result.game_ids
 
     @property 
-    def get_game_ids(self):
-        return self.api_result.game_ids
+    def get_game_ids(self) -> Optional[List[int]]:
+        return self._normalize_game_ids()
     
+    def _normalize_timestamps(self) -> List[Tuple[str, datetime]]:
+        if self.api == API.SPORTSIPY:
+            return self.api_result.get_timestamps
+
     @property
     def get_timestamps(self):
-        return self.api_result.timestamps
+        return self._normalize_timestamps()
     
-    @property
-    def get_teams(self):
-        return self.api_result.teams
-    
+    def _normalize_versus(self):
+        if self.api == API.SPORTSIPY:
+            return [game for game in self.api_result.get_versus]
     @property
     def get_versus(self):
-        return self.api_result.vs
+        return self._normalize_versus()
     
+    def _normalize_status(self) -> List[Tuple[str, str]]:
+        if self.api == API.SPORTSIPY:
+            return self.api_result.get_status
+        # Check if FT, VS, IN, etc
+        elif self.api == API.APISPORTS:
+            return self.api_result.get_status
     @property
     def get_status(self):
-        return self.api_result.status
+        return self._normalize_status()
     
     @property
     def get_scores(self):

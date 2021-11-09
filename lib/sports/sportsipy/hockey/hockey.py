@@ -6,10 +6,11 @@ from sportsipy.nhl.teams import (
     Teams,
 )
 from typing import List
-from sportsipy.nhl.boxscore import Boxscores
+from sportsipy.nhl.boxscore import Boxscore, Boxscores
 from lib.asynclib import make_async
 from datetime import datetime
 from lib.run import Runner
+import lib.sports.sportbase as base
 
 class HockeySportsipy(Runner):
     def __init__(self, config):
@@ -32,8 +33,8 @@ class HockeySportsipy(Runner):
 
     @make_async
     def run_games(self, team, games) -> List[Game]:
+        self.logger.debug("Running ran games")
         return games[:team.games_played]
-            
     async def run(self) -> SportsipyApiResult:
         self.logger.info('Running Sportsipy')
         sport = {}
@@ -44,6 +45,6 @@ class HockeySportsipy(Runner):
         sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
         await asyncio.gather(*sport.values())
         sport['games'] = await self.run_games(sport['team'].result(), sport['schedule'].result())
-        sport['sport'] = 'hockey'
+        sport['sport'] = base.SportStructure.Hockey
         return SportsipyApiResult(api_result=sport)
 

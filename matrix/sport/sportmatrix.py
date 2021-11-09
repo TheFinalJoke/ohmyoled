@@ -8,9 +8,11 @@ from datetime import datetime
 from collections import defaultdict
 from typing import List, Dict, Tuple
 from collections import deque
+
+from sportsipy.nhl.schedule import Schedule
 from matrix.error import ErrorMatrix
 from PIL import ImageFont, Image, ImageDraw
-from lib.sports.sports import SportFinal
+from lib.sports.sports import SportTransform, Sport
 from matrix.matrix import Matrix
 
 class SportMatrix(Matrix):
@@ -20,8 +22,15 @@ class SportMatrix(Matrix):
         self.logger = logger
     def __str__(self) -> str:
         return "SportMatrix"
-    async def poll_api(self) -> SportFinal:
-        return SportFinal(await self.api.run())
+    async def poll_api(self) -> Sport:
+        sport = SportTransform(await self.api.run())
+        return Sport(
+            team_name=sport.team_name,
+            sport=sport.get_sport,
+            api=sport.get_api,
+            standings=sport.get_standings,
+            schedule=sport.get_schedule,
+        )
 
     def divisions(self, standings: List[Dict]) -> Tuple[List[str], List[str]]:
         leagues = {league['league']: [] for league in standings}
