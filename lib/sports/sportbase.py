@@ -2,11 +2,14 @@ from dataclasses import dataclass
 from lib.run import Runner, Caller
 from typing import List, Tuple, Optional
 from enum import Enum
+from lib.sports.logo import Logo
 from datetime import datetime
 
 class API(Enum):
     APISPORTS = 0
     SPORTSIPY = 1
+    SPORTSDB = 2
+
 class SportStructure(Enum):
     Hockey = 0
     Baseball = 1
@@ -33,8 +36,9 @@ class SportResultBase(Caller):
 class Team():
     name: str
     position: int
-    logo: str
+    logo: Logo
     league: str = None
+
 @dataclass(repr=True)
 class SportStandings():
     positions: List[Team]

@@ -7,6 +7,7 @@ from sportsipy.nhl.boxscore import Boxscores
 from sportsipy.nhl.schedule import Game
 from sportsipy.nhl.teams import Team as nhl_team
 from lib.sports.sportbase import SportResultBase, API
+from lib.sports.logo import Logo, logo_dict
 import lib.sports.sportbase as base
 
 class SportsipyApiResult(SportResultBase):
@@ -17,6 +18,7 @@ class SportsipyApiResult(SportResultBase):
         self._team: nhl_team = api_result['team'].result()
         self._schedule = api_result['schedule'].result()
         self._api: Enum = API.SPORTSIPY
+        self._abbr = [team.abbreviation for team in api_result['standings'].result()]
         self._standings: List[nhl_team] = [team for team in api_result['standings'].result()]
         self._position_teams: List[Tuple[nhl_team, int]] = [(team, num) for num, team in enumerate(self._standings, start=1)]
         self._position = [team[1] for team in self.position_teams if team[0].name == self.team_name][0]
@@ -32,7 +34,6 @@ class SportsipyApiResult(SportResultBase):
         self._vs = [(None, game.opponent_name) for game in self._schedule]
         self._status = [(game.opponent_name, game.result) for game in self._schedule]
         self._get_error = (True, "")
-        breakpoint()
     
     @property
     def get_api(self) -> Enum:
@@ -46,18 +47,22 @@ class SportsipyApiResult(SportResultBase):
     def team_name(self):
         return self._team.name
     
+    def get_logo(self):
+        return logo_dict[self._team.abbreviation]
+
     @property
     def get_team(self):
         return base.Team(
             name=self._team.name,
             position=self._position,
-            logo=None,
+            logo=self.get_logo,
             league=None
         )
 
     @property
     def get_error(self):
         return self._get_error
+
     @property 
     def get_length_position_teams(self):
         return len(self._standings)
