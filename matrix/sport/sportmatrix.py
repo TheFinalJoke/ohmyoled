@@ -27,9 +27,14 @@ class SportMatrix(Matrix):
         return Sport(
             team_name=sport.team_name,
             sport=sport.get_sport,
+            logo=sport.get_logo,
             api=sport.get_api,
             standings=sport.get_standings,
             schedule=sport.get_schedule,
+            next_game=sport.get_next_game,
+            wins=sport.get_wins,
+            losses=sport.get_losses,
+            error=sport.get_error
         )
 
     def divisions(self, standings: List[Dict]) -> Tuple[List[str], List[str]]:

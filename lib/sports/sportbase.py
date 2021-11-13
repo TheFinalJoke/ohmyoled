@@ -35,8 +35,8 @@ class SportResultBase(Caller):
 @dataclass(repr=True)
 class Team():
     name: str
-    position: int
     logo: Logo
+    position: int = None
     league: str = None
 
 @dataclass(repr=True)
@@ -52,7 +52,7 @@ class Game:
     team: Team
     timestamp: datetime
     status: GameStatus
-    opposing_team: str
+    opposing_team: Team
     result: GameResult
     homeoraway: str
     score: Score = None

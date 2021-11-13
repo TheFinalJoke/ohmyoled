@@ -1,18 +1,18 @@
 import asyncio
 from lib.sports.sportsipy.result import SportsipyApiResult
-from sportsipy.nhl.schedule import Schedule, Game
-from sportsipy.nhl.teams import (
+from sportsipy.nfl.schedule import Schedule, Game
+from sportsipy.nfl.teams import (
     Team,
     Teams,
 )
 from typing import List
-from sportsipy.nhl.boxscore import Boxscore, Boxscores
+from sportsipy.nfl.boxscore import Boxscore, Boxscores
 from lib.asynclib import make_async
 from datetime import datetime
 from lib.run import Runner
 import lib.sports.sportbase as base
 
-class HockeySportsipy(Runner):
+class FootballSportsipy(Runner):
     def __init__(self, config):
         super().__init__(config)
         
@@ -33,7 +33,7 @@ class HockeySportsipy(Runner):
         return Teams()
 
     async def run(self) -> SportsipyApiResult:
-        self.logger.info('Running Sportsipy')
+        self.logger.info('Running Football Sportsipy')
         sport = {}
         team = self.config['sport']['team_id']
         self.logger.info("Running Hockey Sportsipy Api")
