@@ -13,61 +13,23 @@ class SportsipyApiResult(SportResultBase):
 
     def __init__(self, api_result: Dict[str, Task]) -> None:
         self.api_result = api_result
-        self._get_sport: Enum = api_result['sport']
-        self._team: base.Team = base.Team(
-            name=api_result['team'].result().name,
-            logo=logo_map[api_result['team'].result().name],
-            position=api_result['team'].result().rank
-        )
+        self._get_sport: Enum = api_result.sport
+        self._team: base.Team = api_result.team
         self._schedule: base.SportStandings = base.SportStandings(
-            positions=[
-                base.Game(
-                    team = self.get_team,
-                    timestamp=game.datetime,
-                    status=self.determine_game_status(game)[0],
-                    opposing_team= base.Team(
-                        name=game.opponent_name,
-                        logo=logo_map[game.opponent_name]
-                    ),
-                    result=self.determine_game_status(game)[1],
-                    homeoraway=game.location,
-                    score=base.Score(
-                        team=game.goals_scored,
-                        opposing_team=game.goals_allowed
-                    ) if base.GameStatus.Finished else None
-                ) for game in api_result['schedule'].result()
-            ]
+            positions=api_result.schedule
         )
        
         self._api: Enum = API.SPORTSIPY
-        self._standings: List[base.Team] = [
-            base.Team(
-                name=team.name,
-                logo=logo_map[team.name],
-                position=team.rank
-                ) for team in api_result['standings'].result()
-        ]
+        self._standings: List[base.Team] = api_result.standings
         self._position = self._team.position
         self._get_leagues = None
-        self._games_played: List[Game] = self._schedule.positions[:api_result['team'].result().games_played]
+        self._games_played: List[Game] = self._schedule.positions[:api_result.games_played]
         self._get_wins: List[Game] = [game for game in self._games_played if base.GameResult.WIN == game.result]
-        self._win_percentage: float = api_result['team'].result().wins/len(self._games_played)
+        self._win_percentage: float = api_result.wins/len(self._games_played)
         self._losses: List[Game] = [game for game in self._games_played if base.GameResult.LOSS == game.result]
-        self._loss_percentage: float = api_result['team'].result().losses/len(self._games_played)
+        self._loss_percentage: float = api_result.losses/len(self._games_played)
         self._next_game = self._schedule.positions[len(self._games_played)]
         self._game_ids = None
-        self._get_error = (True, "")
-    
-    def determine_game_status(self, game) -> Tuple[base.GameStatus, base.GameResult]:
-        if game.game == self.api_result['team'].result().games_played:
-            return base.GameStatus.NotStarted, base.GameResult.NOT_PLAYED
-        elif game.game > self.api_result['team'].result().games_played:
-            return base.GameStatus.NotStarted, base.GameResult.NOT_PLAYED
-        else:
-            if game.result == "Loss" or game.result == "OTL":
-                return base.GameStatus.Finished, base.GameResult.LOSS
-            else:
-                return base.GameStatus.Finished, base.GameResult.WIN
 
     @property
     def get_api(self) -> Enum:
@@ -89,10 +51,6 @@ class SportsipyApiResult(SportResultBase):
     def get_team(self):
         return self._team
 
-    @property
-    def get_error(self):
-        return self._get_error
-
     @property 
     def get_length_position_teams(self):
         return len(self._standings)
@@ -104,9 +62,6 @@ class SportsipyApiResult(SportResultBase):
     @property
     def get_schedule(self):
         return self._schedule
-    @property 
-    def position_teams(self):
-        return self._position_teams
     
     @property
     def get_leagues(self):

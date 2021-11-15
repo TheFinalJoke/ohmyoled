@@ -1,4 +1,5 @@
 import asyncio
+import lib.sports.sportbase as base
 from lib.sports.sportsipy.result import SportsipyApiResult
 from sportsipy.nfl.schedule import Schedule, Game
 from sportsipy.nfl.teams import (
@@ -6,17 +7,15 @@ from sportsipy.nfl.teams import (
     Teams,
 )
 from typing import List
-from sportsipy.nfl.boxscore import Boxscore, Boxscores
+from lib.sports.logo import logo_map
 from lib.asynclib import make_async
 from datetime import datetime
 from lib.run import Runner
-import lib.sports.sportbase as base
 
 class FootballSportsipy(Runner):
     def __init__(self, config):
         super().__init__(config)
-        
-    
+
     @make_async
     def run_team(self, team: str) -> Team:
         self.logger.debug("Running Team")
@@ -33,14 +32,59 @@ class FootballSportsipy(Runner):
         return Teams()
 
     async def run(self) -> SportsipyApiResult:
-        self.logger.info('Running Football Sportsipy')
-        sport = {}
-        team = self.config['sport']['team_id']
-        self.logger.info("Running Hockey Sportsipy Api")
-        sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
-        sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
-        sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
-        await asyncio.gather(*sport.values())
-        sport['sport'] = base.SportStructure.Hockey
-        return SportsipyApiResult(api_result=sport)
+        try:
+            self.logger.info("Inside of the Football Sportsipy")
+            sport = {}
+            team = self.config['sport']['team_id']
+            self.logger.info("Running Football Sportsipy Api")
+            sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
+            sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
+            sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
+            await asyncio.gather(*sport.values())
+            sport['sport'] = base.SportStructure.Football
+            football_result = base.ModuleResult(
+                name=sport['team'].result().name,
+                team=base.Team(
+                    name=sport['team'].result().name,
+                    logo=logo_map[sport['team'].result().name],
+                    position=sport['team'].result().rank
+                ),
+                schedule=[
+                    base.Game(
+                        team = base.Team(
+                            name=sport['team'].result().name,
+                            logo=logo_map[sport['team'].result().name],
+                            position=sport['team'].result().rank
+                        ),
+                        timestamp=game.datetime,
+                        status=base.determine_game_status(sport['team'].result(), game)[0],
+                        opposing_team= base.Team(
+                            name=game.opponent_name,
+                            logo=logo_map[game.opponent_name]
+                        ),
+                        result=base.determine_game_status(sport['team'].result(), game)[1],
+                        homeoraway=game.location,
+                        score=base.Score(
+                            team=game.points_scored,
+                            opposing_team=game.points_allowed
+                        ) if base.GameStatus.Finished else None  
+                    ) for game in sport['schedule'].result()
+                ],
+                standings=[
+                    base.Team(
+                        name=team.name,
+                        logo=logo_map[team.name],
+                        position=team.rank
+                    ) for team in sport['standings'].result()
+                ],
+                sport=sport['sport'],
+                games_played=sport['team'].result().games_played,
+                wins=sport['team'].result().wins,
+                losses=sport['team'].result().losses
+            )
+            return SportsipyApiResult(api_result=football_result)
+        except Exception as error:
+            self.logger.error(f"Error Occured inside of football module: {error}")
+            return None
+
 

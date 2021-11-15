@@ -6,11 +6,13 @@ from sportsipy.mlb.teams import (
     Teams,
 )
 from typing import List
+from lib.sports.logo import logo_map, baseball_teams
 from sportsipy.mlb.boxscore import Boxscore, Boxscores
 from lib.asynclib import make_async
 from datetime import datetime
 from lib.run import Runner
 import lib.sports.sportbase as base
+
 
 class BaseballSportsipy(Runner):
     def __init__(self, config):
@@ -33,14 +35,59 @@ class BaseballSportsipy(Runner):
         return Teams()
 
     async def run(self) -> SportsipyApiResult:
-        self.logger.info('Running Sportsipy')
-        sport = {}
-        team = self.config['sport']['team_id']
-        self.logger.info("Running Hockey Sportsipy Api")
-        sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
-        sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
-        sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
-        await asyncio.gather(*sport.values())
-        sport['sport'] = base.SportStructure.Hockey
-        return SportsipyApiResult(api_result=sport)
+        try:
+            self.logger.info('Running Sportsipy')
+            sport = {}
+            team = self.config['sport']['team_id']
+            self.logger.info("Running Baseball Sportsipy Api")
+            sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
+            sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
+            sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
+            await asyncio.gather(*sport.values())
+            sport['sport'] = base.SportStructure.Baseball
+            abbr = sport['team'].result().abbreviation
+            baseball_result = base.ModuleResult(
+                name=baseball_teams[abbr],
+                team=base.Team(
+                    name=baseball_teams[abbr],
+                    logo=logo_map[baseball_teams[abbr]],
+                    position=sport['team'].result().rank
+                ),
+                schedule=[
+                    base.Game(
+                        team=base.Team(
+                            name=baseball_teams[abbr],
+                            logo=logo_map[baseball_teams[abbr]],
+                            position=sport['team'].result().rank
+                        ),
+                        timestamp=game.datetime,
+                        status=base.determine_game_status(sport['team'].result(), game)[0],
+                        opposing_team=base.Team(
+                            name=baseball_teams[game.opponent_abbr],
+                            logo=logo_map[baseball_teams[game.opponent_abbr]],
+                        ),
+                        result=base.determine_game_status(sport['team'].result(), game)[1],
+                        homeoraway=game.location,
+                        score=base.Score(
+                            team=game.runs_scored,
+                            opposing_team=game.runs_allowed
+                        )
+                    ) for game in sport['schedule'].result()
+                ],
+                standings=[
+                    base.Team(
+                        name=baseball_teams[team.abbreviation],
+                        logo=logo_map[baseball_teams[team.abbreviation]],
+                        position=team.rank
+                    ) for team in sport['standings'].result()
+                ],
+                sport=base.SportStructure.Baseball,
+                games_played=sport['team'].result().games_finished,
+                wins=sport['team'].result().wins,
+                losses=sport['team'].result().losses
+            )
+            return SportsipyApiResult(api_result=baseball_result)
+        except Exception as error:
+            self.logger.error(f"Error Occured inside of baseball module: {error}")
+            return None
 

@@ -57,8 +57,6 @@ class Sport:
     losses: Tuple[List[base.Game], float]
     # Set of Leagues if Applicable
     leagues: Set[str] = None
-    # An Error if Applicable
-    error: Optional[str] = None
 
 class SportTransform(Caller):
     """
@@ -70,13 +68,13 @@ class SportTransform(Caller):
     def __init__(self, api_result) -> None:
         # Any Object from any api object
         self.api_result = api_result
-        breakpoint()
     
     @property
     def team_name(self):
         return self.api_result.team_name
+
     @property
-    def api(self) -> Enum:
+    def get_api(self) -> Enum:
         return self.api_result.get_api
 
     def _normalize_sport(self) -> Enum:
@@ -96,13 +94,6 @@ class SportTransform(Caller):
     @property
     def get_logo(self) -> Logo:
         return self._normalize_logo()
-
-    def _normalize_error(self) -> Tuple[bool, str]:
-        return self.api_result.get_error
-
-    @property
-    def get_error(self) -> Tuple[bool, str]:
-        return self._normalize_error()
     
     def _normalize_length_position_teams(self) -> int:
         return self.api_result.get_length_position_teams

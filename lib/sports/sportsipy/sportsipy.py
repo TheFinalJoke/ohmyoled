@@ -15,14 +15,14 @@ class SportsipyAPI(SportBase):
             hockey = HockeySportsipy(self.config)
             return await hockey.run()
         elif 'baseball' == self.sport.get('sport').lower():
-            self.logger.debug("Running hockey sportsipy")
+            self.logger.debug("Running Baseball sportsipy")
             baseball = BaseballSportsipy(self.config)
             return await baseball.run()
         elif 'basketball' == self.sport.get('sport').lower():
-            self.logger.debug("Running hockey sportsipy")
+            self.logger.debug("Running basketball sportsipy")
             basketball = BasketballSportsipy(self.config)
             return await basketball.run()
         elif 'football' == self.sport.get('sport').lower():
-            self.logger.debug("Running hockey sportsipy")
+            self.logger.debug("Running football sportsipy")
             football = FootballSportsipy(self.config)
             return await football.run()
