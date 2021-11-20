@@ -1,121 +1,75 @@
-from lib.sports.sportbase import SportResultBase, API
-from typing import Tuple, List, Dict
 import json
+from asyncio import Task
+from typing import Dict, List, Tuple
+from datetime import datetime
+from enum import Enum
+from sportsipy.nhl.schedule import Game
+from sportsipy.nhl.teams import Team as nhl_team
+from lib.sports.sportbase import SportResultBase, API
+from lib.sports.logo import Logo, logo_map
+import lib.sports.sportbase as base
 
 class SportApiResult(SportResultBase):
-    def __init__(self, api) -> None:
+    def __init__(self, api_result) -> None:
         super().__init__()
-        self.api_type = ""
-        self.api = api
-        self.main_sport = api
-        self._sport = api['sport']
-        self._api = API.APISPORTS
-        if len(self.main_sport['standings']['errors']) != 0:
-            self._error: Tuple[bool, str] = self.set_error()
-        else:
-            self._error: Tuple[bool, ] = self.set_error()
-            self.standings: List[Dict[str, str]] = self.build_standings()
-            self._length: int = len(self.standings)
-            self._positions: List[Tuple[str, int]] = [(team.get('name'), team.get('position')) for team in self.standings]
-            self._leagues: List[Tuple[str, str]] =  [(team.get('name'), team.get('league')) for team in self.standings]
-            self._games_played: List[Tuple[str, int]] = [(team.get('name'), team.get('games').get('played')) for team in self.standings]
-            self._wins: List[Tuple[str, int]] = [(team.get('name'), team['games']['win']['total']) for team in self.standings]
-            self._wins_percentage: List[Tuple[str, str]] = [(team.get('name'), team['games']['win']['percentage']) for team in self.standings]
-            self._losses: List[Tuple[str, int]] = [(team.get('name'), team['games']['lose']['total']) for team in self.standings]
-            self._loss_percentage: List[Tuple[str, str]] = [(team.get('name'), team['games']['lose']['percentage']) for team in self.standings]            
-            self.next_game: Dict[str, int] = self.build_nextgame()
-            self._game_ids: List[int] = [game.get('game_id') for game in self.next_game]
-            self._timestamps:  List[Tuple[int, int]] = [(game.get('game_id'), game.get('timestamp')) for game in self.next_game]
-            self._teams: List[Tuple[str, int]] = [(game.get('game_id'), game.get('teams')) for game in self.next_game]
-            self._vs: List[Tuple[int, Tuple[str,str]]] = [(game.get('game_id'), (game['teams']['home']['name'], game['teams']['away']['name'])) for game in self.next_game]
-            self._status: List[Tuple[int, str]] = [(game.get('game_id'), game.get('status')) for game in self.next_game]
-            self._game_result: Dict[int, Dict[str, int]] = {game.get('game_id'): game.get('score') for game in self.next_game}
-
-    def __repr__(self):
-        attrs = [
-            f"length={self._length}",
-            f"positions={json.dumps(self._positions, indent=2)}",
-            f'leagues={json.dumps(self._leagues, indent=2)}',
-            f"games_played={json.dumps(self._games_played, indent=2)}",
-            f"wins={json.dumps(self._wins, indent=2)}",
-            f"wins_percentage={json.dumps(self._wins_percentage, indent=2)}",
-            f"losses={json.dumps(self._losses, indent=2)}",
-            f"loss_percentage={json.dumps(self._loss_percentage, indent=2)}",
-            f"game_ids={json.dumps(self._game_ids, indent=2)}",
-            f"timestamps={json.dumps(self._timestamps, indent=2)}",
-            f"teams={json.dumps(self._teams, indent=2)}",
-            f"vs={json.dumps(self._vs, indent=2)}",
-            f"status={json.dumps(self._status, indent=2)}",
-            f"game_result={json.dumps(self._game_result, indent=2)}"
-        ]
-        joined = "\t\n".join(attrs)
-        return f"Sport(\n{joined})"
-
-    def build_standings(self):
-        #counter = 0
-        position = []
-        regular_season_check = (
-            "MLB - Regular Season", 
-            "NBA - Regular Season",
-            "NHL - Regular Season",
-            "NFL - Regular Season"
+        self.api_result = api_result
+        self._get_sport: Enum = api_result.sport
+        self._team: base.Team = api_result.team
+        self._schedule: base.SportStandings = base.SportStandings(
+            positions=api_result.schedule
         )
-        # Can Be Empty Must try and except for that
-        for pos in self.main_sport['standings'].get('response')[0]:
-            if not pos.get('stage') in regular_season_check:
-                continue
-            position.append({'name': pos.get('team').get('name'),
-                    'position': pos.get('position'),
-                    'league': pos.get('group').get('name'),
-                    'games': pos.get('games')
-                    })
-        return position
-
-    def build_nextgame(self):
-        main = []
-        for game in self.main_sport['next_game'].get('response'):
-            main.append({
-                'game_id': game.get('id'),
-                'timestamp': game.get('timestamp'),
-                'status': game['status']['short'],
-                'teams': game['teams'],
-                'score': game['scores']
-            })
-        return main
-
-    def set_error(self):
-        if isinstance(self.main_sport['standings']['errors'], list):
-            return True, ""
+       
+        self._api: Enum = API.APISPORTS
+        self._standings: List[base.Team] = api_result.standings
+        self._position = self._team.position
+        self._get_leagues = None
+        self._games_played: List[Game] = self._schedule.positions[:api_result.games_played] if api_result.games_played <= len(self._schedule.positions) else []
+        self._get_wins: List[Game] = [game for game in self._games_played if base.GameResult.WIN == game.result]
+        self._win_percentage: float = api_result.wins/len(self._games_played)
+        self._losses: List[Game] = [game for game in self._games_played if base.GameResult.LOSS == game.result]
+        self._loss_percentage: float = api_result.losses/len(self._games_played)
+        if len(self._games_played) == len(self._schedule.positions):
+            self._next_game = []
         else:
-            return False, self.main_sport['standings']['errors']['requests']
-    
-    @property 
-    def get_api(self) -> API:
+            self._next_game = self._schedule.positions[len(self._games_played)] if len(self._games_played) < len(self._schedule.positions) else []
+        self._game_ids = None
+
+
+    @property
+    def get_api(self) -> Enum:
         return self._api
 
     @property
-    def get_sport(self):
-        return self._sport
+    def get_sport(self) -> Enum:
+        return self._get_sport
+    
+    @property
+    def team_name(self):
+        return self._team.name
+    
+    @property
+    def get_logo(self) -> Logo:
+        return logo_map[self._team.name]
 
     @property
-    def get_error(self):
-        return self._error
-    
+    def get_team(self):
+        return self._team
+
     @property 
     def get_length_position_teams(self):
-        return len(self.standings)
+        return len(self._standings)
     
     @property
     def get_standings(self):
-        return self.standings
+        return self._standings
     
-    @property 
-    def get_position_teams(self):
-        return self._positions
+    @property
+    def get_schedule(self):
+        return self._schedule
     
     @property
     def get_leagues(self):
-        return self._leagues
+        return self._get_leagues
     
     @property
     def get_games_played(self):
@@ -123,11 +77,11 @@ class SportApiResult(SportResultBase):
     
     @property
     def get_wins(self):
-        return self._wins
+        return self._get_wins
     
     @property
     def get_wins_percentage(self):
-        return self._wins_percentage
+        return self._win_percentage
     
     @property
     def get_losses(self):
@@ -141,26 +95,9 @@ class SportApiResult(SportResultBase):
     def get_game_ids(self):
         return self._game_ids
     
-    @property
-    def get_timestamps(self):
-        return self._timestamps
-    
-    @property
-    def get_teams(self):
-        return self._teams
-    
-    @property
-    def get_versus(self):
-        return self._vs
-    
-    @property
-    def get_status(self):
-        return self._status
-    
-    @property
-    def get_scores(self):
-        return self._game_result
-    
     def get_specific_score(self, game_id):
         return self._game_result.get(game_id)
     
+    @property
+    def get_next_game(self):
+        return self._next_game

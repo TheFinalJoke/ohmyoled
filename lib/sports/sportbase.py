@@ -135,3 +135,123 @@ def determine_game_status(team, game) -> Tuple[GameStatus, GameResult]:
             return GameStatus.Finished, GameResult.LOSS
         else:
             return GameStatus.Finished, GameResult.WIN
+def determine_team(game, team):
+    if game['teams']['home'] == team.name:
+        return True
+    return False
+
+def determine_apisports_game_status(game_dict: Dict, team, sport):
+    if sport == 'hockey':
+        in_game = ['P', 'OT', 'BT', "Q", "HT", "IN"]
+        if game_dict['status']['short'] in in_game:
+            return GameStatus.InGame, GameResult.NOT_PLAYED 
+        elif game_dict['status']['short'] in ('FT', 'AP') and datetime.now().date() == datetime.fromtimestamp(game_dict['timestamp']).date():
+            is_team_home_team = determine_team(game_dict, team)
+            if is_team_home_team:
+                if game_dict['scores']['home'] == game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home'] < game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.LOSS
+                else:
+                    return GameStatus.Finished, GameResult.WIN
+            else:
+                if game_dict['scores']['home'] == game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home'] > game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.WIN
+                else:
+                    return GameStatus.Finished, GameResult.LOSS
+        elif game_dict['status']['short'] in ('FT', 'AP') or datetime.fromtimestamp(game_dict['timestamp']) < datetime.now():
+            is_team_home_team = determine_team(game_dict, team)
+            if is_team_home_team:
+                if game_dict['scores']['home'] == game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home'] < game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.LOSS
+                else:
+                    return GameStatus.Finished, GameResult.WIN
+            else:
+                if game_dict['scores']['home'] == game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home'] > game_dict['scores']['away']:
+                    return GameStatus.Finished, GameResult.WIN
+                else:
+                    return GameStatus.Finished, GameResult.LOSS
+        else:
+            return GameStatus.NotStarted, GameResult.NOT_PLAYED
+    elif sport == 'basketball':
+        in_game = ['P', 'OT', 'BT', "Q", "HT", "IN"]
+        if game_dict['status']['short'] in in_game:
+            return GameStatus.InGame, GameResult.NOT_PLAYED 
+        elif game_dict['status']['short'] in ('FT', 'AP') and datetime.now().date() == datetime.fromtimestamp(game_dict['timestamp']).date():
+            is_team_home_team = determine_team(game_dict, team)
+            if is_team_home_team:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] < game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.LOSS
+                else:
+                    return GameStatus.Finished, GameResult.WIN
+            else:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] > game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.WIN
+                else:
+                    return GameStatus.Finished, GameResult.LOSS
+        elif game_dict['status']['short'] in ('FT', 'AP') or datetime.fromtimestamp(game_dict['timestamp']) < datetime.now():
+            is_team_home_team = determine_team(game_dict, team)
+            if is_team_home_team:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] < game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.LOSS
+                else:
+                    return GameStatus.Finished, GameResult.WIN
+            else:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] > game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.WIN
+                else:
+                    return GameStatus.Finished, GameResult.LOSS
+        else:
+            return GameStatus.NotStarted, GameResult.NOT_PLAYED
+    elif sport == "baseball":
+        in_game = ['P', 'OT', 'BT', "Q", "HT", "IN"]
+        if game_dict['status']['short'] in in_game:
+            return GameStatus.InGame, GameResult.NOT_PLAYED 
+        elif game_dict['status']['short'] in ('FT', 'AP') and datetime.now().date() == datetime.fromtimestamp(game_dict['timestamp']).date():
+            is_team_home_team = determine_team(game_dict, team)
+            if is_team_home_team:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] < game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.LOSS
+                else:
+                    return GameStatus.Finished, GameResult.WIN
+            else:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] > game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.WIN
+                else:
+                    return GameStatus.Finished, GameResult.LOSS
+        elif game_dict['status']['short'] in ('FT', 'AP') or datetime.fromtimestamp(game_dict['timestamp']) < datetime.now():
+            is_team_home_team = determine_team(game_dict, team)
+            if is_team_home_team:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] < game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.LOSS
+                else:
+                    return GameStatus.Finished, GameResult.WIN
+            else:
+                if game_dict['scores']['home']['total'] == game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.TIE
+                elif game_dict['scores']['home']['total'] > game_dict['scores']['away']['total']:
+                    return GameStatus.Finished, GameResult.WIN
+                else:
+                    return GameStatus.Finished, GameResult.LOSS
+        else:
+            return GameStatus.NotStarted, GameResult.NOT_PLAYED

@@ -6,9 +6,7 @@ import time
 import urllib.request
 import lib.sports.sportbase as sport_types
 from datetime import datetime
-from collections import defaultdict
-from typing import List, Dict, Tuple
-from collections import deque
+from typing import Dict, Tuple
 
 from sportsipy.nhl.schedule import Schedule
 from matrix.error import ErrorMatrix
@@ -21,8 +19,10 @@ class SportMatrix(Matrix):
         self.matrix = matrix
         self.api = api
         self.logger = logger
+
     def __str__(self) -> str:
         return "SportMatrix"
+
     async def poll_api(self) -> Sport:
         sport = SportTransform(await self.api.run())
         if not sport.api_result:
@@ -107,7 +107,7 @@ class SportMatrix(Matrix):
         return (home_logo, (-2,0)), (away_logo, (50, 0))
 
     def build_middle_nextgame(self, api) -> Image:
-        if api.next_game.status == sport_types.GameStatus.InGame: 
+        if api.next_game.status == sport_types.GameStatus.InGame:
             return self.build_in_game_image(api.next_game)
         elif sport_types.GameStatus.NotStarted == api.next_game.status:
             return self.build_next_game_image(api.next_game)
@@ -154,7 +154,7 @@ class SportMatrix(Matrix):
         standings_draw = ImageDraw.Draw(standings_image)
         scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
         color = (156,163,173)
-        # Can't Have multiple images and or buffers
+
         text = " ".join(api)
         standings_draw.text(
             (-xpos, 0), 
