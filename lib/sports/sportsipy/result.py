@@ -9,9 +9,9 @@ from lib.sports.sportbase import SportResultBase, API
 from lib.sports.logo import Logo, logo_map
 import lib.sports.sportbase as base
 
-class SportApiResult(SportResultBase):
-    def __init__(self, api_result) -> None:
-        super().__init__()
+class SportsipyApiResult(SportResultBase):
+
+    def __init__(self, api_result: Dict[str, Task]) -> None:
         self.api_result = api_result
         self._get_sport: Enum = api_result.sport
         self._team: base.Team = api_result.team
@@ -19,21 +19,17 @@ class SportApiResult(SportResultBase):
             positions=api_result.schedule
         )
        
-        self._api: Enum = API.APISPORTS
+        self._api: Enum = API.SPORTSIPY
         self._standings: List[base.Team] = api_result.standings
         self._position = self._team.position
         self._get_leagues = None
-        self._games_played: List[Game] = self._schedule.positions[:api_result.games_played] if api_result.games_played <= len(self._schedule.positions) else []
+        self._games_played: List[Game] = self._schedule.positions[:api_result.games_played]
         self._get_wins: List[Game] = [game for game in self._games_played if base.GameResult.WIN == game.result]
         self._win_percentage: float = api_result.wins/len(self._games_played)
         self._losses: List[Game] = [game for game in self._games_played if base.GameResult.LOSS == game.result]
         self._loss_percentage: float = api_result.losses/len(self._games_played)
-        if len(self._games_played) == len(self._schedule.positions):
-            self._next_game = []
-        else:
-            self._next_game = self._schedule.positions[len(self._games_played)] if len(self._games_played) < len(self._schedule.positions) else []
+        self._next_game = self._schedule.positions[len(self._games_played)]
         self._game_ids = None
-
 
     @property
     def get_api(self) -> Enum:
