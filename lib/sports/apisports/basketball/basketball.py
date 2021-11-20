@@ -33,7 +33,7 @@ class Basketball(Runner):
         return urls
     
     async def run(self) -> SportApiResult:
-        self.logger.info('Running baseball API')
+        self.logger.info('Running Basketball API')
         parsed = self.parse_args()
         api_data = {}
         logo = logo_map[self.config.get('team_id')]
