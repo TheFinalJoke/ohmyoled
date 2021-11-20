@@ -93,7 +93,7 @@ class Baseball(Runner):
             ),
             schedule=schedule,
             standings = standings,
-            sport=base.SportStructure.Basketball,
+            sport=base.SportStructure.Baseball,
             games_played=len([game for game in schedule if game.status == base.GameStatus.Finished or game.status == base.GameStatus.Overtime]),
             wins=len([game for game in schedule if game.result == base.GameResult.WIN]),
             losses=len([game for game in schedule if game.result == base.GameResult.LOSS]),
