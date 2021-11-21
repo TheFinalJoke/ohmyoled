@@ -10,42 +10,11 @@ import json
 from typing import Dict, Tuple, List
 from datetime import datetime 
 from datetime import timedelta
+import lib.weather.weatherbase as base
+from lib.weather.weather_icon import weather_icon_mapping
 import csv
 
-def get_weather_csv() -> List[Dict[str, str]]:
-    csv_path = '/etc/ohmyoled/ecIcons_utf8.csv'
-    return list(csv.DictReader(open(csv_path)))
-
-def build_weather_icons() -> str:
-    csv = get_weather_csv()
-    icon = {}
-    for icn in csv:
-        icon.update({icn["OWMCode"]: WeatherIcon(icn['OWMCode'], icn['Description'], icn['fontcode'], icn['font'])})
-    return icon
-
-class WeatherIcon():
-    def __init__(self, owm_id: str, description: str, fontcode: str, font: str) -> None:
-        self.owm_id = owm_id
-        self.description = description
-        self.fontcode = fontcode
-        self.font = font
-
-    @property
-    def get_owm_id(self) -> str:
-        return self.owm_id
-    @property
-    def get_description(self) -> str:
-        return self.description
-    @property
-    def get_fontcode(self) -> str:
-        return self.fontcode
-    @property
-    def get_font(self) -> str:
-        return self.font
-    
-
-
-class WeatherApi(Runner):
+class OpenWeatherApi(Runner):
     """
     Weatherapi object 
     To parse the config file and 
@@ -127,9 +96,9 @@ class WeatherApi(Runner):
         api_data = await self.get_data(args)
         current_data = await self.get_current_location()
         api_data['name'] = current_data['city']
-        return api_data
+        return OpenWeather(api_data)
 
-class Weather(Caller):
+class OpenWeather(Caller):
     """
     Weather object to describe current Polled data
     """
@@ -137,6 +106,8 @@ class Weather(Caller):
         super().__init__()
         self.api = api
         self.api_json = api
+        self._api_caller = base.APIWeather.OPENWEATHER
+        self._lat_long = (self.api['lat'], self.api['lon'])
         self._place = self.api_json.get('name')
         self._current = self.api_json.get('current')
         self._weather = self._current.get('weather')
@@ -179,6 +150,49 @@ class Weather(Caller):
         ]
         joined_attrs = ',\n'.join(attrs)
         return f"Weather(\n{joined_attrs})"
+    
+    @property
+    def get_icon(self):
+        owm_wxcode: int = int(self._weather[0]['id'])
+        if owm_wxcode in range(200,299):
+            # Thunderstorm Class
+            owm_icon = weather_icon_mapping[17]
+        elif owm_wxcode in range(300,399):
+            # Drizzle Class
+            owm_icon = weather_icon_mapping[23]
+        elif owm_wxcode in range(500,599):
+            # Rain Class
+            owm_icon = weather_icon_mapping[9]
+        elif owm_wxcode in range(600,699):
+            # Snow Class
+            owm_icon = weather_icon_mapping[13]
+        elif owm_wxcode in range(700, 780):
+            owm_icon = weather_icon_mapping[36]
+        elif owm_wxcode == 800:
+            # Sunny
+            if self._sunset > datetime.now():
+                owm_icon = weather_icon_mapping[0]
+            else:
+                owm_icon = weather_icon_mapping[48]
+
+        elif owm_wxcode in range(801,805):
+            # Rain Class
+            if self._sunset > datetime.now():
+                owm_icon = weather_icon_mapping[3]
+            else:
+                owm_icon = weather_icon_mapping[48]
+        else:
+            owm_icon = weather_icon_mapping[0]
+
+        return owm_icon
+
+    @property
+    def get_api(self):
+        return self._api_caller
+
+    @property 
+    def get_lat_long(self) -> Tuple[float, float]:
+        return self._lat_long
     
     @property
     def get_wind_speed(self) -> int:
