@@ -56,12 +56,3 @@ class Weather():
     location_name: str
     current: CurrentWeather
     dayforcast: DayForcast
-
-@dataclass(repr=True)
-class OpenWeatherResult(WeatherBase):
-    api: APIWeather
-    # (lat, lng)
-    location: Tuple[float, float]
-    location_name: str
-    current: CurrentWeather
-    dayforcast: DayForcast
