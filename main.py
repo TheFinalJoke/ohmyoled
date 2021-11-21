@@ -10,7 +10,7 @@ from rgbmatrix import (
     RGBMatrix
 )
 from lib.upgrade.upgrade import Upgrader
-from lib.weather.weather import WeatherApi
+from lib.weather.normal import WeatherApi
 from matrix.stock.stockmatrix import StockMatrix
 from lib.stock.stocks import StockApi
 from lib.sports.sports import SportApi
