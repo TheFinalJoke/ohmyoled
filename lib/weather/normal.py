@@ -2,6 +2,7 @@
 from typing import Dict, Tuple
 from datetime import datetime, timedelta
 from lib.weather.openweather.weather import OpenWeatherApi
+from lib.weather.weathergov.nws import NWSApi
 from lib.run import Caller
 
 class NormalizedWeather():
@@ -107,5 +108,6 @@ class WeatherApi(Caller):
             open_weather = OpenWeatherApi(self.config)
             result = await open_weather.run()
         else:
-            result = ""
+            nws = NWSApi(self.config)
+            result = await nws.run()
         return NormalizedWeather(result)

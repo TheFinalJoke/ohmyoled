@@ -32,7 +32,8 @@ setup(
         "aiohttp",
         "iso6709",
         "sportsipy",
-        "wget"
+        "wget",
+        "suntime"
         ],
     setup_requires=["pytest-runner"],
     tests_require=["pytest==4.4.1"],

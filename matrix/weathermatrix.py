@@ -41,6 +41,7 @@ class WeatherMatrix(Matrix):
                 sunset=result.get_sunset
             )
         )
+        
     
     def get_temp_color(self, temp: int) -> Tuple[int, int, int]:
         if temp >= 100:
@@ -157,12 +158,24 @@ class WeatherMatrix(Matrix):
         self.clear()
         self.logger.debug("Reloading Image in matrix")
         self.reload_image()
+        xpos = 0
+        self.logger.info("Loading Screen 2 of Matrix")
+        while xpos < 100:
+            self.reload_image()
+            self.render_location(api, xpos)
+            self.render_icon(api)
+            self.render_humidity(api)
+            self.render_wind(api)
+            self.render_time(api)
+            await self.render_image()
+            xpos += 1
+            time.sleep(3) if xpos == 1 else time.sleep(.05)
+        self.reload_image()
         self.render_location(api, 0)
         self.render_icon(api)
         self.render_humidity(api)
         self.render_wind(api)
         self.render_time(api)
-        self.logger.info("Loading Screen 2 of Matrix")
         await self.render_image()
         time.sleep(30)
 
