@@ -85,7 +85,7 @@ class WeatherMatrix(Matrix):
             color: Tuple[int] = (192, 192, 192)
         elif owm_wxcode == 800:
             # Sunny
-            if api.get_sunset > datetime.now():
+            if api.dayforcast.sunset.replace(tzinfo=None) > datetime.now():
                 color: Tuple[int] = (220, 149, 3)
             else:
                 color: Tuple[int] = (255,255,255)
