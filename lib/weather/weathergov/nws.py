@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 import asyncio
+import sys
+import json
+import datetime as dt
 import lib.weather.weatherbase as base 
 from lib.weather.weather_icon import weather_icon_mapping
 from lib.asynclib import make_async
@@ -22,7 +25,7 @@ class NWSApi(Runner):
         return await self.url_builder()
 
 
-    async def get_long_and_lat(self, location: str=None, zipcode: int=None) -> Tuple:
+    async def get_long_and_lat(self, location: str=None, zipcode: int=None, url=None) -> Tuple:
         """
         Searches for Longitude and latitude for Given City
         """
@@ -135,10 +138,10 @@ class NWSTransform(Caller):
     @property
     def get_icon(self):
         # Have to get the icon 
-        condition: int = self._weather[0]['shortForecast'].lower()
+        condition: str = self._weather[0]['shortForecast'].lower()
         if any(s in condition.lower() for s in ("sunny", "clear", 'sun')):
              # Sunny
-            if self._sunset > datetime.now():
+            if self._sunset.replace(tzinfo=None) > datetime.now():
                 owm_icon = weather_icon_mapping[0]
             else:
                 owm_icon = weather_icon_mapping[48]
@@ -147,7 +150,7 @@ class NWSTransform(Caller):
         elif 'snow' in condition:
             owm_icon = weather_icon_mapping[13]
         elif any(s in condition.lower() for s in ('cloudy', 'cloud')):
-            owm_icon = weather_icon_ampping[7]
+            owm_icon = weather_icon_mapping[7]
         else:
             owm_icon = weather_icon_mapping[0]
         return owm_icon
