@@ -35,10 +35,10 @@ class FootballSportsipy(Runner):
         try:
             self.logger.info("Inside of the Football Sportsipy")
             sport = {}
-            team = self.config['sport']['team_id']
+            team = logo_map[self.config['sport']['team_id']]
             self.logger.info("Running Football Sportsipy Api")
-            sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
-            sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
+            sport['team'] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")
+            sport['schedule'] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")
             sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
             await asyncio.gather(*sport.values())
             sport['sport'] = base.SportStructure.Football
@@ -86,5 +86,3 @@ class FootballSportsipy(Runner):
         except Exception as error:
             self.logger.error(f"Error Occured inside of football module: {error}")
             return None
-
-

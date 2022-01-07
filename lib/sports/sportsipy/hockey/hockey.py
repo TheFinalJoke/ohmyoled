@@ -37,10 +37,10 @@ class HockeySportsipy(Runner):
         try:
             self.logger.info('Running Sportsipy')
             sport = {}
-            team = self.config['sport']['team_id']
+            team = logo_map[self.config['sport']['team_id']]
             self.logger.info("Running Hockey Sportsipy Api")
-            sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
-            sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
+            sport['team'] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")
+            sport['schedule'] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")
             sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
             await asyncio.gather(*sport.values())
             sport['sport'] = base.SportStructure.Hockey
@@ -86,6 +86,6 @@ class HockeySportsipy(Runner):
             )
             return SportsipyApiResult(api_result=hockey_result)
         except Exception as error:
-            self.logger.error(f"An Error Occured in basketball Module: {error}")
+            self.logger.error(f"An Error Occured in hockey Module: {error}")
             return None
 

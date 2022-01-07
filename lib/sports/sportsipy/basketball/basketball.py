@@ -10,6 +10,7 @@ from sportsipy.nba.boxscore import Boxscore, Boxscores
 from lib.asynclib import make_async
 from datetime import datetime
 from lib.run import Runner
+from lib.sports.logo import logo_map
 import lib.sports.sportbase as base
 
 class BasketballSportsipy(Runner):
@@ -43,6 +44,7 @@ class BasketballSportsipy(Runner):
             sport = {}
             team = self.config['sport']['team_id']
             self.logger.info("Running Basketball Sportsipy Api")
+            breakpoint()
             sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")
             sport['schedule'] = asyncio.create_task(self.run_schedule(team), name="schedule_task")
             sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
