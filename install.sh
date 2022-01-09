@@ -6,7 +6,7 @@ then
 echo "Are you root?"
 exit 2
 fi
-apt update && apt upgrade -y && apt install -y fonts-noto-mono
+apt update && apt upgrade -y && apt install -y fonts-noto-mono git
 if [ 0 == $(echo $?) ]
 then
 echo "Error Occured While installing and updatings fonts"
