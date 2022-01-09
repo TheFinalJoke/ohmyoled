@@ -81,6 +81,7 @@ class SportMatrix(Matrix):
     def check_offseason(self, api) -> bool:
         try:
             start_time, end_time = api.schedule.positions[0].timestamp, api.schedule.positions[-1].timestamp
+            # Have to check for play offs
             if start_time <= datetime.now() <= end_time:
                 return True
         except Exception:
@@ -168,7 +169,7 @@ class SportMatrix(Matrix):
     async def render(self, api, loop):
         try:
             if not api:
-                raise Exception("Error Occurrred inside of the sport matrix")
+                raise Exception("Error Ocurred inside of the sport matrix")
             self.clear()
             self.reload_image()
             if self.check_offseason(api):
@@ -192,7 +193,7 @@ class SportMatrix(Matrix):
                     time.sleep(3) if xpos == 1 else time.sleep(.001)
             else:
                 font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
-                self.draw_multiline_text((0, 0), "Baseball\nOffseason", font=font)
+                self.draw_multiline_text((0, 0), f"{api.sport.name}\nOffseason", font=font)
                 await self.render_image()
                 time.sleep(30)
 

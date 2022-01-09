@@ -146,9 +146,9 @@ class Main():
                     matrix_finish_time = time.perf_counter()
                     logger.info(f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s")
         except Exception as E:
-            logger.error(E)
-            traceback.print_exc()
-            loop.stop()
+                logger.error(E)
+                traceback.print_exc()
+                loop.stop()
                 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an OhMyOled Matix")
