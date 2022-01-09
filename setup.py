@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="ohmyoled",
-    version="1.3.0",
+    version="1.3.1",
     python_requires='>=3.8.9',
     packages=find_packages(),
     description="64x32 Oled Matrix Display",
