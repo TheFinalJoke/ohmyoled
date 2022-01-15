@@ -40,3 +40,8 @@ Run=True
 
 You Can also change different Configurations like weather 
 You can add different zipcode/city 
+
+# To Help Write Our and use tests
+```
+pip install -e .[dev]
+```
