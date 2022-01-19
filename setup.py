@@ -1,15 +1,19 @@
-from setuptools import find_packages, setup
+from setuptools import setup
 
+with open("README.md") as file:
+    ld = file.read()
 setup(
     name="ohmyoled",
-    version="1.3.1",
+    version="1.3.3",
     python_requires='>=3.8.9',
-    packages=find_packages(),
+    py_modules=["main"],
     description="64x32 Oled Matrix Display",
     author="thefinaljoke",
+    long_description=ld,
+    long_description_content_type="text/markdown",
     install_requires=[
         "wheel",
-        "cython",
+        "Cython",
         "numpy",
         "noaa-sdk",
         "env-canada==0.0.35",
@@ -27,7 +31,7 @@ setup(
         "APScheduler>=3.6.3",
         "lastversion>=1.1.6",
         "nameparser==1.0.6",
-        "pillow==7.1.2",
+        "pillow>=8.0.0",
         "dbus-next",
         "aiohttp",
         "iso6709",
@@ -35,8 +39,10 @@ setup(
         "wget",
         "suntime"
         ],
-    setup_requires=["pytest-runner"],
-    tests_require=["pytest==4.4.1"],
-    test_suite="tests",
+    extras_require = {
+        "dev": [
+            "pytest==6.2.5"
+        ],
+    },
     url="https://github.com/TheFinalJoke/ohmyoled"
 )
