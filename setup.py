@@ -4,7 +4,7 @@ with open("README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="1.3.3",
+    version="1.3.4",
     python_requires='>=3.8.9',
     py_modules=["main"],
     description="64x32 Oled Matrix Display",
@@ -23,11 +23,11 @@ setup(
         "gpiozero==1.5.1",
         "noaa-sdk>=0.1.18",
         "printtools==1.2",
-        "PyInstaller==3.6",
+        "Pyinstaller",
         "python-tsl2591==0.2.0",
         "questionary>=1.5.2",
         "regex>=2020.4.4",
-        "RPi.GPIO==0.7.0",
+        "RPi.GPIO>=0.7.0",
         "APScheduler>=3.6.3",
         "lastversion>=1.1.6",
         "nameparser==1.0.6",
@@ -37,11 +37,12 @@ setup(
         "iso6709",
         "sportsipy",
         "wget",
-        "suntime"
+        "suntime",
         ],
     extras_require = {
         "dev": [
-            "pytest==6.2.5"
+            "pytest==6.2.5",
+            "twine",
         ],
     },
     url="https://github.com/TheFinalJoke/ohmyoled"
