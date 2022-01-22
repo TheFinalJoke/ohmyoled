@@ -1,4 +1,4 @@
-ARG VARIANT="3.8-bullseye"
+ARG VARIANT="3.9-bullseye"
 FROM python:${VARIANT} AS PYTHON_LAYER
 
 # [Choice] Node.js version: none, lts/*, 16, 14, 12, 10
