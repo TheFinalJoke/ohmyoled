@@ -45,3 +45,8 @@ You can add different zipcode/city
 ```
 pip install -e .[dev]
 ```
+
+# Known Problems
+
+// If your pi is not booting, you will have to change the kernel bootloader. With Raspbain OS the bootloader is borked with HAT Software
+https://learn.adafruit.com/adafruit-1-3-color-tft-bonnet-for-raspberry-pi/kernel-module-troubleshooting
