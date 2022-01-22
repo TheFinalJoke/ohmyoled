@@ -36,10 +36,9 @@
 		"ms-python.python",
 		"ms-python.vscode-pylance"
 	],
-	"mounts": [
-		"source=/sys,target=/sys,type=bind,consistency=cached",
+	"runArgs": [
+		"--privileged"
 	],
-
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
