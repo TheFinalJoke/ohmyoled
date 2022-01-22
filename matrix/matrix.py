@@ -157,8 +157,7 @@ class Matrix(ABSMatrix):
             align,
             text,
             font=font,
-            fill=fill,
-            direction="ltr"
+            fill=fill
         )
     def draw_multiline_text(self, align, text, font, fill=None, spacing=4) -> None:
         self.draw.multiline_text(

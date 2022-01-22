@@ -93,6 +93,7 @@ class WeatherMatrix(Matrix):
             color: Tuple[int] = (220,220,220)
         else:
             owm_icon = owm_wxcode
+            color: Tuple[int] = (255,255,255)
         self.draw_text((50, 0), api.current.weather_icon.font, font, fill=color)
 
     def render_location(self, api: base.Weather, xpos) -> None:
