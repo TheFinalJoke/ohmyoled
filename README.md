@@ -46,6 +46,12 @@ You can add different zipcode/city
 pip install -e .[dev]
 ```
 
+# Development
+Open vscode and make sure you have docker on your raspberry pi
+Then connect to remote raspberry pi or run vscode on raspberry pi
+Choose to reopen in container and you will have the environment to develop
+
+# Soon To come: Docker Container
 # Known Problems
 
 // If your pi is not booting, you will have to change the kernel bootloader. With Raspbain OS the bootloader is borked with HAT Software

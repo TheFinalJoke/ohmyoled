@@ -4,7 +4,7 @@ with open("README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="1.3.4",
+    version="2.0.0",
     python_requires='>=3.8.9',
     py_modules=["main"],
     description="64x32 Oled Matrix Display",
