@@ -37,7 +37,6 @@
 		"ms-python.vscode-pylance",
 		"kevinrose.vsc-python-indent",
 		"rust-lang.rust",
-		"matklad.rust-analyzer",
 	],
 	"runArgs": [
 		"--privileged"
