@@ -1,24 +1,13 @@
 mod time;
-
+mod weather;
+mod stock;
+use oledlib;
 struct MatrixOptions {
     chain_length: i8,
     parallel: i8,
     brightness: i32,
     oled_slowdown: i32,
     fail_on_error: bool
-}
-
-pub fn get_input() -> Option<String> {
-    let mut buffer = String::new();
-    while std::io::stdin().read_line(&mut buffer).is_err() {
-        println!("Please enter your data again");
-    }
-    let input = buffer.trim().to_owned();
-    if &input == "" {
-        None
-    } else {
-        Some(input)
-    }
 }
 
 pub fn main_menu() {
@@ -31,12 +20,13 @@ pub fn main_menu() {
     println!("C. Continue");
     println!("Q. Quit");
 }
+
 pub fn create_json(){
     let mut modules = vec![];
     let mut main_json = json::object! {};
     loop {
         main_menu();
-        match get_input() {
+        match oledlib::get_input() {
             Some(input) => {
                 match input.as_str() {
                     "1" => {
@@ -78,9 +68,10 @@ pub fn create_json(){
     }
     for module in modules {
         match module {
-            1 => time::configure(&mut main_json), // might have to copy the trait 
-            2 => println!("weather"),
-            3 => println!("stock"),
+            // will probably have to store or add to the json outright
+            1 => {let timeoptions = time::configure();}, 
+            2 => {let weatheroptions = weather::configure();},
+            3 => {let stockoptions = stock::configure();},
             4 => println!("sport"),
             _ => break,
         }

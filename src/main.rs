@@ -1,6 +1,7 @@
 mod filelib;
 mod createjson;
-
+extern crate log;
+use env_logger::{Env};
 use clap::{Arg, App};
 
 fn parse_json(contents: &str) -> json::JsonValue {
@@ -12,7 +13,14 @@ fn parse_json_file(file: &str) -> json::JsonValue {
     let final_parse = parse_json(&contents);
     final_parse
 }
+fn init_logger() {
+    let env = Env::default()
+        .filter_or("RUST_LOG", "error")
+        .write_style("always");
+    env_logger::init_from_env(env);
+}
 fn main() {
+    init_logger();
     let app = App::new("ohmyoled").version("2.0.0");
     let args_vec = vec![
         Arg::new("create_json")
@@ -29,7 +37,7 @@ fn main() {
     let app = app.args(args_vec);
     let matches = app.get_matches();
     if matches.is_present("create_json") {
-        createjson::create_json();
+        createjson::create_json(); // make an array of options
         std::process::exit(0);
     } else if matches.is_present("json_file") {
         let main_json = parse_json_file(matches.value_of("json_file").unwrap());
