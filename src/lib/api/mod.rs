@@ -48,3 +48,7 @@ impl API for SportApi {
         }
     }
 }
+pub struct SportApiType {
+    pub api: SportApi,
+    pub api_key: Option<String>,
+}

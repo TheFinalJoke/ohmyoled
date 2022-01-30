@@ -1,6 +1,5 @@
 use log::info;
 use oledlib::api;
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum WeatherFormat {
@@ -85,12 +84,12 @@ pub fn configure_location() -> api::WeatherLocationData {
         }
     }
 }
-pub fn config_format() -> WeatherFormat {
+pub fn config_format() -> Option<WeatherFormat> {
     loop {
         println!("What Weather Format, Imperial or Metric? (I, M)");
         let format = match oledlib::get_input().unwrap().to_lowercase().as_str() {
-            "i" => WeatherFormat::IMPERIAL,
-            "m" => WeatherFormat::METRIC,
+            "i" => Some(WeatherFormat::IMPERIAL),
+            "m" => Some(WeatherFormat::METRIC),
             _ => {
                 println!("Invalid format, Try again..");
                 continue;
@@ -99,7 +98,7 @@ pub fn config_format() -> WeatherFormat {
         return format;
     }
 }
-pub fn configure() {
+pub fn configure() -> Result<WeatherOptions, String> {
     info!("In weather configuration");
     println!("[weather]: Do you want to use the default config?? (y/n)");
     match oledlib::get_input() {
@@ -119,9 +118,9 @@ pub fn configure() {
             }
             _ => {
                 info!("That is a wrong input");
-                Err("That is a wrong input")
+                Err("That is a wrong input".to_owned())
             }
         },
-        None => Err("Problem while figuring"),
+        None => Err("Problem while figuring".to_owned()),
     }
 }
