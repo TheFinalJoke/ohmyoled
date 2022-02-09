@@ -1,176 +1,49 @@
-use oledlib::api;
+use oledlib::{api, teams};
 use log::{info};
-#[derive(Debug)]
-pub enum SportsTypes {
-    BASKETBALL,
-    BASEBALL,
-    FOOTBALL,
-    HOCKEY,
-}
-impl SportsTypes {
-    pub fn print_apis() {
-        println!("Choose From Apis");
-        println!("Basketball");
-        println!("Baseball");
-        println!("Football");
-        println!("Hockey");
-    }
-    pub fn print_hockey_teams() {
-        println!(
-        "Arizona Coyotes 
-        Boston Bruins 
-        Buffalo Sabres
-        Calgary Flames
-        Carolina Hurricanes
-        Chicago Blackhawks
-        Colorado Avalanche
-        Columbus Blue Jackets
-        Dallas Stars ,
-        Detroit Red Wings
-        Edmonton Oilers
-        Florida Panthers
-        Los Angeles Kings
-        Minnesota Wild
-        Montreal Canadiens
-        Nashville Predators
-        New Jersey Devils
-        New York Islanders
-        New York Rangers
-        Ottawa Senators
-        Philadelphia Flyers
-        Pittsburgh Penguins
-        San Jose Sharks
-        Seattle Kraken
-        St. Louis Blues
-        Tampa Bay Lightning
-        Toronto Maple Leafs
-        Vancouver Canucks
-        Vegas Golden Knights
-        Washington Capitals
-        Winnipeg Jets"
-    }
-    pub fn print_football_teams() {
-        println!(
-         "Arizona Cardinals
-          Atlanta Falcons
-          Baltimore Ravens
-          Buffalo BillsCarolina Panthers
-          Chicago BearsCincinnati Bengals
-          Cleveland Browns
-          Dallas Cowboys
-          Denver Broncos 
-          Detroit Lions
-          Green Bay Packers
-          Houston Texans 
-          Indianapolis Colts
-          Jacksonville Jaguars
-          Kansas City Chiefs
-          Las Vegas Raiders
-          Los Angeles Chargers
-          Los Angeles Rams
-          Miami Dolphins 
-          Minnesota Vikings
-          New England Patriots
-          New Orleans Saints
-          New York Giants
-          New York Jets
-          Philadelphia Eagles
-          Pittsburgh Steelers
-          San Francisco 49ers
-          Seattle Seahawks
-          Tampa Bay Buccaneers
-          Tennessee Titans
-          Washington Football Team"
-        );
-    }
-    pub fn print_baseball_teams() {
-        println!(
- "San Francisco Giants,
- Los Angeles Dodgers,
- Tampa Bay Rays,
- Houston Astros,
- Milwaukee Brewers,
- Chicago White Sox,
- Boston Red Sox,
- New York Yankees,
- Toronto Blue Jays,
- St. Louis Cardinals,
- Seattle Mariners,
- Atlanta Braves,
- Oakland Athletics,
- Cincinnati Reds,
- Philadelphia Phillies,
- Cleveland Indians,
- San Diego Padres,
- Detroit Tigers,
- New York Mets,
- Los Angeles Angels,
- Colorado Rockies,
- Kansas City Royals,
- Minnesota Twins,
- Chicago Cubs,
- Miami Marlins,
- Washington Nationals,
- Pittsburgh Pirates,
- Texas Rangers,
- Arizona Diamondbacks,
- Baltimore Orioles");
-    }
-pub fn print_basketball_teams() {
-    println!(
-        "Atlanta Hawks
-        Boston Celtics
-        Brooklyn Nets
-        Charlotte Hornets
-        Chicago Bulls
-        Cleveland Cavaliers
-        Dallas Mavericks
-        Denver Nuggets
-        Detroit Pistons
-        Golden State Warriors
-        Houston Rockets
-        Indiana Pacers
-        Los Angeles Clippers
-        Los Angeles Lakers
-        Memphis Grizzlies
-        Miami Heat
-        Milwaukee Bucks
-        Minnesota Timberwolves
-        New Orleans Pelicans
-        New York Knicks
-        Oklahoma City Thunder
-        Orlando Magic
-        Philadelphia 76ers
-        Phoenix Suns
-        Portland Trail Blazers
-        Sacramento Kings
-        San Antonio Spurs
-        Toronto Raptors
-        Utah Jazz 
-        Washington Wizards"
-    );
-}
-}
 
 #[derive(Debug)]
-struct SportOptions {
-    run: bool,
-    api: api::SportApi,
-    api_key: Option<String> 
-    sport: SportsTypes,
-    team_id: String,
+pub struct SportOptions {
+    pub run: bool,
+    pub api: api::SportApi,
+    pub api_key: Option<String>,
+    pub sport: teams::SportsTypes,
+    pub team_logo: teams::Logo,
 }
 impl Default for SportOptions {
     fn default() -> Self {
-        SportOptions {
+        Self {
             run: true,
             api: api::SportApi::Sportsipy,
-            api_key: None
-            sport: SportsTypes::BASEBALL,
-            team_id: "Chicago Cubs".to_string(),
+            api_key: None,
+            sport: teams::SportsTypes::BASEBALL,
+            team_logo: teams::Logo{
+                name: "Chicago Cubs".to_string(), 
+                sportsdb_leagueid: 4424, 
+                url: "https://www.thesportsdb.com/images/media/team/badge/wxbe071521892391.png".to_string(), 
+                sport: teams::SportsTypes::BASEBALL, 
+                shorthand: "CHC".to_string(), 
+                apisportsid: 6, 
+                sportsdbid: 135269, 
+                sportsipyid: None
+            },
         }
     }
 }
+impl SportOptions {
+    pub fn convert_to_json(&self) -> json::JsonValue {
+        json::object!{
+            "run": self.run,
+            "api": self.api.get_api(),
+            "api_key": match &self.api_key {
+                Some(key) => key,
+                None => "null"
+            },
+            "sport": self.sport.get_sport_str(),
+            "team_logo": self.team_logo.to_json(),
+        }
+    }
+}
+
 fn get_sport_api_key() -> String {
     println!("You Entered a api that requires an API Key");
     println!("Please enter Key now -> ");
@@ -180,13 +53,13 @@ fn get_sport_api_key() -> String {
     };
     api_key
 }
-fn get_sport_api() -> api::WeatherApiType {
+fn get_sport_api() -> api::SportApiType {
     loop {
         println!("Please enter api, Sportsipy(Default) (sptipy),");
-        println!("OpenWeather Api (apisport) , Requires an Api -> ");
+        println!("APISPORTS Api (apisport) , Requires an Api -> ");
         let api_map = match &*oledlib::get_input().unwrap().to_lowercase() {
             "sptipy" => api::SportApiType {
-                api: api::SportApiType::Sportsipy,
+                api: api::SportApi::Sportsipy,
                 api_key: None,
             },
             "apisport" => api::SportApiType {
@@ -201,25 +74,35 @@ fn get_sport_api() -> api::WeatherApiType {
         return api_map;
     }
 }
-pub fn configure_sport() -> SportsTypes {
+pub fn configure_sport() -> teams::SportsTypes {
     loop {
-        SportsTypes::print_apis();
+        teams::SportsTypes::print_apis();
         let sport_choice = match oledlib::get_input().unwrap().to_lowercase().as_str() {
-            "baseball" => SportsTypes::BASEBALL,
-            "basketball" => SportsTypes::BASKETBALL,
-            "hockey" => SportsTypes::HOCKEY,
-            "football" => SportsTypes::FOOTBALL,
+            "baseball" => teams::SportsTypes::BASEBALL,
+            "basketball" => teams::SportsTypes::BASKETBALL,
+            "hockey" => teams::SportsTypes::HOCKEY,
+            "football" => teams::SportsTypes::FOOTBALL,
             _ => {
                 println!("Incorrect sport");
                 continue
             } 
-        }
+        };
         return sport_choice;
     }
 }
-pub get_team(team: String) -> Result<String, String>{
-
+pub fn team_choice(sport: &teams::SportsTypes) -> teams::Logo {
+    loop {
+        println!("Choose your Team, -> name of team)");
+        teams::print_teams(sport);
+        let str_input = oledlib::get_input().unwrap();
+        let team: Result<teams::Logo, String> = teams::validate(str_input, sport);
+        return match team {
+            Ok(t) => t, 
+            Err(e) => {println!("{}", e); continue;}
+        }
+    }   
 }
+
 pub fn configure() -> Result<SportOptions, String> {
     info!("In Sports Configuration");
     println!("[sport]: Do you want to use the default config?? (y/n)");
@@ -228,16 +111,17 @@ pub fn configure() -> Result<SportOptions, String> {
             "y" => Ok(SportOptions::default()),
             "n" => {
                 let api_decision: api::SportApiType = get_sport_api();
-                let sport_choice: SportsTypes = configure_sport();
+                let sport_choice: teams::SportsTypes = configure_sport();
+                let team_choosen: teams::Logo = team_choice(&sport_choice);
                 Ok(
                     SportOptions {
                         run: true,
                         api: api_decision.api,
                         api_key: api_decision.api_key,
                         sport: sport_choice,
-
+                        team_logo: team_choosen,
                     }
-                )
+                    )
             }
             _ => {
                 info!("That is a wrong input");

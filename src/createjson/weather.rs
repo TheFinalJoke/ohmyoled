@@ -1,10 +1,19 @@
 use log::info;
 use oledlib::api;
+use json;
 
 #[derive(Debug)]
 pub enum WeatherFormat {
     IMPERIAL,
     METRIC,
+}
+impl WeatherFormat {
+    fn get_format(&self) -> String {
+        match self {
+            WeatherFormat::IMPERIAL => "imperial".to_string(),
+            WeatherFormat::METRIC => "metric".to_string(),
+        }
+    }
 }
 #[derive(Debug)]
 pub struct WeatherOptions {
@@ -24,6 +33,30 @@ impl Default for WeatherOptions {
             current_location: true,
             city: None,
             weather_format: Some(WeatherFormat::IMPERIAL),
+        }
+    }
+}
+impl WeatherOptions {
+    pub fn convert_to_json(&self) -> json::JsonValue {
+        json::object!{
+            "run": self.run,
+            "api": match &self.api {
+                api::WeatherApi::Nws => "nws".to_string(),
+                api::WeatherApi::Openweather => "openweather".to_string(),
+            },
+            "api_key": match &self.api_key {
+                Some(key) => key,
+                None => "null"
+            },
+            "current_location": self.current_location,
+            "city": match &self.city {
+                Some(city) => city,
+                None => "null",
+            },
+            "weather_format": match &self.weather_format {
+                Some(format) => format.get_format(),
+                None => "null".to_string(),
+            }
         }
     }
 }

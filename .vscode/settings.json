@@ -4,6 +4,4 @@
     "python.linting.pylintEnabled": true,
     "python.linting.flake8Enabled": false,
     "python.linting.enabled": true,
-    "editor.defaultFormatter": "rust-lang.rust", // Makes the magic
-    "editor.formatOnSave": true // Optional
 }

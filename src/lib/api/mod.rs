@@ -1,13 +1,16 @@
-pub trait API {
-    fn get_api(&self) -> &'static str;
+use json::JsonValue;
+pub trait Json {
+    fn convert(&self) -> JsonValue;
+    // Will implement this when main rewrite in rust
+    // fn from_json(&self) -> Self;
 }
 #[derive(Debug)]
 pub enum WeatherApi {
     Nws,
     Openweather,
 }
-impl API for WeatherApi {
-    fn get_api(&self) -> &'static str {
+impl WeatherApi {
+    pub fn get_api(&self) -> &'static str {
         match self {
             WeatherApi::Nws => "nws",
             WeatherApi::Openweather => "openweather",
@@ -28,23 +31,23 @@ pub struct WeatherApiType {
 pub enum StockApi {
     Finnhub,
 }
-impl API for StockApi {
-    fn get_api(&self) -> &'static str {
+impl StockApi {
+    pub fn get_api(&self) -> String {
         match self {
-            StockApi::Finnhub => "finnhub",
+            StockApi::Finnhub => "finnhub".to_string(),
         }
     }
 }
-
+#[derive(Debug)]
 pub enum SportApi {
     Sportsipy,
     ApiSports,
 }
-impl API for SportApi {
-    fn get_api(&self) -> &'static str {
+impl SportApi {
+    pub fn get_api(&self) -> String {
         match self {
-            SportApi::ApiSports => "api-sports",
-            SportApi::Sportsipy => "sportsipy",
+            SportApi::ApiSports => "api-sports".to_string(),
+            SportApi::Sportsipy => "sportsipy".to_string(),
         }
     }
 }
