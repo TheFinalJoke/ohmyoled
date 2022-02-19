@@ -1,11 +1,12 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 with open("README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="2.0.0",
+    version="2.0.1",
     python_requires='>=3.8.9',
+    packages=find_packages(),
     py_modules=["main"],
     description="64x32 Oled Matrix Display",
     author="thefinaljoke",
