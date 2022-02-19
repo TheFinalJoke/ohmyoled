@@ -19,8 +19,10 @@ class StockApi(Runner):
         super().__init__(config)
         self.stock = self.config['stock']
         try:
-            if "stock_api_token" in self.config['basic']:
-                self.token = self.config['basic'].get('stock_api_token')
+            if "null" == self.stock.get('api_key'):
+                raise KeyError
+            elif "null" != self.stock.get('api_key'):    
+                self.token = self.stock.get('api_key')
             else:
                 self.token = os.environ['STOCKTOKEN']
         except KeyError:
@@ -49,8 +51,8 @@ class StockApi(Runner):
         self.logger.info("Getting Stock")
         stock_data = {"Stock": {}}
         self.logger.debug("Config has historical data for stocks")
-        hist_stock = HistoricalStock(self.token, self.config['stock'])
-        stock_data["Stock"].update({"Historical": await hist_stock.run()})
+        #hist_stock = HistoricalStock(self.token, self.config['stock'])
+        #stock_data["Stock"].update({"Historical": await hist_stock.run()})
         self.logger.debug("Getting Quote data")
         quote = SQuote(self.token, self.config['stock'])
         stock_api_return = await quote.run()
@@ -73,17 +75,17 @@ class Stock(Caller):
         self._lowest_price = self.quote['l']
         self._previous_close = self.quote['pc']
         self._symbol = self.quote['symbol']
-        self.historical = self.stock_data.get('Historical')
-        self._hist_close_prices = self.historical['c']
-        self._hist_high_prices = self.historical['h']
-        self._hist_low_prices = self.historical['l']
-        self._hist_opening_prices = self.historical['o']
-        self._hist_volume = self.historical['v']
-        self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
+        #self.historical = self.stock_data.get('Historical')
+        #self._hist_close_prices = self.historical['c']
+        #self._hist_high_prices = self.historical['h']
+        #self._hist_low_prices = self.historical['l']
+        #self._hist_opening_prices = self.historical['o']
+        #self._hist_volume = self.historical['v']
+        #self._hist_timestamps = [datetime.fromtimestamp(time) for time in self.historical['t']]
         self._description = self.quote['description']
         self._name = self._description['name']
     def __repr__(self) -> str:
-        datetimes = [dates.strftime("%Y-%m-%d %H:%M:%S") for dates in self._hist_timestamps]
+       # datetimes = [dates.strftime("%Y-%m-%d %H:%M:%S") for dates in self._hist_timestamps]
         attrs = [
             f"symbol={self._symbol}",
             f"open_price={self._open_price}",
@@ -91,12 +93,12 @@ class Stock(Caller):
             f"highest_price={self._highest_price}",
             f"lowest_price={self._lowest_price}",
             f"previous_close_price={self._previous_close}",
-            f"hist_close_prices={json.dumps(self._hist_close_prices, indent=2)}",
-            f"hist_low_prices={json.dumps(self._hist_low_prices, indent=2)}",
-            f"hist_high_prices={json.dumps(self._hist_high_prices, indent=2)}",
-            f"hist_open_prices={json.dumps(self._hist_opening_prices, indent=2)}",
-            f"hist_volume={json.dumps(self._hist_volume, indent=2)}",
-            f"hist_timestamps={json.dumps(datetimes, indent=2)}",
+            # f"hist_close_prices={json.dumps(self._hist_close_prices, indent=2)}",
+            # f"hist_low_prices={json.dumps(self._hist_low_prices, indent=2)}",
+            # f"hist_high_prices={json.dumps(self._hist_high_prices, indent=2)}",
+            # f"hist_open_prices={json.dumps(self._hist_opening_prices, indent=2)}",
+            # f"hist_volume={json.dumps(self._hist_volume, indent=2)}",
+            # f"hist_timestamps={json.dumps(datetimes, indent=2)}",
             f"description={json.dumps(self._description, indent=2)}",
             f"name={self._name}"
         ]

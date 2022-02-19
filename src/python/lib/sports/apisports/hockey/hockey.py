@@ -38,7 +38,7 @@ class Hockey(Runner):
         self.logger.info('Running Hockey API')
         parsed = self.parse_args()
         api_data = {}
-        logo = logo_map[self.config.get('team_id')]
+        logo = logo_map[self.config['team_logo'].get('name')]
         for section, url in self.url_builder(parsed, logo).items():
             api_data.update({section: await self.get_data(url, self.headers)})
         api_data['sport'] = 'hockey'

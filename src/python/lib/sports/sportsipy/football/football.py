@@ -35,7 +35,7 @@ class FootballSportsipy(Runner):
         try:
             self.logger.info("Inside of the Football Sportsipy")
             sport = {}
-            team = logo_map[self.config['sport']['team_id']]
+            team = logo_map[self.config['sport']['team_logo']['name']]
             self.logger.info("Running Football Sportsipy Api")
             sport['team'] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")
             sport['schedule'] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")

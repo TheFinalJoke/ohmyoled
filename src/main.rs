@@ -22,6 +22,7 @@ fn init_logger() {
 }
 fn main() {
     init_logger();
+    let mut configuration = json::JsonValue::Null;
     let app = App::new("ohmyoled").version("2.0.0");
     let args_vec = vec![
         Arg::new("create_json")
@@ -65,8 +66,12 @@ fn main() {
         }
         std::process::exit(0);
     } else if matches.is_present("json_file") {
-        let _main_json = parse_json_file(matches.value_of("json_file").unwrap());
+        configuration = parse_json_file(matches.value_of("json_file").unwrap());
     }
 
+    if configuration == json::JsonValue::Null {
+        configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
+    }
+    
     
 }

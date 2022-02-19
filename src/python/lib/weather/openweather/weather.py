@@ -14,6 +14,9 @@ import lib.weather.weatherbase as base
 from lib.weather.weather_icon import weather_icon_mapping
 import csv
 
+class OpenWeatherException(Exception):
+    pass
+
 class OpenWeatherApi(Runner):
     """
     Weatherapi object 
@@ -22,12 +25,15 @@ class OpenWeatherApi(Runner):
     """
     def __init__(self, config) -> None:
         super().__init__(config)
-        self.weather = self.config['weather']
+        self.weather = self.config.get("weather")
         try:
-            if "open_weather_token" in self.config['basic']:
-                self.token: str = self.config['basic'].get('open_weather_token')
+            
+            if "null" == self.weather.get('api_key'):
+                raise KeyError
+            elif "null" != self.weather.get('api_key'):    
+                self.token = self.weather.get('api_key')
             else:
-                self.token: str = os.environ['WEATHERTOKEN']
+                self.token = os.environ['WEATHERTOKEN']
         except KeyError:
             self.logger.critical("No Weather Token")
             sys.exit("No Weather Token")
@@ -36,14 +42,13 @@ class OpenWeatherApi(Runner):
         """
         Check if zipcode or city in config file
         """
-        if 'current_location' in self.weather:
+        if self.weather.get("current_location") != "null":
             self.logger.debug("Using Current location via ipinfo")
             return await self.url_builder(current_location=True)
-        elif 'zipcode' in self.weather:
-            self.logger.debug(f"Using Zipcode {self.weather.getint('zipcode')}")
-            return await self.url_builder(zipcode=self.weather.getint('zipcode'))
         else:
             self.logger.debug(f"Using City {self.weather['city']}")
+            if self.weather.get('city'):
+                raise OpenWeatherException
             return await self.url_builder(location=self.weather['city'])
 
 

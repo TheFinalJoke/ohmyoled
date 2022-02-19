@@ -3,6 +3,7 @@
 from abc import abstractmethod
 from typing import Dict
 import requests
+import os
 import logging
 import aiohttp
 from requests.models import Response
@@ -57,8 +58,8 @@ class Runner(RunnerABS):
         super().__init__()
         self.config = config
         self.runner_logger = logger
-        if not self.config['basic'].getboolean('testing'):
-            self.logger.setLevel(self.config['basic'].getint('loglevel'))
+        if int(os.getenv("DEV")) != 1:
+            self.logger.setLevel(logging.INFO)
         else:
             self.logger.setLevel(logging.DEBUG)
         self.logger.debug(f"Runner logger is set to {self.logger.getEffectiveLevel()}")

@@ -42,7 +42,7 @@ class BasketballSportsipy(Runner):
         try:
             self.logger.info('Running Sportsipy')
             sport = {}
-            team = self.config['sport']['team_id']
+            team = self.config['sport']['team_logo']['name']
             self.logger.info("Running Basketball Sportsipy Api")
             breakpoint()
             sport['team'] = asyncio.create_task(self.run_team(team), name="team_task")

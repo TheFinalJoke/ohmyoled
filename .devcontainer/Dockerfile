@@ -4,4 +4,5 @@
 ARG VARIANT="latest"
 FROM thefinaljoke/ohmyoleddev:${VARIANT} AS PYTHON_LAYER
 RUN apt install zsh -y && pip3 install pylint && pip3 install flake8
+ENV DEV=1
 RUN echo "PROMPT=\"%n@%m:%~ [code: %?] \"" >> /root/.zshrc

@@ -12,7 +12,6 @@ from lib.sports.logo import Logo, logo_map
 import lib.sports.sportbase as base
 import json
 
-# TODO @thefinaljoke More abstract to use different apis 
 class SportApi(Runner):
     def __init__(self, config):
         super().__init__(config)

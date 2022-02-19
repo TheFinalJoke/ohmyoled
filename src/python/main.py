@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 import asyncio
-import configparser
 import time
 import argparse
+import os
 import sys
 from rgbmatrix import (
     RGBMatrixOptions, 
@@ -19,6 +19,7 @@ from matrix.weathermatrix import WeatherMatrix
 from matrix.sport.sportmatrix import SportMatrix
 import traceback
 import logging
+import json
 
 
 stream_formatter = logging.Formatter(
@@ -44,19 +45,19 @@ class Main():
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
-        if not self.config['basic'].getboolean('testing'):
-            self.logger.setLevel(self.config['basic'].getint('loglevel'))
+        if int(os.getenv("DEV")) != 1:
+            self.logger.setLevel(logging.INFO)
         else:
-            self.logger.setLevel(10)
+            self.logger.setLevel(logging.DEBUG)
         self.poll = None
         self.logger.debug(f"Logger is set to {self.logger.getEffectiveLevel()}")
     def parse_config_file(self):
         module = {}
         self.logger.info("Parsing config file")
-        for section in self.config.sections():
-            if section == 'basic':
+        for section in self.config.keys():
+            if section == 'matrix_options':
                 continue
-            module.update({section: self.config[section].getboolean('Run')})
+            module.update({section: self.config[section].get('run')})
         return module
     def get_modules_to_run(self):
         api_modules = {}
@@ -79,14 +80,14 @@ class Main():
         return api_modules
 
     def poll_rgbmatrix(self):
-        options = self.config['matrix']
+        options = self.config.get("matrix_options", "There is no matrix options")
         rgboptions = RGBMatrixOptions()
         rgboptions.cols = 64
         rgboptions.rows = 32
-        rgboptions.chain_length = options.getint('parallel')
-        rgboptions.parallel = options.getint('chain_length')
-        rgboptions.gpio_slowdown = options.getint('oled_slowdown')
-        rgboptions.brightness = options.getint('brightness')
+        rgboptions.chain_length = options.get("chain_length")
+        rgboptions.parallel = options.get("parallel")
+        rgboptions.gpio_slowdown = options.get('oled_slowdown')
+        rgboptions.brightness = options.get('brightness')
         rgboptions.hardware_mapping = 'adafruit-hat'
         return rgboptions
 
@@ -171,10 +172,11 @@ if __name__ == "__main__":
     elif args.version:
         print(__version__())
         sys.exit(0)
-    config = configparser.ConfigParser()
-    logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.conf")
-    config.read('/etc/ohmyoled/ohmyoled.conf')
-    main = Main(config)
+    with open("/etc/ohmyoled/ohmyoled.json") as file:
+        j_object = json.load(file)
+        
+    logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.json")
+    main = Main(j_object)
 
     loop = asyncio.get_event_loop()
     try:
