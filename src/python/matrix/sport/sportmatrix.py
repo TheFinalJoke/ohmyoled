@@ -8,7 +8,6 @@ import lib.sports.sportbase as sport_types
 from datetime import datetime
 from typing import Dict, Tuple
 
-from sportsipy.nhl.schedule import Schedule
 from matrix.error import ErrorMatrix
 from PIL import ImageFont, Image, ImageDraw
 from lib.sports.sports import SportTransform, Sport
