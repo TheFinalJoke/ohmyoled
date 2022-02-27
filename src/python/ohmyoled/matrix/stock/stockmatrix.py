@@ -17,6 +17,9 @@ class StockMatrix(Matrix):
 
     async def poll_api(self) -> Stock:
         return Stock(await self.api.run())
+    
+    def nonasync_poll(self):
+        return Stock(self.api.run_with_asyncio())
 
     def render_symbol(self, api) -> None:
         font = ImageFont.truetype("fonts/04B_03B_.TTF", 8)
@@ -160,4 +163,16 @@ class StockMatrix(Matrix):
         self.render_highest_price(api)
         self.render_lowest_price(api)
         await self.render_image()
+        time.sleep(30)
+
+    def non_async_render(self, api) -> None:
+        self.logger.info("Started Render for Stock Matrix")
+        self.clear()
+        self.reload_image()
+        self.render_symbol(api)
+        self.render_current_price(api)
+        self.render_previous_close(api)
+        self.render_highest_price(api)
+        self.render_lowest_price(api)
+        self.nonasync_render_image()
         time.sleep(30)

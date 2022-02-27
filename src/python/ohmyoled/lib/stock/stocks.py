@@ -6,6 +6,7 @@ from ohmyoled.lib.stock.stockquote import SQuote
 from ohmyoled.lib.stock.historical_stock import HistoricalStock
 from datetime import date, datetime
 import os 
+import asyncio
 import json
 import sys
 
@@ -58,7 +59,21 @@ class StockApi(Runner):
         stock_api_return = await quote.run()
         stock_data["Stock"].update({"Quote": stock_api_return})
         return stock_data
-    
+    def run_with_asyncio(self):
+        """
+        Runs Stock to bring back the dictionary
+        """
+        self.logger.info("Getting Stock")
+        stock_data = {"Stock": {}}
+        self.logger.debug("Config has historical data for stocks")
+        #hist_stock = HistoricalStock(self.token, self.config['stock'])
+        #stock_data["Stock"].update({"Historical": await hist_stock.run()})
+        self.logger.debug("Getting Quote data")
+        quote = SQuote(self.token, self.config['stock'])
+        stock_api_return = asyncio.run(quote.run())
+        stock_data["Stock"].update({"Quote": stock_api_return})
+        return stock_data
+
 class Stock(Caller):
     """
     Reflecting of current stock polling

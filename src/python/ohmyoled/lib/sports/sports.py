@@ -10,7 +10,7 @@ from datetime import datetime
 from ohmyoled.lib.sports.sportbase import API
 from ohmyoled.lib.sports.logo import Logo, logo_map
 import ohmyoled.lib.sports.sportbase as base
-import json
+import asyncio 
 
 class SportApi(Runner):
     def __init__(self, config):
@@ -32,6 +32,23 @@ class SportApi(Runner):
         elif self.config['sport']['api'] or self.config['sport']['api'] == 'sportsipy':
             sports = SportsipyAPI(self.config)
             api_result = await sports.run_api_sportsipy()
+            return api_result
+        return
+
+    async def run_with_asyncio(self):
+        self.logger.info("Running Sports")
+        # This is a binding for complicated async runs async like rust
+        # Instead of using a json and dictionary -> Build individual objects 
+        # For Each API and then Bubble up back to sport to be normalized
+        # Build like a binary Tree
+        # Can Do checks here to bubble up problems
+        if self.config['sport']['api'] == "api-sports":
+            api_sports = ApiSports(self.config)
+            api_result = asyncio.run(api_sports.run_api_sports())
+            return api_result
+        elif self.config['sport']['api'] or self.config['sport']['api'] == 'sportsipy':
+            sports = SportsipyAPI(self.config)
+            api_result = asyncio.run(sports.run_api_sportsipy())
             return api_result
         return
 

@@ -150,7 +150,25 @@ class Main():
                 logger.error(E)
                 traceback.print_exc()
                 loop.stop()
-                
+    def nonasync_main_run(self):
+        try:
+            self.logger.info("Starting OhMyOled")
+            matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            self.logger.debug("Built Options for RGBMatrix")
+            # Make the matrixes to a Queue
+            matrixes = asyncio.run(self.init_matrix(matrix))
+            self.logger.info("Starting Matrixes...")
+            while True:
+                for matrix in matrixes:
+                    matrix_start_time = time.perf_counter()
+                    self.poll = matrix.nonasync_poll()
+                    matrix.non_async_render(self.poll)
+                    matrix_finish_time = time.perf_counter()
+                    logger.info(f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s")
+        except Exception as E:
+                logger.error(E)
+                traceback.print_exc()
+                loop.stop()
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an OhMyOled Matix")
     parser.add_argument(
@@ -161,6 +179,7 @@ if __name__ == "__main__":
         '--version',
         action="store_true"
     )
+    parser.add_argument("--non_async", action="store_true")
     # This Should pass args to ohmyoled parser for determining json/configparser
     # Then Return back json and the program should ingest json
     # But for now we will parse it here and pass args it if upgrades
@@ -180,8 +199,11 @@ if __name__ == "__main__":
 
     loop = asyncio.get_event_loop()
     try:
-        loop.create_task(main.main_run(loop))
-        loop.run_forever()
+        if not args.non_async:
+            loop.create_task(main.main_run(loop))
+            loop.run_forever()
+        else:
+            main.nonasync_main_run()
     except KeyboardInterrupt:
         logger.critical("Key Interrupt")
     except Exception as e:

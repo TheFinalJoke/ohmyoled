@@ -1,0 +1,44 @@
+
+// Concurrency Basics 
+// RC not sendable across 
+
+
+
+
+// std::sync::Arc Automatically Reference type
+
+Only Allowed Shared References not mutable
+let v = Arc::new(vec![1,2]);
+let v2 = v.clone()
+thread::spawn(move || {
+    println!("{}", v.len());
+});
+another_function(&v2)
+
+
+
+std::sync::Mutex
+// Have to lock the mutex 
+// Nothing can be touched only access through the mutex 
+fn sync_inc(counter: &Mutex<i32>) {
+    let mut data: Guard<i32> = counter.lock();
+    *data += 1;
+}
+
+
+std::sync::mpsc 
+Sending messages between channels
+tx = transmiting and rx = recieveing 
+let (tx, rx) = mspc::channel();
+let tx2 = tx.clone()
+thread::spawn(move || tx.send(5));
+thread::spawn(move || tx.send(40));
+
+
+println!("{:?}", rx.recv());
+
+
+#[async]
+https://www.youtube.com/watch?v=Dbytx0ivH7Q
+Futures in rust 
+tokio 

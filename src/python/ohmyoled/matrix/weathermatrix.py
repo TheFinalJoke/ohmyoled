@@ -41,6 +41,31 @@ class WeatherMatrix(Matrix):
                 sunset=result.get_sunset
             )
         )
+
+    def nonasync_poll(self):
+        result: NormalizedWeather = self.api.run_weather_with_asyncio()
+        return base.Weather(
+            api=result.get_api,
+            location=result.get_lat_long,
+            location_name=result.get_place,
+            current=base.CurrentWeather(
+                conditions=result.get_conditions,
+                temp=result.get_temp,
+                feels_like=result.get_feels_like,
+                wind_speed=result.get_wind_speed,
+                humidity=result.get_humidity,
+                perciptation_chance=result.get_precipitation,
+                uv=result.get_uv,
+                wind_direction=result.get_wind_deg,
+                weather_icon=result.get_icon,
+            ),
+            dayforcast=base.DayForcast(
+                todayhigh=result.get_max_temp,
+                todaylow=result.get_min_temp,
+                sunrise=result.get_sunrise,
+                sunset=result.get_sunset
+            )
+        )
         
     
     def get_temp_color(self, temp: int) -> Tuple[int, int, int]:
@@ -180,3 +205,49 @@ class WeatherMatrix(Matrix):
         await self.render_image()
         time.sleep(30)
 
+    def non_async_render(self, api) -> None:
+        self.logger.info("Rendering Weather Matrix")
+        self.logger.debug("Clearing Image")
+        self.clear()
+        self.logger.debug("Reloading Image in matrix")
+        xpos = 0
+        self.logger.info("Loading Screen 1 of Matrix")
+        while xpos < 100:
+            self.reload_image()
+            self.render_temp(api)
+            self.render_icon(api)
+            self.render_location(api, xpos)
+            self.render_conditions(api, xpos)
+            xpos += 1
+            self.nonasync_render_image()
+            time.sleep(3) if xpos == 1 else time.sleep(.05)
+        self.reload_image()
+        self.render_temp(api)
+        self.render_icon(api)
+        self.render_location(api, 0)
+        self.render_conditions(api, 0)
+        self.nonasync_render_image()
+        time.sleep(25)
+        self.clear()
+        self.logger.debug("Reloading Image in matrix")
+        self.reload_image()
+        xpos = 0
+        self.logger.info("Loading Screen 2 of Matrix")
+        while xpos < 100:
+            self.reload_image()
+            self.render_location(api, xpos)
+            self.render_icon(api)
+            self.render_humidity(api)
+            self.render_wind(api)
+            self.render_time(api)
+            self.nonasync_render_image()
+            xpos += 1
+            time.sleep(3) if xpos == 1 else time.sleep(.05)
+        self.reload_image()
+        self.render_location(api, 0)
+        self.render_icon(api)
+        self.render_humidity(api)
+        self.render_wind(api)
+        self.render_time(api)
+        self.nonasync_render_image()
+        time.sleep(30)

@@ -143,7 +143,9 @@ class Matrix(ABSMatrix):
                 offset_y=yoffset
             )
         )
-    
+    def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0):
+        self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)
+ 
     def draw_rectangle(self, position: List[Tuple]):
         """
         [List(Tuple,)]

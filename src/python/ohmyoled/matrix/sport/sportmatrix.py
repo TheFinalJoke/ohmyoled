@@ -2,6 +2,7 @@
 
 from logging import Logger
 import os
+import asyncio
 import time
 import urllib.request
 import ohmyoled.lib.sports.sportbase as sport_types
@@ -38,6 +39,21 @@ class SportMatrix(Matrix):
             losses=sport.get_losses,
         )
     
+    def nonasync_poll(self) -> Sport:
+        sport = SportTransform(asyncio.run(self.api.run()))
+        if not sport.api_result:
+            return None
+        return Sport(
+            team_name=sport.team_name,
+            sport=sport.get_sport,
+            logo=sport.get_logo,
+            api=sport.get_api,
+            standings=sport.get_standings,
+            schedule=sport.get_schedule,
+            next_game=sport.get_next_game,
+            wins=sport.get_wins,
+            losses=sport.get_losses,
+        )
     def away_team(self, nextgame_data):
         if nextgame_data.homeoraway.lower() == "home":
             return nextgame_data.team
@@ -200,3 +216,39 @@ class SportMatrix(Matrix):
             self.logger.error(e)
             error_matrix = ErrorMatrix(self.matrix, self.logger, "Sports Matrix")
             await error_matrix.render()
+
+    def non_async_render(self, api):
+        try:
+            if not api:
+                raise Exception("Error Ocurred inside of the sport matrix")
+            self.clear()
+            self.reload_image()
+            if self.check_offseason(api):
+                xpos = 0
+                xpos_for_top = 0 
+                positions = [f"{team.position}. {team.name}" for team in api.standings]
+                while xpos < 2700:
+                    self.reload_image()
+                    images = (
+                        self.build_standings_image(positions, xpos),
+                        self.build_middle_image(api),
+                        self.build_top_image(api, xpos_for_top),
+                    )
+                    for image, position in images:
+                        self.paste_image(image, position)
+                    self.nonasync_render_image()
+                    xpos +=1
+                    xpos_for_top += 1
+                    if xpos_for_top == 100:
+                        xpos_for_top = 0
+                    time.sleep(3) if xpos == 1 else time.sleep(.001)
+            else:
+                font = ImageFont.truetype("/usr/share/fonts/fonts/04b24.otf", 14)
+                self.draw_multiline_text((0, 0), f"{api.sport.name}\nOffseason", font=font)
+                self.nonasync_render_image()
+                time.sleep(30)
+
+        except Exception as e:
+            self.logger.error(e)
+            error_matrix = ErrorMatrix(self.matrix, self.logger, "Sports Matrix")
+            error_matrix.non_async_render()
