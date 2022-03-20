@@ -115,6 +115,10 @@ fn main() {
     
     let app = app.args(args_vec);
     let matches = app.get_matches();
+    if matches.is_present("dev") {
+        println!("Building a dev environment, Replacing /etc/ohmyoled/ohmyoled.json with a dev json");
+        
+    }
     if matches.is_present("create_json") { // make an array of options
         let default_json_path = "/etc/ohmyoled/ohmyoled.json";
         if filelib::check_if_exists(&default_json_path){
