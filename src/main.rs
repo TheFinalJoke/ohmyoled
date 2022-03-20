@@ -115,9 +115,16 @@ fn main() {
     
     let app = app.args(args_vec);
     let matches = app.get_matches();
-    if matches.is_present("dev") {
+    if matches.is_present("dev_mode") {
+        let default_json_path = "/etc/ohmyoled/ohmyoled.json";
         println!("Building a dev environment, Replacing /etc/ohmyoled/ohmyoled.json with a dev json");
-        
+        let main_json = createjson::create_json(true);
+        std::fs::remove_file(&default_json_path).expect("Can not Remove file");
+        let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
+        println!("Writing config to file {}", &default_json_path);
+        main_json.write(&mut file).unwrap();
+        println!("Wrote to {}, a dev json", default_json_path);
+        std::process::exit(0);
     }
     if matches.is_present("create_json") { // make an array of options
         let default_json_path = "/etc/ohmyoled/ohmyoled.json";
@@ -125,7 +132,7 @@ fn main() {
             println!("Would you like to overwrite ({})? (y/n)", &default_json_path);
             match oledlib::get_input().unwrap().to_lowercase().as_str() {
                 "y" => {
-                    let main_json = createjson::create_json();
+                    let main_json = createjson::create_json(false);
                     std::fs::remove_file(&default_json_path).expect("Can not Remove file");
                     let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
                     println!("Writing config to file {}", &default_json_path);
@@ -141,7 +148,7 @@ fn main() {
                 }
             }
         } else {
-            let main_json = createjson::create_json();
+            let main_json = createjson::create_json(false);
             let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
             main_json.write(&mut file).unwrap();
         }
