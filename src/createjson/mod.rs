@@ -1,7 +1,7 @@
-mod stock;
-mod time;
-mod sport;
-mod weather;
+pub mod stock;
+pub mod time;
+pub mod sport;
+pub mod weather;
 use oledlib;
 
 pub struct MatrixOptions {

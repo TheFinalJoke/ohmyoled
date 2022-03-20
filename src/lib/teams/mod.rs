@@ -1,6 +1,7 @@
-
 use std::collections::HashMap;
 use json;
+use pyo3::{Python, PyObject, PyResult};
+use pyo3::types::{PyDict};
 
 #[derive(Debug, Copy, Clone)]
 pub enum SportsTypes {
@@ -25,6 +26,15 @@ impl SportsTypes {
             Self::HOCKEY => "hockey".to_string(),
         }
     }
+    pub fn str_to_sport(sport_str: String) -> Self {
+        match sport_str.as_str() {
+            "baseball" => SportsTypes::BASEBALL,
+            "basketball" => SportsTypes::BASKETBALL,
+            "football" => SportsTypes::FOOTBALL,
+            "hockey" => SportsTypes::HOCKEY,
+            _ => SportsTypes::BASEBALL,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -47,12 +57,42 @@ impl Logo {
             "sport": self.sport.get_sport_str(),
             "shorthand": self.shorthand.to_string(),
             "apisportsid": self.apisportsid,
-            "sporsdbid": self.sportsdbid,
+            "sportsdbid": self.sportsdbid,
             "sportsipyid": match self.sportsipyid {
                 Some(id) => id,
                 None => 0,
             },
         }
+    }
+    pub fn from_json(logo_json: &json::JsonValue) -> Self {
+        Self { 
+            name: logo_json["name"].to_string(),
+            sportsdb_leagueid: logo_json["sportsdb_leagueid"].as_i32().unwrap(),
+            url: logo_json["url"].to_string(),
+            sport: SportsTypes::str_to_sport(logo_json["sport"].to_string()),
+            shorthand: logo_json["shorthand"].to_string(),
+            apisportsid: logo_json["apisportsid"].as_i32().unwrap(),
+            sportsdbid: logo_json["sportsdbid"].as_i32().unwrap(),
+            sportsipyid: match logo_json["sportsipyid"].as_i32().unwrap() {
+                0 => None,
+                id => Some(id)
+            }
+        }
+    }
+    pub fn to_python_dict(&self, py: Python) -> PyResult<PyObject> {
+        let result = PyDict::new(py);
+        result.set_item("name", self.name.to_string())?;
+        result.set_item("sportsdb_leagueid", self.sportsdb_leagueid)?;
+        result.set_item("url", self.url.to_string())?;
+        result.set_item("sport", self.sport.get_sport_str())?;
+        result.set_item("shorthand", self.shorthand.to_string())?;
+        result.set_item("apisportsid", self.apisportsid)?;
+        result.set_item("sportsdbid", self.sportsdbid)?;
+        result.set_item("sportsipyid", match self.sportsipyid {
+            Some(id) => id,
+            None => 0,
+        })?;
+        Ok(result.into())
     }
 }
 #[derive(Debug, Clone)]

@@ -1,6 +1,8 @@
 use log::info;
 use oledlib::api;
 use json;
+use pyo3::{Python, PyResult, PyObject, IntoPy};
+use pyo3::types::{PyDict, IntoPyDict};
 
 #[derive(Debug)]
 pub enum WeatherFormat {
@@ -36,7 +38,43 @@ impl Default for WeatherOptions {
         }
     }
 }
+impl IntoPy<PyObject> for WeatherOptions {
+    fn into_py(self, py: Python) -> PyObject {
+        self.run.into_py(py)
+
+    }
+}
+impl IntoPyDict for WeatherOptions {
+    fn into_py_dict(self, py: Python) -> &PyDict {
+        let result = PyDict::new(py);
+        result.set_item("run", self.run).unwrap();
+        result.set_item("api", self.api.get_api()).unwrap_or_default();
+        result.set_item("api_key", self.match_api_key()).unwrap_or_default();
+        result.set_item("current_location", self.current_location).unwrap();
+        result.set_item("city", self.match_city()).unwrap();
+        result.set_item("weather_format", self.unwrap_weather_format()).unwrap();
+        result
+    }
+}
 impl WeatherOptions {
+    pub fn match_api_key(&self) -> String {
+        match &self.api_key {
+            Some(key) => key.to_string(),
+            None => "".to_string(),
+        }
+    }
+    pub fn match_city(&self) -> String {
+        match &self.city {
+            Some(city) => city.to_string(),
+            None => "".to_string(),
+        }
+    }
+    pub fn unwrap_weather_format(&self) -> String {
+        match &self.weather_format {
+                Some(format) => format.get_format(),
+                None => "null".to_string(),
+            }
+    }
     pub fn convert_to_json(&self) -> json::JsonValue {
         json::object!{
             "run": self.run,
@@ -56,6 +94,60 @@ impl WeatherOptions {
             "weather_format": match &self.weather_format {
                 Some(format) => format.get_format(),
                 None => "null".to_string(),
+            }
+        }
+    }
+    pub fn to_python_dict(&self, py: Python) -> PyResult<PyObject> {
+        let result = PyDict::new(py);
+        result.set_item("run", self.run)?;
+        result.set_item("api", match self.api {
+                api::WeatherApi::Nws => "nws".to_string(),
+                api::WeatherApi::Openweather => "openweather".to_string(),
+            })?;
+        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
+            "null" => "null",
+            key => key,
+
+        })?; 
+        result.set_item("current_location", self.current_location)?;
+        result.set_item("city", match &self.city {
+            None => "null",
+            Some(city) => city
+        })?;
+        result.set_item("weather_format", self.weather_format.as_ref().unwrap().get_format())?;
+        Ok(result.into())
+    }
+    pub fn _from_json(weather_json: &json::JsonValue) -> Self {
+        let weather = &weather_json["weather"];
+        Self {
+            run: weather["run"].as_bool().unwrap(),
+            api: {
+                match weather["api"].as_str().unwrap() {
+                    "nws" => api::WeatherApi::Nws,
+                    "openweather" => api::WeatherApi::Openweather,
+                    _ => api::WeatherApi::Nws
+                }
+            },
+            api_key: {
+                match weather["api_key"].as_str().unwrap() {
+                    "null" => None,
+                    key => Some(key.to_string())
+                }
+            },
+            current_location: weather["current_location"].as_bool().unwrap(),
+            city: {
+                match weather["city"].as_str().unwrap() {
+                "null" => None,
+                city => Some(city.to_string())
+                }
+            },
+            weather_format: {
+                match weather["weather_format"].as_str().unwrap() {
+                    "null" => None,
+                    "imperal" => Some(WeatherFormat::IMPERIAL),
+                    "metric" => Some(WeatherFormat::METRIC),
+                    _ => Some(WeatherFormat::IMPERIAL),
+                }
             }
         }
     }

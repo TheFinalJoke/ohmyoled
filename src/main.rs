@@ -5,12 +5,13 @@ use env_logger::{Env};
 use clap::{Arg, App};
 use json;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{PyDict, IntoPyDict};
 use std::collections::HashMap;
 
 struct ModuleValue {
     api: Py<PyAny>
 }
+
 fn parse_json(contents: &str) -> json::JsonValue {
     let parsed = json::parse(contents).unwrap();
     parsed
@@ -43,13 +44,30 @@ fn init_logger() {
         .write_style("always");
     env_logger::init_from_env(env);
 }
-/*
-fn to_hashmap(conf: &json::JsonValue) {
-    println!("{}", conf.entries());
+fn to_hashmap(conf: &json::JsonValue) -> HashMap<String, &json::JsonValue> {
+    let mut converted = HashMap::new();
+    for (s, entry) in conf.entries() {
+        converted.insert(s.to_string(), entry);
+    }
+    converted
 }
+
 fn run_python(conf: &json::JsonValue) -> PyResult<()> {
-    // https://pyo3.rs/v0.15.1/ecosystem/async-await.html
     /*
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+    let sys = py.import("sys")?;
+    let version: String = sys.get("version")?.extract()?;
+
+    let locals = [("os", py.import("os")?)].into_py_dict(py);
+    let code = "os.getenv('USER') or os.getenv('USERNAME') or 'Unknown'";
+    let user: String = py.eval(code, None, Some(&locals))?.extract()?;
+    let dict = createjson::weather::WeatherOptions::_from_json(&conf).into_py_dict(py);
+    println!("Hello {}, I'm Python {}, python_dict {}", user, version, dict);
+
+    // OKAY SO EACH Configuration needs to be implement intoPyDict
+    // 
+    // https://pyo3.rs/v0.15.1/ecosystem/async-await.html
     let fut = Python::with_gil(|py| {
         let asyncio = py.import("asyncio")?;
         // convert asyncio.sleep into a Rust Future
@@ -58,20 +76,23 @@ fn run_python(conf: &json::JsonValue) -> PyResult<()> {
     fut.await?;
     Ok(())
     */
-    to_hashmap(conf); 
-    Python::with_gil(|py| {
-        let wapi_import = py.import("ohmyoled.main").unwrap();
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let wapi_import = py.import("ohmyoled.lib.weather.normal.WeatherApi").unwrap();
         dbg!(wapi_import);
-        let weather_api_class = wapi_import.getattr("Main").unwrap();
-        dbg!(weather_api_class);
+        //let weather_api_class = wapi_import.getattr("WeatherApi").unwrap();
+        //dbg!(weather_api_class);
+        //let options = createjson::weather::WeatherOptions::_from_json(&conf).to_python_dict(py);
+        //let weather_api_object = weather_api_class.call1(options);
+        //dbg!(weather_api_object);
         //let config = PyTuple::new(py, [conf.dump()]);       
         //let weather_api_object = weather_api_class.call1(config).unwrap();
         //dbg!(weather_api_object);
         //dbg!(weather_api_object.call_method0("parse_config_file").unwrap());
-    });
     Ok(())
+
 }
-*/
+
 
 fn main() {
     init_logger();
@@ -87,6 +108,9 @@ fn main() {
         .long("json_file")
         .help("Pass a location of json file")
         .takes_value(true),
+        Arg::new("dev_mode")
+        .long("dev")
+        .help("creates a dev enviornment")
     ];
     
     let app = app.args(args_vec);
@@ -125,7 +149,7 @@ fn main() {
     if configuration == json::JsonValue::Null {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
-    // run_python(&configuration);
+    run_python(&configuration);
     let mut module_map: HashMap<String, ModuleValue> = HashMap::new();
     get_modules(&configuration, &mut module_map);
     

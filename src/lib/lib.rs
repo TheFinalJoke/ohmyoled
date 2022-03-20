@@ -1,5 +1,6 @@
 pub mod api;
 pub mod teams;
+pub mod debug;
 
 pub fn get_input() -> Option<String> {
     let mut buffer = String::new();

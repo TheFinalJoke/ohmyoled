@@ -1,6 +1,9 @@
 use oledlib::api::StockApi;
 use log::{info};
 use json;
+use pyo3::{PyObject, PyResult, Python};
+use pyo3::types::{PyDict};
+use pyo3::prelude::*;
 
 #[derive(Debug)]
 pub struct StockOptions {
@@ -32,6 +35,29 @@ impl StockOptions {
             },
             "symbol": self.symbol.as_str(),
         }
+    }
+    pub fn from_json(stock_json: &json::JsonValue) -> Self {
+        let sj = &stock_json["stock"];
+        Self {
+            run: sj["run"].as_bool().unwrap(),
+            api: StockApi::str_to_api(sj["api"].to_string()),
+            api_key: match sj["api_key"].as_str().unwrap() {
+                "null" => None,
+                key => Some(key.to_string())
+            },
+            symbol: sj["symbol"].to_string(),
+        }
+    }
+    pub fn to_python_dict(&self, py: Python) -> PyResult<PyObject> {
+        let result = PyDict::new(py);
+        result.set_item("run", self.run)?;
+        result.set_item("api", self.api.get_api())?;
+        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
+            "null" => "null",
+            key => key,
+        })?; 
+        result.set_item("symbol", self.symbol.to_string())?;
+        Ok(result.into())
     }
 }
 fn get_stock_api_key() -> String {

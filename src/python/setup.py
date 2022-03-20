@@ -4,7 +4,7 @@ with open("ohmyoled/README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="2.1.3",
+    version="2.1.4",
     python_requires='>=3.8.9',
     py_modules=["ohmyoled"], # Tells the name 
     packages=find_packages(),

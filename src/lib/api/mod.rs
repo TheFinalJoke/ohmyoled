@@ -37,6 +37,12 @@ impl StockApi {
             StockApi::Finnhub => "finnhub".to_string(),
         }
     }
+    pub fn str_to_api(api_str: String) -> Self {
+        match api_str.as_str() {
+            "finnhub" => Self::Finnhub,
+            _ => Self::Finnhub,
+        }
+    }
 }
 #[derive(Debug)]
 pub enum SportApi {
@@ -48,6 +54,13 @@ impl SportApi {
         match self {
             SportApi::ApiSports => "api-sports".to_string(),
             SportApi::Sportsipy => "sportsipy".to_string(),
+        }
+    }
+    pub fn api_to_str(api_str: String) -> Self {
+        match api_str.as_str() {
+            "api-sports" => SportApi::ApiSports,
+            "sportsipy" => SportApi::Sportsipy,
+            _ => SportApi::Sportsipy,
         }
     }
 }
