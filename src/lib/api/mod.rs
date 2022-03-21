@@ -1,9 +1,3 @@
-use json::JsonValue;
-pub trait Json {
-    fn convert(&self) -> JsonValue;
-    // Will implement this when main rewrite in rust
-    // fn from_json(&self) -> Self;
-}
 #[derive(Debug)]
 pub enum WeatherApi {
     Nws,

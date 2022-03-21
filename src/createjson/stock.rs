@@ -1,9 +1,8 @@
 use oledlib::api::StockApi;
 use log::{info};
 use json;
-use pyo3::{PyObject, PyResult, Python};
-use pyo3::types::{PyDict};
-use pyo3::prelude::*;
+use pyo3::{Python};
+use pyo3::types::{PyDict, IntoPyDict};
 
 #[derive(Debug)]
 pub struct StockOptions {
@@ -22,6 +21,19 @@ impl Default for StockOptions {
         }
     }
 }
+impl IntoPyDict for StockOptions {
+    fn into_py_dict(self, py: Python) -> &PyDict {
+        let result = PyDict::new(py);
+        result.set_item("run", self.run).unwrap();
+        result.set_item("api", self.api.get_api()).unwrap();
+        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
+            "null" => "null",
+            key => key,
+        }).unwrap(); 
+        result.set_item("symbol", self.symbol.to_string()).unwrap();
+        result.into()
+    }
+}
 impl StockOptions {
     pub fn convert_to_json(&self) -> json::JsonValue {
         json::object!{
@@ -37,27 +49,15 @@ impl StockOptions {
         }
     }
     pub fn from_json(stock_json: &json::JsonValue) -> Self {
-        let sj = &stock_json["stock"];
         Self {
-            run: sj["run"].as_bool().unwrap(),
-            api: StockApi::str_to_api(sj["api"].to_string()),
-            api_key: match sj["api_key"].as_str().unwrap() {
+            run: stock_json["run"].as_bool().unwrap(),
+            api: StockApi::str_to_api(stock_json["api"].to_string()),
+            api_key: match stock_json["api_key"].as_str().unwrap() {
                 "null" => None,
                 key => Some(key.to_string())
             },
-            symbol: sj["symbol"].to_string(),
+            symbol: stock_json["symbol"].to_string(),
         }
-    }
-    pub fn to_python_dict(&self, py: Python) -> PyResult<PyObject> {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run)?;
-        result.set_item("api", self.api.get_api())?;
-        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
-            "null" => "null",
-            key => key,
-        })?; 
-        result.set_item("symbol", self.symbol.to_string())?;
-        Ok(result.into())
     }
 }
 fn get_stock_api_key() -> String {

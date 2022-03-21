@@ -1,7 +1,7 @@
 use oledlib::{api, teams};
 use log::{info};
-use pyo3::{Python, PyObject, PyResult};
-use pyo3::types::{PyDict};
+use pyo3::{Python};
+use pyo3::types::{PyDict, IntoPyDict};
 use json;
 
 #[derive(Debug)]
@@ -32,6 +32,20 @@ impl Default for SportOptions {
         }
     }
 }
+impl IntoPyDict for SportOptions {
+    fn into_py_dict(self, py: Python) -> &PyDict {
+        let result = PyDict::new(py);
+        result.set_item("run", self.run).unwrap();
+        result.set_item("api", self.api.get_api()).unwrap();
+        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
+            "null" => "null",
+            key => key,
+        }).unwrap();
+        result.set_item("sport", self.sport.get_sport_str()).unwrap();
+        result.set_item("team_logo", self.team_logo.into_py_dict(py)).unwrap();
+        result.into()
+    }
+}
 impl SportOptions {
     pub fn convert_to_json(&self) -> json::JsonValue {
         json::object!{
@@ -46,31 +60,18 @@ impl SportOptions {
         }
     }
     pub fn from_json(sport_json: &json::JsonValue) -> Self {
-        let sj = &sport_json["sport"];
         Self {
-            run: sj["run"].as_bool().unwrap(),
-            api: api::SportApi::api_to_str(sj["api"].to_string()),
+            run: sport_json["run"].as_bool().unwrap(),
+            api: api::SportApi::api_to_str(sport_json["api"].to_string()),
             api_key: {
-                match sj["api_key"].as_str().unwrap() {
+                match sport_json["api_key"].as_str().unwrap() {
                     "null" => None,
                     key => Some(key.to_string())
                 }
             },
-            sport: teams::SportsTypes::str_to_sport(sj["sport"].to_string()),
-            team_logo: teams::Logo::from_json(&sj["team_logo"])
+            sport: teams::SportsTypes::str_to_sport(sport_json["sport"].to_string()),
+            team_logo: teams::Logo::from_json(&sport_json["team_logo"])
         }
-    }
-    pub fn to_python_dict(&self, py: Python) -> PyResult<PyObject> {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run)?;
-        result.set_item("api", self.api.get_api())?;
-        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
-            "null" => "null",
-            key => key,
-        })?;
-        result.set_item("sport", self.sport.get_sport_str())?;
-        result.set_item("team_logo", self.team_logo.to_python_dict(py)?)?;
-        Ok(result.into())
     }
 }
 

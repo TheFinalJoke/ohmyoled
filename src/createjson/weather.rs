@@ -1,7 +1,7 @@
 use log::info;
 use oledlib::api;
 use json;
-use pyo3::{Python, PyResult, PyObject, IntoPy};
+use pyo3::{Python, PyObject, IntoPy};
 use pyo3::types::{PyDict, IntoPyDict};
 
 #[derive(Debug)]
@@ -53,7 +53,7 @@ impl IntoPyDict for WeatherOptions {
         result.set_item("current_location", self.current_location).unwrap();
         result.set_item("city", self.match_city()).unwrap();
         result.set_item("weather_format", self.unwrap_weather_format()).unwrap();
-        result
+        result.into()
     }
 }
 impl WeatherOptions {
@@ -97,52 +97,31 @@ impl WeatherOptions {
             }
         }
     }
-    pub fn to_python_dict(&self, py: Python) -> PyResult<PyObject> {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run)?;
-        result.set_item("api", match self.api {
-                api::WeatherApi::Nws => "nws".to_string(),
-                api::WeatherApi::Openweather => "openweather".to_string(),
-            })?;
-        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
-            "null" => "null",
-            key => key,
-
-        })?; 
-        result.set_item("current_location", self.current_location)?;
-        result.set_item("city", match &self.city {
-            None => "null",
-            Some(city) => city
-        })?;
-        result.set_item("weather_format", self.weather_format.as_ref().unwrap().get_format())?;
-        Ok(result.into())
-    }
-    pub fn _from_json(weather_json: &json::JsonValue) -> Self {
-        let weather = &weather_json["weather"];
+    pub fn from_json(weather_json: &json::JsonValue) -> Self {
         Self {
-            run: weather["run"].as_bool().unwrap(),
+            run: weather_json["run"].as_bool().unwrap(),
             api: {
-                match weather["api"].as_str().unwrap() {
+                match weather_json["api"].as_str().unwrap() {
                     "nws" => api::WeatherApi::Nws,
                     "openweather" => api::WeatherApi::Openweather,
                     _ => api::WeatherApi::Nws
                 }
             },
             api_key: {
-                match weather["api_key"].as_str().unwrap() {
+                match weather_json["api_key"].as_str().unwrap() {
                     "null" => None,
                     key => Some(key.to_string())
                 }
             },
-            current_location: weather["current_location"].as_bool().unwrap(),
+            current_location: weather_json["current_location"].as_bool().unwrap(),
             city: {
-                match weather["city"].as_str().unwrap() {
+                match weather_json["city"].as_str().unwrap() {
                 "null" => None,
                 city => Some(city.to_string())
                 }
             },
             weather_format: {
-                match weather["weather_format"].as_str().unwrap() {
+                match weather_json["weather_format"].as_str().unwrap() {
                     "null" => None,
                     "imperal" => Some(WeatherFormat::IMPERIAL),
                     "metric" => Some(WeatherFormat::METRIC),

@@ -23,13 +23,22 @@ impl Default for MatrixOptions {
     }
 }
 impl MatrixOptions {
-    pub fn convert_to_json(&self) -> json::JsonValue {
+    pub fn convert(&self) -> json::JsonValue {
         json::object! {
                 "chain_length": self.chain_length,
                 "parallel": self.parallel,
                 "brightness": self.brightness,
                 "oled_slowdown": self.oled_slowdown,
                 "fail_on_error": self.fail_on_error,
+        }
+    }
+    pub fn from_json(js: &json::JsonValue) -> Self {
+        Self {
+            chain_length: js.as_i8().unwrap(),
+            parallel: js.as_i8().unwrap(),
+            brightness: js.as_i32().unwrap(),
+            oled_slowdown: js.as_i32().unwrap(),
+            fail_on_error: js.as_bool().unwrap()
         }
     }
 }
@@ -142,7 +151,7 @@ pub fn create_json(dev_mode: bool) -> json::JsonValue {
         }
     }
 
-    let moptions = MatrixOptions::default().convert_to_json();
+    let moptions = MatrixOptions::default().convert();
     let mut main_json = json::object!{
         "matrix_options": moptions
     };

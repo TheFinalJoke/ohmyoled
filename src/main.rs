@@ -5,11 +5,33 @@ use env_logger::{Env};
 use clap::{Arg, App};
 use json;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, IntoPyDict};
-use std::collections::HashMap;
+use pyo3::types::{PyDict, IntoPyDict, PyTuple};
 
 struct ModuleValue {
     api: Py<PyAny>
+}
+struct ModuleApiConfiguration {
+    matrix_options: createjson::MatrixOptions,
+    time: Option<createjson::time::TimeOptions>,
+    weather: Option<createjson::weather::WeatherOptions>,
+    stock: Option<createjson::stock::StockOptions>,
+    sport: Option<createjson::sport::SportOptions>,
+}
+impl IntoPyDict for ModuleApiConfiguration {
+    fn into_py_dict(self, py: Python) -> &PyDict {
+        // iterate over the modules and transform them into a pydict
+    }
+}
+impl ModuleApiConfiguration {
+    pub fn new(j: &json::JsonValue) -> Self {
+        Self {
+            matrix_options: createjson::MatrixOptions::from_json(j),
+            time: None,
+            weather: None,
+            stock: None,
+            sport: None,
+        }
+    }
 }
 
 fn parse_json(contents: &str) -> json::JsonValue {
@@ -21,22 +43,26 @@ fn parse_json_file(file: &str) -> json::JsonValue {
     let final_parse = parse_json(&contents);
     final_parse
 }
-fn get_modules(json_config: &json::JsonValue, module_map: &mut HashMap<String, ModuleValue>) {
-    /*
-    if json_config.has_key("time") {
-        module_map.insert("time", ModuleValue {
-            api: {
-                Python::with_gil(|py| {
-                    let ohmyled_lib = PyModule::import(py, "ohmyoled.lib").unwrap();
-                    let API = ohmyled_lib.getattr("API").unwrap();
-                    dbg!(API.getattr("APISPORTS");
-                })
+fn get_modules(json_config: &json::JsonValue) -> ModuleApiConfiguration {
+    let mut module_config = ModuleApiConfiguration::new(json_config);
+    for entry in json_config.entries() {
+        match entry.0 {
+            "time" => {
+                module_config.time = Some(createjson::time::TimeOptions::from_json(entry.1))
+            },
+            "weather" => {
+                module_config.weather = Some(createjson::weather::WeatherOptions::from_json(entry.1))
+            },
+            "stock" => {
+                module_config.stock = Some(createjson::stock::StockOptions::from_json(entry.1))
+            },
+            "sport" => {
+                module_config.sport = Some(createjson::sport::SportOptions::from_json(entry.1))
             }
-        })
-
+            _ => ()
+        }
     }
-    */
-    println!("stuff");
+    module_config
 }
 fn init_logger() {
     let env = Env::default()
@@ -44,15 +70,8 @@ fn init_logger() {
         .write_style("always");
     env_logger::init_from_env(env);
 }
-fn to_hashmap(conf: &json::JsonValue) -> HashMap<String, &json::JsonValue> {
-    let mut converted = HashMap::new();
-    for (s, entry) in conf.entries() {
-        converted.insert(s.to_string(), entry);
-    }
-    converted
-}
 
-fn run_python(conf: &json::JsonValue) -> PyResult<()> {
+fn run_python(conf: ModuleApiConfiguration) -> PyResult<()> {
     /*
     let gil = Python::acquire_gil();
     let py = gil.python();
@@ -78,17 +97,13 @@ fn run_python(conf: &json::JsonValue) -> PyResult<()> {
     */
         let gil = Python::acquire_gil();
         let py = gil.python();
-        let wapi_import = py.import("ohmyoled.lib.weather.normal.WeatherApi").unwrap();
-        dbg!(wapi_import);
-        //let weather_api_class = wapi_import.getattr("WeatherApi").unwrap();
-        //dbg!(weather_api_class);
-        //let options = createjson::weather::WeatherOptions::_from_json(&conf).to_python_dict(py);
-        //let weather_api_object = weather_api_class.call1(options);
-        //dbg!(weather_api_object);
-        //let config = PyTuple::new(py, [conf.dump()]);       
-        //let weather_api_object = weather_api_class.call1(config).unwrap();
-        //dbg!(weather_api_object);
-        //dbg!(weather_api_object.call_method0("parse_config_file").unwrap());
+        let options = transform_to_pydict_args(conf);
+        let args = PyTuple::new(py, &[options]);
+        let wapi_import = py.import("ohmyoled.lib.weather.normal")?;
+        dbg!(options);
+        let weather_api_class = wapi_import.getattr("WeatherApi")?.call1(args)?;
+        let result = weather_api_class.call_method0("run_weather_with_asyncio");
+        dbg!(result);
     Ok(())
 
 }
@@ -119,7 +134,9 @@ fn main() {
         let default_json_path = "/etc/ohmyoled/ohmyoled.json";
         println!("Building a dev environment, Replacing /etc/ohmyoled/ohmyoled.json with a dev json");
         let main_json = createjson::create_json(true);
-        std::fs::remove_file(&default_json_path).expect("Can not Remove file");
+        if filelib::check_if_exists(&default_json_path) {
+            std::fs::remove_file(&default_json_path).expect("Can not Remove file");
+        }
         let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
         println!("Writing config to file {}", &default_json_path);
         main_json.write(&mut file).unwrap();
@@ -160,8 +177,7 @@ fn main() {
     if configuration == json::JsonValue::Null {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
-    run_python(&configuration);
-    let mut module_map: HashMap<String, ModuleValue> = HashMap::new();
-    get_modules(&configuration, &mut module_map);
+    let config_mod: ModuleApiConfiguration = get_modules(&configuration);
+    run_python(config_mod);
     
 }
