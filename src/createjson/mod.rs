@@ -3,7 +3,10 @@ pub mod time;
 pub mod sport;
 pub mod weather;
 use oledlib;
+use pyo3::Python;
+use pyo3::types::{PyDict, IntoPyDict};
 
+#[derive(Debug)]
 pub struct MatrixOptions {
     pub chain_length: i8,
     pub parallel: i8,
@@ -22,6 +25,18 @@ impl Default for MatrixOptions {
         }
     }
 }
+impl IntoPyDict for MatrixOptions {
+    fn into_py_dict(self, py: Python) -> &PyDict {
+        // iterate over the modules and transform them into a pydict
+        let pydict = PyDict::new(py);
+        pydict.set_item("chain_length", self.chain_length).unwrap();
+        pydict.set_item("parallel", self.parallel).unwrap();
+        pydict.set_item("brightness", self.brightness).unwrap();
+        pydict.set_item("oled_slowdown", self.oled_slowdown).unwrap();
+        pydict.set_item("fail_on_error", self.fail_on_error).unwrap();
+        pydict
+    }
+}
 impl MatrixOptions {
     pub fn convert(&self) -> json::JsonValue {
         json::object! {
@@ -34,11 +49,11 @@ impl MatrixOptions {
     }
     pub fn from_json(js: &json::JsonValue) -> Self {
         Self {
-            chain_length: js.as_i8().unwrap(),
-            parallel: js.as_i8().unwrap(),
-            brightness: js.as_i32().unwrap(),
-            oled_slowdown: js.as_i32().unwrap(),
-            fail_on_error: js.as_bool().unwrap()
+            chain_length: js["chain_length"].as_i8().unwrap(),
+            parallel: js["parallel"].as_i8().unwrap(),
+            brightness: js["brightness"].as_i32().unwrap(),
+            oled_slowdown: js["oled_slowdown"].as_i32().unwrap(),
+            fail_on_error: js["fail_on_error"].as_bool().unwrap()
         }
     }
 }

@@ -7,9 +7,13 @@ use json;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, IntoPyDict, PyTuple};
 
-struct ModuleValue {
-    api: Py<PyAny>
+struct PythonConfigToRun {
+    import: String,
+    object_to_import: String,
+    args: ModuleApiConfiguration,
+    python_object: PyAny,
 }
+#[derive(Debug)]
 struct ModuleApiConfiguration {
     matrix_options: createjson::MatrixOptions,
     time: Option<createjson::time::TimeOptions>,
@@ -20,12 +24,27 @@ struct ModuleApiConfiguration {
 impl IntoPyDict for ModuleApiConfiguration {
     fn into_py_dict(self, py: Python) -> &PyDict {
         // iterate over the modules and transform them into a pydict
+        let pydict = PyDict::new(py);
+        pydict.set_item("matrix_options", self.matrix_options.into_py_dict(py)).unwrap();
+        if let Some(time) = self.time {
+            pydict.set_item("time", time.into_py_dict(py)).unwrap();
+        }
+        if let Some(weather) = self.weather {
+            pydict.set_item("weather", weather.into_py_dict(py)).unwrap();
+        }
+        if let Some(stock) = self.stock {
+            pydict.set_item("stock", stock.into_py_dict(py)).unwrap();
+        }
+        if let Some(sport) = self.sport {
+            pydict.set_item("sport", sport.into_py_dict(py)).unwrap();
+        }
+        pydict
     }
 }
 impl ModuleApiConfiguration {
     pub fn new(j: &json::JsonValue) -> Self {
         Self {
-            matrix_options: createjson::MatrixOptions::from_json(j),
+            matrix_options: createjson::MatrixOptions::from_json(&j["matrix_options"]),
             time: None,
             weather: None,
             stock: None,
@@ -70,44 +89,30 @@ fn init_logger() {
         .write_style("always");
     env_logger::init_from_env(env);
 }
-
-fn run_python(conf: ModuleApiConfiguration) -> PyResult<()> {
-    /*
+/*
+fn run_python(conf: ModuleApiConfiguration) -> PyResult<()>{
+    // https://pyo3.rs/v0.15.1/ecosystem/async-await.html
     let gil = Python::acquire_gil();
     let py = gil.python();
-    let sys = py.import("sys")?;
-    let version: String = sys.get("version")?.extract()?;
-
-    let locals = [("os", py.import("os")?)].into_py_dict(py);
-    let code = "os.getenv('USER') or os.getenv('USERNAME') or 'Unknown'";
-    let user: String = py.eval(code, None, Some(&locals))?.extract()?;
-    let dict = createjson::weather::WeatherOptions::_from_json(&conf).into_py_dict(py);
-    println!("Hello {}, I'm Python {}, python_dict {}", user, version, dict);
-
-    // OKAY SO EACH Configuration needs to be implement intoPyDict
-    // 
-    // https://pyo3.rs/v0.15.1/ecosystem/async-await.html
-    let fut = Python::with_gil(|py| {
-        let asyncio = py.import("asyncio")?;
-        // convert asyncio.sleep into a Rust Future
-        pyo3_asyncio::tokio::into_future(asyncio.call_method1("sleep", (1.into_py(py),))?)
-    })?;
-    fut.await?;
+    let options = conf.into_py_dict(py);
+    dbg!(options);
+    let args = PyTuple::new(py, &[options]);
+    let wapi_import = py.import("ohmyoled.lib.weather.normal")?;
+    dbg!(options);
+    let weather_api_class = wapi_import.getattr("WeatherApi")?.call1(args)?;
+    let result = weather_api_class.call_method0("run_weather_with_asyncio")?;
+    dbg!(&result.getattr("get_lat_long"));
     Ok(())
-    */
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let options = transform_to_pydict_args(conf);
-        let args = PyTuple::new(py, &[options]);
-        let wapi_import = py.import("ohmyoled.lib.weather.normal")?;
-        dbg!(options);
-        let weather_api_class = wapi_import.getattr("WeatherApi")?.call1(args)?;
-        let result = weather_api_class.call_method0("run_weather_with_asyncio");
-        dbg!(result);
-    Ok(())
-
 }
-
+*/
+fn run_python(pyconf: PythonConfigToRun) -> PyResult<Py<PyAny>> {
+    let gil = Python::acquire_gil();
+    let py = gil.python();
+    let args = PyTuple::new(py, &[pyconf.args.into_py_dict(py)]);
+    let import = py.import(pyconf.import.as_str())?;
+    let api_class = import.getattr(pyconf.object_to_import.as_str())?.call1(args)?;
+    Ok(api_class.into())
+}
 
 fn main() {
     init_logger();
@@ -178,6 +183,20 @@ fn main() {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
     let config_mod: ModuleApiConfiguration = get_modules(&configuration);
-    run_python(config_mod);
+    
+    let matrixoptions = run_python(PythonConfigToRun {
+        import: "rgbmatrix".to_string(),
+        object_to_import: "rgbmatrix".to_string(),
+        args: config_mod,
+        python_object: PyAny, // Build a result python
+    })?
+    
+    // Main Logic 
+    /*
+    configuration loaded for all as python dictionary Done
+    build a matrix python Object to pass it to all objects 
+    initialize all matrixes -> and rust future 
+    Rust Future Poll object and Render the Matrix
+    */
     
 }
