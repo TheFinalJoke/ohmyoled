@@ -1,9 +1,10 @@
 #!/usr/bin/env python3 
 
 import asyncio
+from doctest import master
 import time
 from typing import Dict, Tuple
-from PIL import ImageFont
+from PIL import ImageFont, Image, ImageDraw
 from ohmyoled.matrix.matrix import Matrix
 from ohmyoled.lib.stock.stocks import Stock
 
@@ -37,17 +38,17 @@ class StockMatrix(Matrix):
         diff_format = lambda x: '{:<05}'.format(str(round(x, 2))) if x < 0 else '{:<04}'.format(str(round(x, 2)))
         return diff_format(diff), percent_change(percent_base)
     
-    def format_price(self, price: int) -> str:
-        return '{:<04}'.format(str(round(price, 2)))
+    def format_price(self, price: float) -> str:
+        return '{:.2f}'.format(price)
     
-    def render_current_price(self, api) -> None:
+    def render_current_price(self, api, xpos) -> None:
         dollar_change, percent_change = self.calculate_percent_diff(
             api.get_quote_previous_close, 
             api.get_quote_current_price
         )
         if api.get_quote_previous_close == api.get_quote_current_price:
             self.draw_text(
-                (12, 0),
+                (-xpos + 12, 0),
                 f"${self.format_price(api.get_quote_current_price)}", 
                 font=ImageFont.truetype("fonts/04B_03B_.TTF", 8), 
                 fill=(255,255,255)
@@ -66,7 +67,7 @@ class StockMatrix(Matrix):
             )
         elif api.get_quote_previous_close > api.get_quote_current_price:
             self.draw_text(
-                (12, 0),
+                (-xpos + 12, 0),
                 f"${self.format_price(api.get_quote_current_price)}", 
                 font=ImageFont.truetype("fonts/04B_03B_.TTF", 8), 
                 fill=(255,0,0)
@@ -85,7 +86,7 @@ class StockMatrix(Matrix):
             )
         else:
             self.draw_text(
-                (12, 0),
+                (-xpos + 12, 0),
                 f"${self.format_price(api.get_quote_current_price)}", 
                 font=ImageFont.truetype("fonts/04B_03B_.TTF", 8), 
                 fill=(0,255,0)
@@ -152,18 +153,61 @@ class StockMatrix(Matrix):
             font=ImageFont.truetype('fonts/04B_03B_.TTF', 8), 
             fill=(255,0,0)
         )
+    def build_top_image(self, api):
+        master_top_image = self.make_new_image((50,8))
+        master_top_image_draw = ImageDraw.Draw(master_top_image)
+        master_top_image_draw.rectangle((0, 0, 63, 7))
+        symbol_image = self.make_new_image((12, 6))
+        symboldraw = ImageDraw.Draw(symbol_image)
+        symboldraw.rectangle((0,0,11,5))
+        cp_image = self.make_new_image((32, 6))
+        cpdraw = ImageDraw.Draw(cp_image)
+        cpdraw.rectangle((0,0, 31,5)) # How big is th rectangle
+        master_top_image.paste(cp_image, (15, 1))
+        master_top_image.paste(symbol_image, (1,1))
+        return master_top_image, (0,0)
+
+    def build_middle_image(self, api):
+        master_middle_image = self.make_new_image((50, 24))
+        return master_middle_image, (0, 9)
+    def build_right_image(self, api):
+        master_right_image = self.make_new_image((14, 32))
+        return master_right_image, (51, 0)
     
-    async def render(self, api, loop) -> None:
-        self.logger.info("Started Render for Stock Matrix")
+    async def render(self, api, loop):
         self.clear()
         self.reload_image()
-        self.render_symbol(api)
-        self.render_current_price(api)
-        self.render_previous_close(api)
-        self.render_highest_price(api)
-        self.render_lowest_price(api)
+        images = [
+            self.build_top_image(api),
+            #self.build_middle_image(api),
+            #self.build_right_image(api)
+        ]
+        for image in images:
+            self.paste_image(image[0], image[1])
         await self.render_image()
-        time.sleep(30)
+        time.sleep(5)
+    # async def render(self, api, loop) -> None:
+    #     self.logger.info("Started Render for Stock Matrix")
+    #     xpos = 0
+    #     self.clear()
+    #     while xpos < 50:
+    #         self.reload_image()
+    #         self.render_symbol(api)
+    #         self.render_current_price(api,xpos)
+    #         self.render_previous_close(api)
+    #         self.render_highest_price(api)
+    #         self.render_lowest_price(api)
+    #         await self.render_image()
+    #         xpos += 1
+    #         time.sleep(3) if xpos == 1 else time.sleep(.05)
+    #     self.reload_image()
+    #     self.render_symbol(api)
+    #     self.render_current_price(api, xpos)
+    #     self.render_previous_close(api)
+    #     self.render_highest_price(api)
+    #     self.render_lowest_price(api)
+    #     await self.render_image()
+    #     time.sleep(30)
 
     def non_async_render(self, api) -> None:
         self.logger.info("Started Render for Stock Matrix")

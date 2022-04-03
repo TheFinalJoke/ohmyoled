@@ -37,7 +37,7 @@ class NormalizedWeather():
     
     @property
     def get_precipitation(self) -> int:
-        return self.api_result.get_precipitation * 100
+        return self.api_result.get_precipitation
     
     @property
     def get_uv(self) -> int:
