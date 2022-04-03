@@ -6,70 +6,7 @@ use clap::{Arg, App};
 use json;
 use tokio;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, IntoPyDict, PyTuple};
-
-#[derive(Debug)]
-struct PythonObjectRequest{
-    import: String,
-    object_to_import: String,
-}
-impl PythonObjectRequest{
-    fn get_object(self, args: Option<&'static PyDict>) -> PyResult<PythonResult> {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let import = py.import(self.import.as_str())?;
-        let api_class = match args {
-            Some(args) => {
-                let arg = PyTuple::new(py, &[args]);
-                let api_class = import.getattr(self.object_to_import.as_str())?.call1(arg)?;
-                api_class
-            }
-            None => {
-                let api_class = import.getattr(self.object_to_import.as_str())?.call0()?;
-                api_class
-            }
-        };
-
-        Ok(PythonResult{
-            python_result: api_class.into()
-        }
-        )
-    }
-}
-#[derive(Debug)]
-struct PythonFunctionRequest {
-    python_object: Py<PyAny>,
-    function: String,
-    args: Option<PyTuple>
-}
-impl PythonFunctionRequest {
-    fn run_function(self) -> PyResult<PythonResult> {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        match self.args {
-            Some(args) => {
-                let result = self.python_object.call_method1(py, self.function.as_str(), &args)?;
-                Ok(
-                    PythonResult {
-                        python_result: result.into()
-                    }
-                )
-            }
-            None => {
-                let result = self.python_object.call_method0(py, self.function.as_str())?;
-                Ok(
-                    PythonResult {
-                        python_result: result.into()
-                    }
-                )
-            }
-        }
-    }
-}
-#[derive(Debug)]
-struct PythonResult {
-    python_result: Py<PyAny>,
-}
+use pyo3::types::{PyDict, IntoPyDict};
 
 #[derive(Debug)]
 struct ModuleApiConfiguration {
@@ -147,9 +84,6 @@ fn init_logger() {
     env_logger::init_from_env(env);
 }
 
-async fn say_world() {
-    println!("world");
-}
 #[tokio::main]
 async fn main() {
     init_logger();
@@ -220,5 +154,8 @@ async fn main() {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
     let config_mod: ModuleApiConfiguration = get_modules(&configuration);
-
+    // This will turn into a no more python rust binary. 
+    // Get Modules in Rust 
+    // Run a poll api in the rust binary 
+    // Display a rust matrix
 }
