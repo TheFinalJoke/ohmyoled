@@ -4,15 +4,73 @@ extern crate log;
 use env_logger::{Env};
 use clap::{Arg, App};
 use json;
+use tokio;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, IntoPyDict, PyTuple};
 
-struct PythonConfigToRun {
+#[derive(Debug)]
+struct PythonObjectRequest{
     import: String,
     object_to_import: String,
-    args: ModuleApiConfiguration,
-    python_object: PyAny,
 }
+impl PythonObjectRequest{
+    fn get_object(self, args: Option<&'static PyDict>) -> PyResult<PythonResult> {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let import = py.import(self.import.as_str())?;
+        let api_class = match args {
+            Some(args) => {
+                let arg = PyTuple::new(py, &[args]);
+                let api_class = import.getattr(self.object_to_import.as_str())?.call1(arg)?;
+                api_class
+            }
+            None => {
+                let api_class = import.getattr(self.object_to_import.as_str())?.call0()?;
+                api_class
+            }
+        };
+
+        Ok(PythonResult{
+            python_result: api_class.into()
+        }
+        )
+    }
+}
+#[derive(Debug)]
+struct PythonFunctionRequest {
+    python_object: Py<PyAny>,
+    function: String,
+    args: Option<PyTuple>
+}
+impl PythonFunctionRequest {
+    fn run_function(self) -> PyResult<PythonResult> {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        match self.args {
+            Some(args) => {
+                let result = self.python_object.call_method1(py, self.function.as_str(), &args)?;
+                Ok(
+                    PythonResult {
+                        python_result: result.into()
+                    }
+                )
+            }
+            None => {
+                let result = self.python_object.call_method0(py, self.function.as_str())?;
+                Ok(
+                    PythonResult {
+                        python_result: result.into()
+                    }
+                )
+            }
+        }
+    }
+}
+#[derive(Debug)]
+struct PythonResult {
+    python_result: Py<PyAny>,
+}
+
 #[derive(Debug)]
 struct ModuleApiConfiguration {
     matrix_options: createjson::MatrixOptions,
@@ -52,7 +110,6 @@ impl ModuleApiConfiguration {
         }
     }
 }
-
 fn parse_json(contents: &str) -> json::JsonValue {
     let parsed = json::parse(contents).unwrap();
     parsed
@@ -89,32 +146,12 @@ fn init_logger() {
         .write_style("always");
     env_logger::init_from_env(env);
 }
-/*
-fn run_python(conf: ModuleApiConfiguration) -> PyResult<()>{
-    // https://pyo3.rs/v0.15.1/ecosystem/async-await.html
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    let options = conf.into_py_dict(py);
-    dbg!(options);
-    let args = PyTuple::new(py, &[options]);
-    let wapi_import = py.import("ohmyoled.lib.weather.normal")?;
-    dbg!(options);
-    let weather_api_class = wapi_import.getattr("WeatherApi")?.call1(args)?;
-    let result = weather_api_class.call_method0("run_weather_with_asyncio")?;
-    dbg!(&result.getattr("get_lat_long"));
-    Ok(())
-}
-*/
-fn run_python(pyconf: PythonConfigToRun) -> PyResult<Py<PyAny>> {
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    let args = PyTuple::new(py, &[pyconf.args.into_py_dict(py)]);
-    let import = py.import(pyconf.import.as_str())?;
-    let api_class = import.getattr(pyconf.object_to_import.as_str())?.call1(args)?;
-    Ok(api_class.into())
-}
 
-fn main() {
+async fn say_world() {
+    println!("world");
+}
+#[tokio::main]
+async fn main() {
     init_logger();
     let mut configuration = json::JsonValue::Null;
     let app = App::new("ohmyoled").version("2.0.0");
@@ -172,7 +209,7 @@ fn main() {
         } else {
             let main_json = createjson::create_json(false);
             let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
-            main_json.write(&mut file).unwrap();
+            main_json.write(&mut file).unwrap_err();
         }
         std::process::exit(0);
     } else if matches.is_present("json_file") {
@@ -183,20 +220,5 @@ fn main() {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
     let config_mod: ModuleApiConfiguration = get_modules(&configuration);
-    
-    let matrixoptions = run_python(PythonConfigToRun {
-        import: "rgbmatrix".to_string(),
-        object_to_import: "rgbmatrix".to_string(),
-        args: config_mod,
-        python_object: PyAny, // Build a result python
-    })?
-    
-    // Main Logic 
-    /*
-    configuration loaded for all as python dictionary Done
-    build a matrix python Object to pass it to all objects 
-    initialize all matrixes -> and rust future 
-    Rust Future Poll object and Render the Matrix
-    */
-    
+
 }

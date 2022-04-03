@@ -56,6 +56,14 @@ impl MatrixOptions {
             fail_on_error: js["fail_on_error"].as_bool().unwrap()
         }
     }
+    /*
+    pub fn convert_to_pytuple(&self) -> PyResult<&PyTuple> {
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let tuple = PyTuple::new(py, &[self.into_py_dict(py)]);
+        Ok(tuple.from())
+    }
+    */
 }
 pub fn main_menu() {
     println!("Choose From Modules to customize");
