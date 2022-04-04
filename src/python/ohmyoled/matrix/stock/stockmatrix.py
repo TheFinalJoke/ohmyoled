@@ -156,7 +156,7 @@ class StockMatrix(Matrix):
     def build_top_image(self, api):
         master_top_image = self.make_new_image((50,8))
         master_top_image_draw = ImageDraw.Draw(master_top_image)
-        master_top_image_draw.rectangle((0, 0, 63, 7))
+        master_top_image_draw.rectangle((0, 0, 49, 7))
         symbol_image = self.make_new_image((12, 6))
         symboldraw = ImageDraw.Draw(symbol_image)
         symboldraw.rectangle((0,0,11,5))
@@ -169,6 +169,15 @@ class StockMatrix(Matrix):
 
     def build_middle_image(self, api):
         master_middle_image = self.make_new_image((50, 24))
+        master_middle_image_draw = ImageDraw.Draw(master_middle_image)
+        master_middle_image_draw.rectangle((0, 0, 49, 22))
+        symbol_image = self.make_new_image((15, 15))
+        symboldraw = ImageDraw.Draw(symbol_image)
+        symboldraw.rectangle((0,0,7,5))
+        # cp_image = self.make_new_image((32, 6))
+        # cpdraw = ImageDraw.Draw(cp_image)
+        # cpdraw.rectangle((0,0, 31,5)) # How big is th rectangle
+        master_middle_image.paste(symbol_image, (0,0))
         return master_middle_image, (0, 9)
     def build_right_image(self, api):
         master_right_image = self.make_new_image((14, 32))
@@ -179,7 +188,7 @@ class StockMatrix(Matrix):
         self.reload_image()
         images = [
             self.build_top_image(api),
-            #self.build_middle_image(api),
+            self.build_middle_image(api),
             #self.build_right_image(api)
         ]
         for image in images:
