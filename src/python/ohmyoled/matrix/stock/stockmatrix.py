@@ -1,13 +1,12 @@
 #!/usr/bin/env python3 
 
-import asyncio
-from re import sub
 import time
 import os
 from typing import Dict, Tuple
 from PIL import ImageFont, Image, ImageDraw
 from ohmyoled.matrix.matrix import Matrix
 from ohmyoled.lib.stock.stocks import Stock
+from ohmyoled.matrix.error import ErrorMatrix
 MASTER_IMAGE = {
     "size": (64, 32),
     "master_top_image": {
@@ -139,14 +138,6 @@ class StockMatrix(Matrix):
     def format_price(self, price: float) -> str:
         return '{:.2f}'.format(price)
     
-    """
-    draw.text(
-        (44, 20) if "-" in dollar_change else (47, 20),
-        f"{dollar_change}",
-        font=ImageFont.truetype("fonts/04B_03B_.TTF", 8),
-        fill=(255,255,255)
-    )
-    """
     def render_percentage_change(self, api, size, location, draw, xpos):
         dollar_change, percent_change = self.calculate_percent_diff(
             api.get_quote_previous_close, 
@@ -356,53 +347,35 @@ class StockMatrix(Matrix):
         return master_right_image, right_config["location"]
     
     async def render(self, api, loop):
-        self.clear()
-        self.reload_image()
-        xpos = 0
-        while xpos < 50:
+        try:
+            self.clear()
+            self.reload_image()
+            xpos = 0
+            while xpos < 50:
+                images = [
+                    self.build_top_image(api, xpos),
+                    self.build_middle_image(api, xpos),
+                    self.build_right_image(api, xpos)
+                ]
+                for image in images:
+                    self.paste_image(image[0], image[1])
+                await self.render_image()
+                xpos += 1
+                time.sleep(3) if xpos == 1 else time.sleep(.05)
+            
             images = [
-                self.build_top_image(api, xpos),
-                self.build_middle_image(api, xpos),
-                self.build_right_image(api, xpos)
+                self.build_top_image(api, 0),
+                self.build_middle_image(api, 0),
+                self.build_right_image(api, 0)
             ]
             for image in images:
                 self.paste_image(image[0], image[1])
             await self.render_image()
-            xpos += 1
-            time.sleep(3) if xpos == 1 else time.sleep(.05)
-        
-        images = [
-            self.build_top_image(api, 0),
-            self.build_middle_image(api, 0),
-            self.build_right_image(api, 0)
-        ]
-        for image in images:
-            self.paste_image(image[0], image[1])
-        await self.render_image()
-        time.sleep(30)
-            
-    # async def render(self, api, loop) -> None:
-    #     self.logger.info("Started Render for Stock Matrix")
-    #     xpos = 0
-    #     self.clear()
-    #     while xpos < 50:
-    #         self.reload_image()
-    #         self.render_symbol(api)
-    #         self.render_current_price(api,xpos)
-    #         self.render_previous_close(api)
-    #         self.render_highest_price(api)
-    #         self.render_lowest_price(api)
-    #         await self.render_image()
-    #         xpos += 1
-    #         time.sleep(3) if xpos == 1 else time.sleep(.05)
-    #     self.reload_image()
-    #     self.render_symbol(api)
-    #     self.render_current_price(api, xpos)
-    #     self.render_previous_close(api)
-    #     self.render_highest_price(api)
-    #     self.render_lowest_price(api)
-    #     await self.render_image()
-    #     time.sleep(30)
+            time.sleep(30)
+        except Exception as e:
+            self.logger.exception(e)
+            error_matrix = ErrorMatrix(self.matrix, self.logger, "Stock Matrix")
+            await error_matrix.render()
 
     def non_async_render(self, api) -> None:
         self.logger.info("Started Render for Stock Matrix")
