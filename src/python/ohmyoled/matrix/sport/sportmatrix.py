@@ -145,8 +145,12 @@ class SportMatrix(Matrix):
         top_home_draw = ImageDraw.Draw(top_home_image)
         top_away_image = self.make_new_image((22,8))
         top_away_draw = ImageDraw.Draw(top_away_image)
-        hometeam = nextgame.team.name
-        awayteam = nextgame.opposing_team.name
+        if nextgame.homeoraway == "home":
+            hometeam = nextgame.team.name
+            awayteam = nextgame.opposing_team.name
+        else:
+            awayteam = nextgame.team.name
+            hometeam = nextgame.opposing_team.name
         top_home_draw.text((-xpos,0), hometeam, font=font)
         top_away_draw.text((-xpos,0), awayteam, font=font)
         return top_home_image, top_away_image

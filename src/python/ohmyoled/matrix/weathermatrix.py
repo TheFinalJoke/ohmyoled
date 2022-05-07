@@ -7,6 +7,7 @@ from PIL import ImageFont
 from ohmyoled.matrix.matrix import Matrix
 import ohmyoled.lib.weather.weatherbase as base
 from ohmyoled.lib.weather.normal import NormalizedWeather
+from ohmyoled.matrix.error import ErrorMatrix
 
 class WeatherMatrix(Matrix):
     def __init__(self, matrix, api: Dict, logger) -> None:
@@ -66,7 +67,6 @@ class WeatherMatrix(Matrix):
                 sunset=result.get_sunset
             )
         )
-        
     
     def get_temp_color(self, temp: int) -> Tuple[int, int, int]:
         if temp >= 100:
@@ -125,7 +125,7 @@ class WeatherMatrix(Matrix):
         font = ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF",8)
         self.draw_text((-xpos, 1), api.location_name, font, (0, 254, 0))
 
-    def render_humidity (self, api: base.Weather) -> None:
+    def render_humidity(self, api: base.Weather) -> None:
         font = ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF", 8)
         self.draw_text((2, 8), "H:", font)
         self.draw_text((10, 8), f"{api.current.humidity}%", font, fill=(7, 250, 246))
@@ -136,14 +136,10 @@ class WeatherMatrix(Matrix):
         font = ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF", 8)
         speed = api.current.wind_speed
         deg = api.current.wind_direction
+        readable = base.get_wind_dir_direction(deg)
         self.draw_text((1, 12), "\uf050", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9))
-        self.draw_text((15, 15), f"{str(int(deg))}", font, fill=(201, 1, 253))
-        if len(str(int(deg))) == 3:
-            self.draw_text((30, 13), "\uf042", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9), fill=(201, 1, 253))
-        elif len(str(int(deg))) == 2:
-            self.draw_text((29, 13), "\uf042", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9), fill=(201, 1, 253))
-        else:
-            self.draw_text((28, 13), "\uf042", font=ImageFont.truetype("/usr/share/fonts/weathericons.ttf", 9), fill=(201, 1, 253))
+        #self.draw_text((15, 15), f"{str(int(deg))}", font, fill=(201, 1, 253))
+        self.draw_text((15, 15), f"{readable}", font=font, fill=(201, 1, 253))
         self.draw_text((36, 15), f"{str(int(speed))}mph", font, fill=(201, 1, 253))
 
     def render_time(self, api) -> None:
@@ -159,51 +155,56 @@ class WeatherMatrix(Matrix):
         self.draw_text((-xpos, 26), f"Conditions: {api.current.conditions}", font=ImageFont.truetype("/usr/share/fonts/04B_03B_.TTF", 8), fill=(255,255,255))
     
     async def render(self, api , loop) -> None:
-        self.logger.info("Rendering Weather Matrix")
-        self.logger.debug("Clearing Image")
-        self.clear()
-        self.logger.debug("Reloading Image in matrix")
-        xpos = 0
-        self.logger.info("Loading Screen 1 of Matrix")
-        while xpos < 100:
+        try:
+            self.logger.info("Rendering Weather Matrix")
+            self.logger.debug("Clearing Image")
+            self.clear()
+            self.logger.debug("Reloading Image in matrix")
+            xpos = 0
+            self.logger.info("Loading Screen 1 of Matrix")
+            while xpos < 100:
+                self.reload_image()
+                self.render_temp(api)
+                self.render_icon(api)
+                self.render_location(api, xpos)
+                self.render_conditions(api, xpos)
+                xpos += 1
+                await self.render_image()
+                time.sleep(3) if xpos == 1 else time.sleep(.05)
             self.reload_image()
             self.render_temp(api)
             self.render_icon(api)
-            self.render_location(api, xpos)
-            self.render_conditions(api, xpos)
-            xpos += 1
+            self.render_location(api, 0)
+            self.render_conditions(api, 0)
             await self.render_image()
-            time.sleep(3) if xpos == 1 else time.sleep(.05)
-        self.reload_image()
-        self.render_temp(api)
-        self.render_icon(api)
-        self.render_location(api, 0)
-        self.render_conditions(api, 0)
-        await self.render_image()
-        time.sleep(25)
-        self.clear()
-        self.logger.debug("Reloading Image in matrix")
-        self.reload_image()
-        xpos = 0
-        self.logger.info("Loading Screen 2 of Matrix")
-        while xpos < 100:
+            time.sleep(25)
+            self.clear()
+            self.logger.debug("Reloading Image in matrix")
             self.reload_image()
-            self.render_location(api, xpos)
+            xpos = 0
+            self.logger.info("Loading Screen 2 of Matrix")
+            while xpos < 100:
+                self.reload_image()
+                self.render_location(api, xpos)
+                self.render_icon(api)
+                self.render_humidity(api)
+                self.render_wind(api)
+                self.render_time(api)
+                await self.render_image()
+                xpos += 1
+                time.sleep(3) if xpos == 1 else time.sleep(.05)
+            self.reload_image()
+            self.render_location(api, 0)
             self.render_icon(api)
             self.render_humidity(api)
             self.render_wind(api)
             self.render_time(api)
             await self.render_image()
-            xpos += 1
-            time.sleep(3) if xpos == 1 else time.sleep(.05)
-        self.reload_image()
-        self.render_location(api, 0)
-        self.render_icon(api)
-        self.render_humidity(api)
-        self.render_wind(api)
-        self.render_time(api)
-        await self.render_image()
-        time.sleep(30)
+            time.sleep(30)
+        except Exception as e:
+            self.logger.exception(e)
+            error_matrix = ErrorMatrix(self.matrix, self.logger, "Weather Matrix")
+            await error_matrix.render()
 
     def non_async_render(self, api) -> None:
         self.logger.info("Rendering Weather Matrix")

@@ -85,14 +85,14 @@ class OpenWeatherApi(Runner):
         if current_location:
             ip_json: Dict[str, str] = await self.get_current_location()
             lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         elif location:
             lon, lat = await self.get_long_and_lat(location)
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         else:
             ip_json = await self.get_current_location()
             lon, lat = ip_json['loc'].split(',')[1], ip_json['loc'].split(',')[0]
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('format')}"
+            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         return url
     
     async def run(self) -> Dict:
