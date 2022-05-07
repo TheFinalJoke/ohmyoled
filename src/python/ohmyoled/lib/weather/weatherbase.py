@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 from datetime import datetime
-from tkinter import N
 from typing import Tuple, Union
 from enum import Enum
 
