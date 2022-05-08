@@ -124,7 +124,9 @@ class Main():
             self.logger.error("Error in the Poll_API Worker")
 
 
-    async def main_run(self, loop):
+    async def main_run(self, loop=None):
+        if not loop:
+            loop = asyncio.get_event_loop()
         try:
             self.logger.info("Starting OhMyOled")
             matrix = RGBMatrix(options=self.poll_rgbmatrix())
