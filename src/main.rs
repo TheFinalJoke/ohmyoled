@@ -4,9 +4,9 @@ extern crate log;
 use env_logger::{Env};
 use clap::{Arg, App};
 use json;
-use tokio;
+use pyo3_asyncio;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, IntoPyDict};
+use pyo3::types::{PyDict, IntoPyDict, PyTuple};
 
 #[derive(Debug)]
 struct ModuleApiConfiguration {
@@ -84,8 +84,8 @@ fn init_logger() {
     env_logger::init_from_env(env);
 }
 
-#[tokio::main]
-async fn main() {
+#[pyo3_asyncio::tokio::main]
+async fn main() -> PyResult<()> {
     init_logger();
     let mut configuration = json::JsonValue::Null;
     let app = App::new("ohmyoled").version("2.0.0");
@@ -154,8 +154,14 @@ async fn main() {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
     let config_mod: ModuleApiConfiguration = get_modules(&configuration);
-    // This will turn into a no more python rust binary. 
-    // Get Modules in Rust 
-    // Run a poll api in the rust binary 
-    // Display a rust matrix
+    // Pull in the main Function
+    // Run an async 
+    let fut = Python::with_gil(|py| {
+        let ohmyoled_import = py.import("ohmyoled.main")?;
+        let args = PyTuple::new(py, &[config_mod.into_py_dict(py)]);
+        let main = ohmyoled_import.getattr("Main")?.call1(args)?;
+        pyo3_asyncio::tokio::into_future(main.call_method0("main_run")?)
+    })?;
+    fut.await?;
+    Ok(())
 }
