@@ -1,0 +1,25 @@
+[package]
+name = "ohmyoled"
+version = "2.2.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+json = "0.12.4"
+clap = { version = "3.0.10", features = ["derive"] }
+log = "0.4.14"
+env_logger = "0.8.4"
+tokio = "1.9"
+
+[dependencies.pyo3]
+version = "0.15.1"
+features = ["auto-initialize"]
+
+[dependencies.pyo3-asyncio]
+version = "0.15.0"
+features = ["attributes", "tokio-runtime"] 
+
+[lib]
+name = "oledlib"
+path= "src/lib/lib.rs"

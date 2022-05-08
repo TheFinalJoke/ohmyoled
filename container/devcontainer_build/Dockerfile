@@ -1,12 +1,13 @@
+# This is meant for Running a basic container during development
 ARG VARIANT="3.9-bullseye"
 FROM python:${VARIANT} AS PYTHON_LAYER
 
 # [Choice] Node.js version: none, lts/*, 16, 14, 12, 10
 ARG NODE_VERSION="none"
 RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
-RUN apt update && apt install fonts-noto-mono -y
+RUN apt update && apt install fonts-noto-mono -y && apt install vim python3-dev -y 
 
-ARG OHMYOLED_VERSION=2.0.0
+ARG OHMYOLED_VERSION=2.2.0
 ARG RBGMATRIX_GIT_URL=https://github.com/hzeller/rpi-rgb-led-matrix.git
 RUN /usr/local/bin/python3 -m pip install --upgrade pip
 
@@ -15,7 +16,7 @@ RUN cd rpi-rgb-led-matrix && make build-python PYTHON="$(which python3)" && make
 
 RUN export CFLAGS=-fcommon && python3 -m pip install Pyinstaller RPi.GPIO
 RUN export CFLAGS=-fcommon && python3 -m pip install ohmyoled==${OHMYOLED_VERSION}
-
+RUN pip install twine 
 FROM PYTHON_LAYER as RUST_LAYER
 RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
 RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
