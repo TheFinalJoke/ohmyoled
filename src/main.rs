@@ -88,7 +88,7 @@ fn init_logger() {
 async fn main() -> PyResult<()> {
     init_logger();
     let mut configuration = json::JsonValue::Null;
-    let app = App::new("ohmyoled").version("2.0.0");
+    let app = App::new("ohmyoled").version("2.2.0");
     let args_vec = vec![
         Arg::new("create_json")
         .short('c')
