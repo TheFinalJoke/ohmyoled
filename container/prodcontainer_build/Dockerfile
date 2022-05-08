@@ -27,7 +27,6 @@ RUN git clone https://github.com/TheFinalJoke/ohmyoled.git \
     && cp /ohmyoled/lib/config/ohmyoled.conf /etc/ohmyoled/ \
     && cp -Rv /ohmyoled/fonts/* /usr/share/fonts/
 WORKDIR /ohmyoled
-RUN ls
 RUN /root/.cargo/bin/cargo build --release
 
 CMD ["target/release/ohmyoled"]
