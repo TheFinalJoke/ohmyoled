@@ -11,6 +11,7 @@ clap = { version = "3.0.10", features = ["derive"] }
 log = "0.4.14"
 env_logger = "0.8.4"
 tokio = "1.9"
+thiserror = "1.0"
 
 [dependencies.pyo3]
 version = "0.15.1"
