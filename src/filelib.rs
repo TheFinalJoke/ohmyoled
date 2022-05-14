@@ -1,8 +1,15 @@
 use std::fs;
 use std::io::Read;
 use std::path::Path;
+use thiserror::Error;
 
-pub fn open_file(file_name: &str) -> std::io::Result<String> {
+#[derive(Error, Debug)]
+pub enum FileError{
+    #[error("File Not Found, Try Creating json with -c option")]
+    FileNotFound(#[from] std::io::Error)
+
+}
+pub fn open_file(file_name: &str) -> Result<String, FileError> {
     let mut f = fs::File::open(file_name)?;
     let mut contents = String::new();
     f.read_to_string(&mut contents)?;
