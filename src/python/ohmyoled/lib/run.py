@@ -58,7 +58,7 @@ class Runner(RunnerABS):
         super().__init__()
         self.config = config
         self.runner_logger = logger
-        if int(os.getenv("DEV")) != 1:
+        if not os.getenv("DEV"):
             self.logger.setLevel(logging.INFO)
         else:
             self.logger.setLevel(logging.DEBUG)

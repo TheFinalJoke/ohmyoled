@@ -7,7 +7,7 @@ ARG NODE_VERSION="none"
 RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
 RUN apt update && apt install fonts-noto-mono -y && apt install vim python3-dev -y 
 
-ARG OHMYOLED_VERSION=2.2.0
+ARG OHMYOLED_VERSION=2.2.1
 ARG RBGMATRIX_GIT_URL=https://github.com/hzeller/rpi-rgb-led-matrix.git
 RUN /usr/local/bin/python3 -m pip install --upgrade pip
 
@@ -23,8 +23,7 @@ RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
 
 FROM RUST_LAYER
 RUN git clone https://github.com/TheFinalJoke/ohmyoled.git \
-    && mkdir -p /var/log/ohmyoled && mkdir -p /etc/ohmyoled \ 
-    && cp /ohmyoled/lib/config/ohmyoled.conf /etc/ohmyoled/ \
+    && mkdir -p /var/log/ohmyoled && mkdir -p /etc/ohmyoled \
     && cp -Rv /ohmyoled/fonts/* /usr/share/fonts/
 
 CMD [ "/bin/bash"]

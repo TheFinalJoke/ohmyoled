@@ -45,7 +45,7 @@ class Main():
     def __init__(self, config) -> None:
         self.config = config
         self.logger = logger
-        if int(os.getenv("DEV")) != 1:
+        if not os.getenv("DEV"):
             self.logger.setLevel(logging.INFO)
         else:
             self.logger.setLevel(logging.DEBUG)
