@@ -48,7 +48,13 @@ impl ModuleApiConfiguration {
     }
 }
 fn parse_json(contents: &str) -> json::JsonValue {
-    let parsed = json::parse(contents).unwrap();
+    let parsed = match json::parse(contents) {
+        Err(e) => {
+            println!("{}", e);
+            std::process::exit(32)
+        },
+        Ok(parse) => parse
+    };
     parsed
 }
 fn parse_json_file(file: &str) -> json::JsonValue {
