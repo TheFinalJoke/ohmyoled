@@ -23,10 +23,9 @@ RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
 
 FROM RUST_LAYER
 RUN git clone https://github.com/TheFinalJoke/ohmyoled.git \
-    && mkdir -p /var/log/ohmyoled && mkdir -p /etc/ohmyoled \ 
-    && cp /ohmyoled/lib/config/ohmyoled.conf /etc/ohmyoled/ \
+    && mkdir -p /var/log/ohmyoled && mkdir -p /etc/ohmyoled \
     && cp -Rv /ohmyoled/fonts/* /usr/share/fonts/
-WORKDIR /ohmyoled
+WORKDIR /ohmyoled/
 RUN /root/.cargo/bin/cargo build --release
 
-CMD ["target/release/ohmyoled"]
+ENTRYPOINT ["target/release/ohmyoled"]
