@@ -52,7 +52,13 @@ fn parse_json(contents: &str) -> json::JsonValue {
     parsed
 }
 fn parse_json_file(file: &str) -> json::JsonValue {
-    let contents = filelib::open_file(file).unwrap();
+    let contents = match filelib::open_file(file) {
+        Err(e) => {
+            println!("File: {} failed: {}", file, e);
+            std::process::exit(2);
+        },
+        Ok(returned) => returned
+    };
     let final_parse = parse_json(&contents);
     final_parse
 }
@@ -129,11 +135,15 @@ async fn main() -> PyResult<()> {
                     std::fs::remove_file(&default_json_path).expect("Can not Remove file");
                     let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
                     println!("Writing config to file {}", &default_json_path);
-                    main_json.write(&mut file).unwrap();
-                },
-                "n" => {
-                    println!("Exiting...");
-                    std::process::exit(1)
+                    match main_json.write(&mut file) {
+                        Err(e) => {
+                            println!("{}", e);
+                            std::process::exit(30)
+                        },
+                        Ok(_) => {
+                            println!("Wrote changes to File: {}", default_json_path);
+                        }
+                    };
                 },
                 _ => {
                     println!("Exiting...");
