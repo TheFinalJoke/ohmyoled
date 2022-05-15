@@ -263,12 +263,12 @@ class StockMatrix(Matrix):
         top_config = MASTER_IMAGE["master_top_image"]
         master_top_image = self.make_new_image(top_config.get("size"))
         master_top_image_draw = ImageDraw.Draw(master_top_image)
-        if int(os.environ["DEV"]) == 1:
+        if os.getenv("DEV"):
             master_top_image_draw.rectangle(top_config["rec"])
         for sub_image, config in top_config["sub_images"].items():
             image = self.make_new_image(config["size"])
             sub_image_draw = ImageDraw.Draw(image)
-            if int(os.environ["DEV"]) == 1:
+            if os.getenv("DEV"):
                 sub_image_draw.rectangle(config["rec"])
             if sub_image == "symbol":
                 self.render_symbol(api, config["size"], config['text_location'], sub_image_draw, xpos)
@@ -281,12 +281,12 @@ class StockMatrix(Matrix):
         middle_config = MASTER_IMAGE["master_middle_image"]
         master_middle_image = self.make_new_image(middle_config["size"])
         master_middle_image_draw = ImageDraw.Draw(master_middle_image)
-        if int(os.environ["DEV"]) == 1:
+        if os.getenv("DEV"):
             master_middle_image_draw.rectangle(middle_config["rec"])
         for sub_image, config in middle_config["sub_images"].items():
             image = self.make_new_image(config["size"])
             sub_image_draw = ImageDraw.Draw(image)
-            if int(os.environ["DEV"]) == 1:
+            if os.getenv("DEV"):
                 sub_image_draw.rectangle(config["rec"])
             if sub_image == "cp_letter":
                 font = ImageFont.truetype("fonts/04B_03B_.TTF", 8)
@@ -318,12 +318,12 @@ class StockMatrix(Matrix):
         right_config = MASTER_IMAGE["right_middle_image"]
         master_right_image = self.make_new_image(right_config["size"])
         master_right_image_draw = ImageDraw.Draw(master_right_image)
-        if int(os.environ["DEV"]) == 1:
+        if os.getenv("DEV"):
             master_right_image_draw.rectangle(right_config["rec"])
         for sub_image, config in right_config["sub_images"].items():
             image = self.make_new_image(config["size"])
             sub_image_draw = ImageDraw.Draw(image)
-            if int(os.environ["DEV"]) == 1:
+            if os.getenv("DEV"):
                 sub_image_draw.rectangle(config["rec"])
             if sub_image == "percentage_letter":
                 sub_image_draw.text(
