@@ -71,7 +71,7 @@ class WeatherMatrix(Matrix):
     def get_temp_color(self, temp: int) -> Tuple[int, int, int]:
         if temp >= 100:
             return (255, 12, 3)
-        elif temp in range(70, 99):
+        elif temp in range(70, 100):
             return (247, 157, 3)
         elif temp in range(40, 69):
             return (5, 223, 3)
