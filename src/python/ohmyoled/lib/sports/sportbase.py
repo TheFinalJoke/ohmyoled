@@ -11,6 +11,12 @@ class ModuleException(Exception):
 class RequestException(ModuleException):
     pass
 
+class SportException(Exception):
+    pass
+
+class SportApiExceedLimit(SportException):
+    pass
+
 class API(Enum):
     APISPORTS = 0
     SPORTSIPY = 1
@@ -39,6 +45,11 @@ class SportBase(Runner):
 
 class SportResultBase(Caller):
     pass
+
+@dataclass(repr=True, init=True)
+class SportErrorResult(Caller):
+    error: bool = False
+    msg: str = None
 
 @dataclass(repr=True)
 class Team():

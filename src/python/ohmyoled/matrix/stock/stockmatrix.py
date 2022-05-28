@@ -5,7 +5,7 @@ import os
 from typing import Dict, Tuple
 from PIL import ImageFont, Image, ImageDraw
 from ohmyoled.matrix.matrix import Matrix
-from ohmyoled.lib.stock.stocks import Stock
+from ohmyoled.lib.stock.stocks import Stock, StockErrorResult
 from ohmyoled.matrix.error import ErrorMatrix
 MASTER_IMAGE = {
     "size": (64, 32),
@@ -102,7 +102,13 @@ class StockMatrix(Matrix):
         return "StockMatrix"
 
     async def poll_api(self) -> Stock:
-        return Stock(await self.api.run())
+        try:
+            polled_api = await self.api.run()
+            if isinstance(polled_api, StockErrorResult):
+                return None
+            return Stock(await self.api.run())
+        except Exception as e:
+            return None
     
     def nonasync_poll(self):
         return Stock(self.api.run_with_asyncio())

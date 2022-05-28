@@ -18,7 +18,6 @@ class SportsipyApiResult(SportResultBase):
         self._schedule: base.SportStandings = base.SportStandings(
             positions=api_result.schedule
         )
-       
         self._api: Enum = API.SPORTSIPY
         self._standings: List[base.Team] = api_result.standings
         self._position = self._team.position

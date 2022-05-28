@@ -87,5 +87,5 @@ class HockeySportsipy(Runner):
             return SportsipyApiResult(api_result=hockey_result)
         except Exception as error:
             self.logger.error(f"An Error Occured in hockey Module: {error}")
-            return None
+            raise base.SportException(error)
 
