@@ -14,6 +14,7 @@ from PIL import ImageFont, Image, ImageDraw
 from ohmyoled.lib.sports.sports import SportTransform, Sport
 from ohmyoled.matrix.matrix import Matrix
 
+
 class SportMatrix(Matrix):
     def __init__(self, matrix, api, logger: Logger) -> None:
         self.matrix = matrix
@@ -24,7 +25,10 @@ class SportMatrix(Matrix):
         return "SportMatrix"
 
     async def poll_api(self) -> Sport:
-        sport = SportTransform(await self.api.run())
+        run = await self.api.run()
+        if isinstance(run, sport_types.SportErrorResult):
+            return None
+        sport = SportTransform(run)
         if not sport.api_result:
             return None
         return Sport(

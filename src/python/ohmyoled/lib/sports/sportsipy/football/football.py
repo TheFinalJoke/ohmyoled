@@ -85,4 +85,4 @@ class FootballSportsipy(Runner):
             return SportsipyApiResult(api_result=football_result)
         except Exception as error:
             self.logger.error(f"Error Occured inside of football module: {error}")
-            return None
+            raise base.SportException(error)

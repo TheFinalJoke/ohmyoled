@@ -1,5 +1,7 @@
+from ast import expr_context
 from statistics import mean
 from ohmyoled.lib.sports.apisports.apisports import ApiSports
+from ohmyoled.lib.sports.apisports.result import SportApiResult
 from ohmyoled.lib.sports.sportsipy.sportsipy import SportsipyAPI
 from sportsipy.nhl.teams import Team as nhl_team
 from ohmyoled.lib.run import Runner, Caller
@@ -25,15 +27,20 @@ class SportApi(Runner):
         # For Each API and then Bubble up back to sport to be normalized
         # Build like a binary Tree
         # Can Do checks here to bubble up problems
-        if self.config['sport']['api'] == "api-sports":
-            api_sports = ApiSports(self.config)
-            api_result = await api_sports.run_api_sports()
-            return api_result
-        elif self.config['sport']['api'] or self.config['sport']['api'] == 'sportsipy':
-            sports = SportsipyAPI(self.config)
-            api_result = await sports.run_api_sportsipy()
-            return api_result
-        return
+        try:
+            if self.config['sport']['api'] == "api-sports":
+                api_sports = ApiSports(self.config)
+                api_result = await api_sports.run_api_sports()
+                return api_result
+            elif self.config['sport']['api'] or self.config['sport']['api'] == 'sportsipy':
+                sports = SportsipyAPI(self.config)
+                api_result = await sports.run_api_sportsipy()
+                return api_result
+            return
+        except base.SportException as se:
+            self.logger.info(se)
+            failure_result = base.SportErrorResult(error=True, msg=str(se))
+            return failure_result
 
     async def run_with_asyncio(self):
         self.logger.info("Running Sports")
