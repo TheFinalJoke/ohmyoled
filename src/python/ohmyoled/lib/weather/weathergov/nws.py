@@ -60,26 +60,29 @@ class NWSApi(Runner):
         return url
     
     async def run(self) -> Dict:
-        self.logger.info("Running Api for Weather")
-        args = await self.parse_args()
-        main_json = await self.get_data(args)
-        observation_url = f'https://api.weather.gov/stations/{main_json["properties"]["radarStation"]}/observations/latest'
-        tasks = {
-            'forcast': asyncio.create_task(self.get_data(main_json['properties']['forecast'])),
-            'hourly': asyncio.create_task(self.get_data(main_json['properties']['forecastHourly'])),
-            'observations': asyncio.create_task(self.get_data(observation_url))
-        }
-        await asyncio.gather(*tasks.values())
-        count = 0
-        while count <= 4:
-            if not all([('status' in tasks['hourly'].result()), ('status' in tasks['forcast'].result())]):
-                break
-            count += 1
-            tasks['hourly'] = asyncio.create_task(self.get_data(main_json['properties']['forecastHourly']))
-            tasks['forcast'] = asyncio.create_task(self.get_data(main_json['properties']['forecast']))
-            await asyncio.gather(tasks['hourly'], tasks['forcast'])
-        api_data = {'main_json': main_json, 'forcast': tasks['forcast'].result(), 'hourly': tasks['hourly'].result(), 'observe': tasks['observations'].result()}
-        return NWSTransform(api_data)
+        try:
+            self.logger.info("Running Api for Weather")
+            args = await self.parse_args()
+            main_json = await self.get_data(args)
+            observation_url = f'https://api.weather.gov/stations/{main_json["properties"]["radarStation"]}/observations/latest'
+            tasks = {
+                'forcast': asyncio.create_task(self.get_data(main_json['properties']['forecast'])),
+                'hourly': asyncio.create_task(self.get_data(main_json['properties']['forecastHourly'])),
+                'observations': asyncio.create_task(self.get_data(observation_url))
+            }
+            await asyncio.gather(*tasks.values())
+            count = 0
+            while count <= 4:
+                if not all([('status' in tasks['hourly'].result()), ('status' in tasks['forcast'].result())]):
+                    break
+                count += 1
+                tasks['hourly'] = asyncio.create_task(self.get_data(main_json['properties']['forecastHourly']))
+                tasks['forcast'] = asyncio.create_task(self.get_data(main_json['properties']['forecast']))
+                await asyncio.gather(tasks['hourly'], tasks['forcast'])
+            api_data = {'main_json': main_json, 'forcast': tasks['forcast'].result(), 'hourly': tasks['hourly'].result(), 'observe': tasks['observations'].result()}
+            return NWSTransform(api_data)
+        except Exception as e:
+            raise base.WeatherApiException(e)
 
 class NWSTransform(Caller):
 

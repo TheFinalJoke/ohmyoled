@@ -12,7 +12,7 @@ from typing import Dict, Tuple
 from ohmyoled.matrix.error import ErrorMatrix
 from PIL import ImageFont, Image, ImageDraw
 from ohmyoled.lib.sports.sports import SportTransform, Sport
-from ohmyoled.matrix.matrix import Matrix
+from ohmyoled.matrix.matrix import Matrix, FailedApiException
 
 
 class SportMatrix(Matrix):
@@ -192,7 +192,7 @@ class SportMatrix(Matrix):
     async def render(self, api, loop):
         try:
             if not api:
-                raise Exception("Error Ocurred inside of the sport matrix")
+                raise FailedApiException("Error Ocurred inside of the sport matrix")
             self.clear()
             self.reload_image()
             if self.check_offseason(api):
@@ -228,7 +228,7 @@ class SportMatrix(Matrix):
     def non_async_render(self, api):
         try:
             if not api:
-                raise Exception("Error Ocurred inside of the sport matrix")
+                raise FailedApiException("Error Ocurred inside of the sport matrix")
             self.clear()
             self.reload_image()
             if self.check_offseason(api):

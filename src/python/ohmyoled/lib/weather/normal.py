@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from typing import Dict, Tuple
 import asyncio
+import ohmyoled.lib.weather.weatherbase as base
 from datetime import datetime, timedelta
 from ohmyoled.lib.weather.openweather.weather import OpenWeatherApi
 from ohmyoled.lib.weather.weathergov.nws import NWSApi
@@ -105,13 +106,16 @@ class WeatherApi(Caller):
         self.config = config 
 
     async def run_weather(self):
-        if self.config['weather']['api'] == "openweather":
-            open_weather = OpenWeatherApi(self.config)
-            result = await open_weather.run()
-        else:
-            nws = NWSApi(self.config)
-            result = await nws.run()
-        return NormalizedWeather(result)
+        try:
+            if self.config['weather']['api'] == "openweather":
+                open_weather = OpenWeatherApi(self.config)
+                result = await open_weather.run()
+            else:
+                nws = NWSApi(self.config)
+                result = await nws.run()
+            return NormalizedWeather(result)
+        except base.WeatherApiException as wae:
+            return base.WeatherErrorResult(error=True, msg=str(wae))
     
     def run_weather_with_asyncio(self):
         # This is a binding for external APIs like Rust with complicated Async problems

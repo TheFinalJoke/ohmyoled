@@ -4,7 +4,7 @@ import time
 import os
 from typing import Dict, Tuple
 from PIL import ImageFont, Image, ImageDraw
-from ohmyoled.matrix.matrix import Matrix
+from ohmyoled.matrix.matrix import Matrix, FailedApiException
 from ohmyoled.lib.stock.stocks import Stock, StockErrorResult
 from ohmyoled.matrix.error import ErrorMatrix
 MASTER_IMAGE = {
@@ -106,7 +106,7 @@ class StockMatrix(Matrix):
             polled_api = await self.api.run()
             if isinstance(polled_api, StockErrorResult):
                 return None
-            return Stock(await self.api.run())
+            return Stock(polled_api)
         except Exception as e:
             return None
     
@@ -356,6 +356,8 @@ class StockMatrix(Matrix):
         try:
             self.clear()
             self.reload_image()
+            if not api:
+                raise FailedApiException("Error while getting API")
             xpos = 0
             while xpos < 50:
                 images = [

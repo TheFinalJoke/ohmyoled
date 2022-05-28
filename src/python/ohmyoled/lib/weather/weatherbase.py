@@ -2,6 +2,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Tuple, Union
 from enum import Enum
+from ohmyoled.lib.run import Caller
+
+class WeatherApiException(Exception):
+    pass
+
+@dataclass(repr=True, init=True)
+class WeatherErrorResult(Caller):
+    error: bool = False
+    msg: str = None
 
 class APIWeather(Enum):
     OPENWEATHER = 1
