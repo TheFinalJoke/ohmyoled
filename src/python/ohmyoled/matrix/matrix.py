@@ -41,7 +41,8 @@ class ABSMatrix():
 
 class FontException(Exception):
     pass
-
+class FailedApiException(Exception):
+    pass
 class Matrix(ABSMatrix):
     def __init__(self, config) -> None:
         self.config = config

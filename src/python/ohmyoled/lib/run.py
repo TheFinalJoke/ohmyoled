@@ -69,7 +69,7 @@ class Runner(RunnerABS):
         return response
 
     async def get_data(self, url, headers: Dict[str, str]={}) -> Dict:
-        self.logger.debug(f'Getting data with URL {url}')
+        self.logger.debug(f'Getting data with URL {url}, and headers {headers}')
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
                 data = await resp.json()

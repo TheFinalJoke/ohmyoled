@@ -96,12 +96,15 @@ class OpenWeatherApi(Runner):
         return url
     
     async def run(self) -> Dict:
-        self.logger.info("Running Api for Weather")
-        args = await self.parse_args()
-        api_data = await self.get_data(args)
-        current_data = await self.get_current_location()
-        api_data['name'] = current_data['city']
-        return OpenWeather(api_data)
+        try:
+            self.logger.info("Running Api for Weather")
+            args = await self.parse_args()
+            api_data = await self.get_data(args)
+            current_data = await self.get_current_location()
+            api_data['name'] = current_data['city']
+            return OpenWeather(api_data)
+        except Exception as e:
+            raise base.WeatherApiException(e)
 
 class OpenWeather(Caller):
     """

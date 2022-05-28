@@ -89,5 +89,5 @@ class BaseballSportsipy(Runner):
             return SportsipyApiResult(api_result=baseball_result)
         except Exception as error:
             self.logger.error(f"Error Occured inside of baseball module: {error}")
-            return None
+            raise base.SportException(error)
 

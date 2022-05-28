@@ -4,7 +4,7 @@ import time
 from typing import Dict, Tuple
 from datetime import datetime
 from PIL import ImageFont
-from ohmyoled.matrix.matrix import Matrix
+from ohmyoled.matrix.matrix import Matrix, FailedApiException
 import ohmyoled.lib.weather.weatherbase as base
 from ohmyoled.lib.weather.normal import NormalizedWeather
 from ohmyoled.matrix.error import ErrorMatrix
@@ -19,59 +19,73 @@ class WeatherMatrix(Matrix):
         return "WeatherMatrix"
 
     async def poll_api(self):
-        result: NormalizedWeather = await self.api.run_weather()
-        return base.Weather(
-            api=result.get_api,
-            location=result.get_lat_long,
-            location_name=result.get_place,
-            current=base.CurrentWeather(
-                conditions=result.get_conditions,
-                temp=result.get_temp,
-                feels_like=result.get_feels_like,
-                wind_speed=result.get_wind_speed,
-                humidity=result.get_humidity,
-                perciptation_chance=result.get_precipitation,
-                uv=result.get_uv,
-                wind_direction=result.get_wind_deg,
-                weather_icon=result.get_icon,
-            ),
-            dayforcast=base.DayForcast(
-                todayhigh=result.get_max_temp,
-                todaylow=result.get_min_temp,
-                sunrise=result.get_sunrise,
-                sunset=result.get_sunset
+        try:
+            result: NormalizedWeather = await self.api.run_weather()
+            if isinstance(result, base.WeatherErrorResult):
+                self.logger.error(f"{result.msg}")
+                return None
+            return base.Weather(
+                api=result.get_api,
+                location=result.get_lat_long,
+                location_name=result.get_place,
+                current=base.CurrentWeather(
+                    conditions=result.get_conditions,
+                    temp=result.get_temp,
+                    feels_like=result.get_feels_like,
+                    wind_speed=result.get_wind_speed,
+                    humidity=result.get_humidity,
+                    perciptation_chance=result.get_precipitation,
+                    uv=result.get_uv,
+                    wind_direction=result.get_wind_deg,
+                    weather_icon=result.get_icon,
+                ),
+                dayforcast=base.DayForcast(
+                    todayhigh=result.get_max_temp,
+                    todaylow=result.get_min_temp,
+                    sunrise=result.get_sunrise,
+                    sunset=result.get_sunset
+                )
             )
-        )
+        except Exception as E:
+            self.logger.error(E)
+            return None
 
     def nonasync_poll(self):
-        result: NormalizedWeather = self.api.run_weather_with_asyncio()
-        return base.Weather(
-            api=result.get_api,
-            location=result.get_lat_long,
-            location_name=result.get_place,
-            current=base.CurrentWeather(
-                conditions=result.get_conditions,
-                temp=result.get_temp,
-                feels_like=result.get_feels_like,
-                wind_speed=result.get_wind_speed,
-                humidity=result.get_humidity,
-                perciptation_chance=result.get_precipitation,
-                uv=result.get_uv,
-                wind_direction=result.get_wind_deg,
-                weather_icon=result.get_icon,
-            ),
-            dayforcast=base.DayForcast(
-                todayhigh=result.get_max_temp,
-                todaylow=result.get_min_temp,
-                sunrise=result.get_sunrise,
-                sunset=result.get_sunset
+        try:
+            if isinstance(result, base.WeatherErrorResult):
+                    self.logger.error(f"{result.msg}")
+                    return None
+            result: NormalizedWeather = self.api.run_weather_with_asyncio()
+            return base.Weather(
+                api=result.get_api,
+                location=result.get_lat_long,
+                location_name=result.get_place,
+                current=base.CurrentWeather(
+                    conditions=result.get_conditions,
+                    temp=result.get_temp,
+                    feels_like=result.get_feels_like,
+                    wind_speed=result.get_wind_speed,
+                    humidity=result.get_humidity,
+                    perciptation_chance=result.get_precipitation,
+                    uv=result.get_uv,
+                    wind_direction=result.get_wind_deg,
+                    weather_icon=result.get_icon,
+                ),
+                dayforcast=base.DayForcast(
+                    todayhigh=result.get_max_temp,
+                    todaylow=result.get_min_temp,
+                    sunrise=result.get_sunrise,
+                    sunset=result.get_sunset
+                )
             )
-        )
+        except Exception as E:
+            self.logger.error(E)
+            return None
     
     def get_temp_color(self, temp: int) -> Tuple[int, int, int]:
         if temp >= 100:
             return (255, 12, 3)
-        elif temp in range(70, 99):
+        elif temp in range(70, 100):
             return (247, 157, 3)
         elif temp in range(40, 69):
             return (5, 223, 3)
@@ -162,6 +176,8 @@ class WeatherMatrix(Matrix):
             self.logger.debug("Reloading Image in matrix")
             xpos = 0
             self.logger.info("Loading Screen 1 of Matrix")
+            if not api:
+                raise FailedApiException("Failure to fetch API")
             while xpos < 100:
                 self.reload_image()
                 self.render_temp(api)
@@ -202,7 +218,7 @@ class WeatherMatrix(Matrix):
             await self.render_image()
             time.sleep(30)
         except Exception as e:
-            self.logger.exception(e)
+            self.logger.error(e)
             error_matrix = ErrorMatrix(self.matrix, self.logger, "Weather Matrix")
             await error_matrix.render()
 
