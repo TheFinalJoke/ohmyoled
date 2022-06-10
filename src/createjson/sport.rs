@@ -37,10 +37,10 @@ impl IntoPyDict for SportOptions {
         let result = PyDict::new(py);
         result.set_item("run", self.run).unwrap();
         result.set_item("api", self.api.get_api()).unwrap();
-        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
-            "null" => "null",
-            key => key,
-        }).unwrap();
+        result.set_item("api_key", match &self.api_key {
+            Some(key) => key,
+            None => "null"
+        }).unwrap_or_default();
         result.set_item("sport", self.sport.get_sport_str()).unwrap();
         result.set_item("team_logo", self.team_logo.into_py_dict(py)).unwrap();
         result.into()
