@@ -10,9 +10,13 @@ pipeline {
       steps {
         sh '''cd src/python
 
+/usr/local/bin/python -m pip install --upgrade pip
+
 pip install -e .
 
-twine upload dist/* --non-interactive
+cd
+
+twine upload src/python/dist/* --non-interactive
 
 '''
       }
