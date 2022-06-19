@@ -10,13 +10,13 @@ pipeline {
       steps {
         sh '''cd src/python
 
-/usr/local/bin/python -m pip install --upgrade pip
+sudo /usr/local/bin/python -m pip install --upgrade pip
 
-pip install -e .
+sudo pip install -e .
 
 cd
 
-twine upload src/python/dist/* --non-interactive
+sudo twine upload src/python/dist/* --non-interactive
 
 '''
       }
