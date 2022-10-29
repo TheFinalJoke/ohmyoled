@@ -7,7 +7,7 @@ import os
 import sys
 from rgbmatrix import (
     RGBMatrixOptions, 
-    RGBMatrix
+    RGBMatrix,
 )
 from ohmyoled.lib.upgrade.upgrade import Upgrader
 from ohmyoled.lib.weather.normal import WeatherApi
@@ -155,7 +155,10 @@ class Main():
     def nonasync_main_run(self):
         try:
             self.logger.info("Starting OhMyOled")
-            matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            if not os.getenv("DEV"):
+                matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            else:
+                
             self.logger.debug("Built Options for RGBMatrix")
             # Make the matrixes to a Queue
             matrixes = asyncio.run(self.init_matrix(matrix))

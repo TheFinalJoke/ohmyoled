@@ -1,7 +1,8 @@
 {
     "python.pythonPath": "/bin/python3",
-    "workbench.colorTheme": "One Dark Pro Darker",
+    "workbench.colorTheme": "GitHub Dark",
     "python.linting.pylintEnabled": true,
     "python.linting.flake8Enabled": false,
     "python.linting.enabled": true,
+    "python.analysis.typeCheckingMode": "basic",
 }
