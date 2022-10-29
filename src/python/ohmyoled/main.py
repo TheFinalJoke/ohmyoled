@@ -17,6 +17,7 @@ from ohmyoled.lib.sports.sports import SportApi
 from ohmyoled.matrix.time import TimeMatrix
 from ohmyoled.matrix.weathermatrix import WeatherMatrix
 from ohmyoled.matrix.sport.sportmatrix import SportMatrix
+from ohmyoled.matrix.terminal import TerminalMatrix
 
 import traceback
 import logging
@@ -135,7 +136,10 @@ class Main():
         try:
             self.logger.info("Starting OhMyOled")
             self.logger.debug("Built Options for RGBMatrix")
-            matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            if os.getenv("DEV"):
+                matrix = TerminalMatrix(options=self.poll_rgbmatrix())
+            else:
+                matrix = RGBMatrix(options=self.poll_rgbmatrix())
             self.logger.debug("Built Options for RGBMatrix")
             # Make the matrixes to a Queue
             matrixes = await self.init_matrix(matrix)
