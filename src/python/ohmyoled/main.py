@@ -7,7 +7,7 @@ import os
 import sys
 from rgbmatrix import (
     RGBMatrixOptions, 
-    RGBMatrix
+    RGBMatrix,
 )
 from ohmyoled.lib.upgrade.upgrade import Upgrader
 from ohmyoled.lib.weather.normal import WeatherApi
@@ -17,6 +17,8 @@ from ohmyoled.lib.sports.sports import SportApi
 from ohmyoled.matrix.time import TimeMatrix
 from ohmyoled.matrix.weathermatrix import WeatherMatrix
 from ohmyoled.matrix.sport.sportmatrix import SportMatrix
+from ohmyoled.matrix.terminal import TerminalMatrix
+
 import traceback
 import logging
 import json
@@ -90,6 +92,10 @@ class Main():
         rgboptions.brightness = options.get('brightness')
         rgboptions.hardware_mapping = 'adafruit-hat'
         return rgboptions
+    
+    def determine_matrix(self):
+        if os.environ["DEV"]:
+            return 
 
     async def init_matrix(self, matrix):
         verified_modules = []
@@ -129,7 +135,11 @@ class Main():
             loop = asyncio.get_event_loop()
         try:
             self.logger.info("Starting OhMyOled")
-            matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            self.logger.debug("Built Options for RGBMatrix")
+            if os.getenv("DEV"):
+                matrix = TerminalMatrix(options=self.poll_rgbmatrix())
+            else:
+                matrix = RGBMatrix(options=self.poll_rgbmatrix())
             self.logger.debug("Built Options for RGBMatrix")
             # Make the matrixes to a Queue
             matrixes = await self.init_matrix(matrix)

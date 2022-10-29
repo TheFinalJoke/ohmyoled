@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from PIL.Image import Image
+import PIL.Image as image_types
 from ohmyoled.matrix.matrix import MatrixBase
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
@@ -20,7 +20,7 @@ class TimeMatrix(MatrixBase):
     def __str__(self) -> str:
         return "TimeMatrix"
 
-    def return_time(self, fmt: str) -> datetime:
+    def return_time(self, fmt: str) -> str:
         return datetime.now().strftime(fmt) 
 
     async def poll_api(self) -> None:
@@ -45,7 +45,7 @@ class TimeMatrix(MatrixBase):
             self.logger.debug(f'Counter for module run {counter}')
             font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
             self.set_image(Image.new("RGB", (64, 32)))
-            self.set_draw(ImageDraw.Draw(self.get_image))
+            self.set_draw(ImageDraw.Draw(self.get_image))  # type: ignore
             self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=tuple(self.config.get('color')))
             self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=tuple(self.config.get('color')))
             await self.render_image()
@@ -59,8 +59,9 @@ class TimeMatrix(MatrixBase):
         while counter < 30:
             self.logger.debug(f'Counter for module run {counter}')
             font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
-            self.set_image(Image.new("RGB", (64, 32)))
-            self.set_draw(ImageDraw.Draw(self.get_image))
+            img = Image.new("RGB", (64, 32))
+            self.set_image(img)
+            self.set_draw(ImageDraw.Draw(self.get_image))  # type: ignore
             self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=tuple(self.config.get('color')))
             self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=tuple(self.config.get('color')))
             self.nonasync_render_image()
