@@ -1,17 +1,9 @@
 import sys
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
-def get_ansi_color_code(r, g, b):
-    if r == g and g == b:
-        if r < 8:
-            return 16
-        if r > 248:
-            return 231
-        return round(((r - 8) / 247) * 24) + 232
-    return 16 + (36 * round(r / 255 * 5)) + (6 * round(g / 255 * 5)) + round(b / 255 * 5)
 
 def get_color(r, g, b):
-    return "\x1b[48;{}m\u2022\x1b[13m".format(int(get_ansi_color_code(r,g,b)))
+    return f"\x1b[38;2;{r};{g};{b}m\u2022\x1b[0m"
 
 def show_image(img):
     h = img.height
@@ -42,6 +34,7 @@ def show_image(img):
 image = Image.new("RGB", (64, 32))
 
 draw = ImageDraw.Draw(image)
-font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 14)
-draw.text((2,1), 'cool', fill=(255,0,0))
+font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 12)
+draw.rectangle((0,0,63,31))
+draw.text((2,1), 'cool', fill=(0,255,255), font=font)
 show_image(image)
