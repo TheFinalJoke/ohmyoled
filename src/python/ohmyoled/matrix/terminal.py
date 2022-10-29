@@ -4,6 +4,7 @@ import PIL.Image as image_types
 import numpy as np
 import sys
 import os
+import time
 
 class TerminalMatrix():
     
@@ -28,13 +29,14 @@ class TerminalMatrix():
                 # quickly. So default the color to blank, and only fill in the color if it's not black
                 if sum(pix) > 0:
                     color = self.__get_color(pix[0], pix[1], pix[2])
-                if y == 63:
+                if y == w-1:
                     img_data += color + "\n"
                 else:
                     img_data += color
         
         sys.stdout.write(img_data)
-        
+        self.Clear()
+        sys.stdout.write(img_data)
     def __get_color(self, r, g, b):
         return f"\x1b[38;2;{r};{g};{b}m\u2022\x1b[0m"
     

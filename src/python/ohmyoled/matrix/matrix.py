@@ -167,20 +167,17 @@ class Matrix(ABSMatrix):
                     mona_lisa += color
         sys.stdout.write(mona_lisa)
     async def render_image(self, loop=None, xoffset=0, yoffset=0) -> None:
-        if os.getenv("DEV"):
-            self.to_terminal()
-        else:
-            if not loop:
-                loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                functools.partial(
-                    self.matrix.SetImage,
-                    self.get_image,
-                    offset_x=xoffset,
-                    offset_y=yoffset
-                )
+        if not loop:
+            loop = asyncio.get_event_loop()
+        await loop.run_in_executor(
+            None,
+            functools.partial(
+                self.matrix.SetImage,
+                self.get_image,
+                offset_x=xoffset,
+                offset_y=yoffset
             )
+        )
     def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0):
         self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)
  
