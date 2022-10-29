@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 # ABS_Matrix -> Matrix_Module
+import os
+import sys
 from abc import abstractmethod
 import asyncio
 import functools
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 logger.addHandler(sh)
 logger.addHandler(filehandler)
 logger.setLevel(logging.INFO)
+
 class ABSMatrix():
     def __init__(self) -> None:
         pass 
@@ -141,11 +144,6 @@ class TerminalMatrix(ABSMatrix):
     async def render_image(self, loop=None, xoffset=0, yoffset=0):
         if not loop:
             loop = asyncio.get_event_loop()
-        height = self.image.height
-        width = self.image.width
-        img_arr = np.asarray(self.image)
-        # sys.
-        
         await loop.run_in_executor(
             None,
             functools.partial(
@@ -278,19 +276,48 @@ class Matrix(ABSMatrix):
         """
         self.set_image(self.image.resize((width, height), Image.ANTIALIAS))
         self.set_draw(ImageDraw.Draw(self.image))
+        
+    def get_color(self, r, g, b):
+        return f"\x1b[38;2;{r};{g};{b}m\u2022\x1b[0m"
 
+    def to_terminal(self):
+        h = self.get_image.height
+        w = self.get_image.width
+        
+        # Set to array
+        img_arr = np.asarray(self.get_image)
+        # Get the shape so we know x,y coords
+        h,w,c = img_arr.shape
+        # Then draw our mona lisa
+        mona_lisa = ''
+        for x in range(h):
+            for y in range(w):
+                pix = img_arr[x][y]
+                color = ' '
+                # 90% of our image is black, and the pi sometimes has trouble writing to the terminal
+                # quickly. So default the color to blank, and only fill in the color if it's not black
+                if sum(pix) > 0:
+                    color = self.get_color(pix[0], pix[1], pix[2])
+                if y == 63:
+                    mona_lisa += color + "\n"
+                else:
+                    mona_lisa += color
+        sys.stdout.write(mona_lisa)
     async def render_image(self, loop=None, xoffset=0, yoffset=0) -> None:
-        if not loop:
-            loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None,
-            functools.partial(
-                self.matrix.SetImage,
-                self.get_image,
-                offset_x=xoffset,
-                offset_y=yoffset
+        if os.getenv("DEV"):
+            self.to_terminal()
+        else:
+            if not loop:
+                loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                functools.partial(
+                    self.matrix.SetImage,
+                    self.get_image,
+                    offset_x=xoffset,
+                    offset_y=yoffset
+                )
             )
-        )
     def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0):
         self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)
  
