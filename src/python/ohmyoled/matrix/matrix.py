@@ -5,10 +5,11 @@ from abc import abstractmethod
 import asyncio
 import functools
 import logging
-import sys
 import numpy as np
 from PIL import Image, ImageDraw
-from typing import Deque, Tuple, List
+import PIL.Image as img_types
+import PIL.ImageDraw as draw_types
+import typing
 from collections import deque
 from rgbmatrix import (
     RGBMatrix,
@@ -40,10 +41,13 @@ class ABSMatrix():
     @abstractmethod
     def render(self): pass 
 
+
 class FontException(Exception):
     pass
+
 class FailedApiException(Exception):
     pass
+
 class TerminalMatrix(ABSMatrix):
     def __init__(self) -> None:
         super().__init__()
@@ -55,13 +59,13 @@ class TerminalMatrix(ABSMatrix):
         font.LoadFont(f"/etc/ohmyoled/fonts/{font_file}")
         return font
 
-    def make_new_image(self, size: Tuple[int]) -> Image:
-        return Image.new("RGB", size)
+    def make_new_image(self, size: typing.Tuple[int]) -> img_types.Image:
+        return Image.new("RGB", size)  # type: ignore
 
-    def add_image_to_images(self, image: Image) -> None:
+    def add_image_to_images(self, image: img_types.Image) -> None:
         self.images.append(image)
     
-    def paste_image(self, image: Image, position: Tuple[int, int]) -> None:
+    def paste_image(self, image: img_types.Image, position: typing.Tuple[int, int]) -> None:
         self.image.paste(image, position)
 
     def reset_image_queue(self) -> None:
@@ -80,11 +84,11 @@ class TerminalMatrix(ABSMatrix):
         self.draw = draw
 
     @property
-    def get_images(self) -> Deque:
+    def get_images(self) -> typing.Deque:
         return self.images
     
     @property
-    def get_draw(self) -> ImageDraw:
+    def get_draw(self) -> draw_types.ImageDraw:
         """
         For Each image you have to 
         set draw. Each image has its own buffer
@@ -96,14 +100,14 @@ class TerminalMatrix(ABSMatrix):
         return self.matrix
     
     @property
-    def get_image(self) -> Image:
+    def get_image(self) -> img_types.Image:
         """
         When working with a single image
         """
         return self.image
 
     @property
-    def get_image_size(self) -> Tuple[int]:
+    def get_image_size(self) -> typing.Tuple[int]:
         """
         When Working with a single Image
         """
@@ -151,13 +155,10 @@ class TerminalMatrix(ABSMatrix):
                 offset_y=yoffset
             )
         )
-    def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0):
+    def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0) -> None:
         self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)
  
-    def draw_rectangle(self, position: List[Tuple]):
-        """
-        [List(Tuple,)]
-        """
+    def draw_rectangle(self, position: typing.List[typing.Tuple]) -> None:
         self.draw.rectangle(position)
     def draw_line(self, pos):
         self.draw.line(pos)
@@ -177,10 +178,10 @@ class TerminalMatrix(ABSMatrix):
             font,
             spacing=spacing
         )
-    def get_multiline_textsize(self, text: str) -> Tuple[int, int]:
+    def get_multiline_textsize(self, text: str) -> typing.Tuple[int, int]:
         return self.draw.multiline_textsize(text)
 
-    def get_text_size(self, text: str) -> Tuple[int]:
+    def get_text_size(self, text: str) -> typing.Tuple[int]:
         return self.draw.textsize(text)
 
     def create_double_buffer(self):
@@ -199,13 +200,13 @@ class Matrix(ABSMatrix):
         font.LoadFont(f"/etc/ohmyoled/fonts/{font_file}")
         return font
 
-    def make_new_image(self, size: Tuple[int]) -> Image:
+    def make_new_image(self, size: typing.Tuple[int]) -> img_types.Image:
         return Image.new("RGB", size)
 
-    def add_image_to_images(self, image: Image) -> None:
+    def add_image_to_images(self, image: img_types.Image) -> None:
         self.images.append(image)
     
-    def paste_image(self, image: Image, position: Tuple[int, int]) -> None:
+    def paste_image(self, image: img_types.Image, position: typing.Tuple[int, int]) -> None:
         self.image.paste(image, position)
 
     def reset_image_queue(self) -> None:
@@ -224,11 +225,11 @@ class Matrix(ABSMatrix):
         self.draw = draw
 
     @property
-    def get_images(self) -> Deque:
+    def get_images(self) -> typing.Deque:
         return self.images
     
     @property
-    def get_draw(self) -> ImageDraw:
+    def get_draw(self) -> draw_types.ImageDraw:
         """
         For Each image you have to 
         set draw. Each image has its own buffer
@@ -237,17 +238,17 @@ class Matrix(ABSMatrix):
 
     @property
     def get_matrix(self) -> RGBMatrix:
-        return self.matrix
+        return self.matrix  # type: ignore
     
     @property
-    def get_image(self) -> Image:
+    def get_image(self) -> img_types.Image:
         """
         When working with a single image
         """
         return self.image
 
     @property
-    def get_image_size(self) -> Tuple[int]:
+    def get_image_size(self) -> typing.Tuple[int]:
         """
         When Working with a single Image
         """
@@ -278,7 +279,7 @@ class Matrix(ABSMatrix):
         self.set_image(self.image.resize((width, height), Image.ANTIALIAS))
         self.set_draw(ImageDraw.Draw(self.image))
 
-    async def render_image(self, loop=None, xoffset=0, yoffset=0):
+    async def render_image(self, loop=None, xoffset=0, yoffset=0) -> None:
         if not loop:
             loop = asyncio.get_event_loop()
         await loop.run_in_executor(
@@ -293,9 +294,9 @@ class Matrix(ABSMatrix):
     def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0):
         self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)
  
-    def draw_rectangle(self, position: List[Tuple]):
+    def draw_rectangle(self, position: typing.List[typing.Tuple]):
         """
-        [List(Tuple,)]
+        [typing.List(typing.Tuple,)]
         """
         self.draw.rectangle(position)
     def draw_line(self, pos):
@@ -316,10 +317,10 @@ class Matrix(ABSMatrix):
             font,
             spacing=spacing
         )
-    def get_multiline_textsize(self, text: str) -> Tuple[int, int]:
+    def get_multiline_textsize(self, text: str) -> typing.Tuple[int, int]:
         return self.draw.multiline_textsize(text)
 
-    def get_text_size(self, text: str) -> Tuple[int]:
+    def get_text_size(self, text: str) -> typing.Tuple[int]:
         return self.draw.textsize(text)
 
     def create_double_buffer(self):
