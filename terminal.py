@@ -44,4 +44,18 @@ def show_image(img):
     # Print directly to Stdout
     sys.stdout.write(data)
 
+def get_time():
+    pass
+
+def get_cpu_usage():
+    pass
+
+# Use if __main__ == '__name__' to start your program 
+# Hint 1: Build the image and draw image, first using Image, and ImageDraw. 
+#   - There are many examples in my code and internet
+
+# Hint 2: Get the data to display 
+# - Many ways to get the data, find a way 
+
+# Hint 3: Pass the image into the Show Image function
 
