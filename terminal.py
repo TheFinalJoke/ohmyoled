@@ -1,3 +1,11 @@
+# This is a basic program to display the a 64x32 pixels to the terminal
+# 1. You will have to be in a Dev Container (ping @nickshorter if you can't pull down the images)
+#   - You will have to maybe look at the documentation for Dev Containers On Microsoft website
+#   - You can use any computer, x86_64, or ARM
+# 2. Need to checkout the Git Branch "term_problem"
+# 3. Problem:
+#       1. Print out the current time of the system and display 
+#       2. Print out CPU usage and display 
 import sys
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -16,8 +24,10 @@ def show_image(img):
     # Get the shape so we know x,y coords
     h,w,c = img_arr.shape
     # Then draw our mona lisa
-    mona_lisa = ''
+    data = ''
+    # Range of 0 - 32 pixels
     for x in range(h):
+        # Range of 0 - 64 pixels 
         for y in range(w):
             pix = img_arr[x][y]
             color = ' '
@@ -25,16 +35,13 @@ def show_image(img):
             # quickly. So default the color to blank, and only fill in the color if it's not black
             if sum(pix) > 0:
                 color = get_color(pix[0], pix[1], pix[2])
+            # Check if at the end of the line
+            # Make a new line
             if y == 63:
-                mona_lisa += color + "\n"
+               data += color + "\n"
             else:
-                mona_lisa += color
-    sys.stdout.write(mona_lisa)
+               data += color
+    # Print directly to Stdout
+    sys.stdout.write(data)
 
-image = Image.new("RGB", (64, 32))
 
-draw = ImageDraw.Draw(image)
-font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 12)
-draw.rectangle((0,0,63,31))
-draw.text((2,1), 'cool', fill=(0,255,255), font=font)
-show_image(image)
