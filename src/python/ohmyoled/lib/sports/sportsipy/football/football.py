@@ -37,9 +37,9 @@ class FootballSportsipy(Runner):
             sport = {}
             team = logo_map[self.config['sport']['team_logo']['name']]
             self.logger.info("Running Football Sportsipy Api")
-            sport['team'] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")
-            sport['schedule'] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")
-            sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")
+            sport['team'] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")  # type: ignore
+            sport['schedule'] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")  # type: ignore
+            sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")  # type: ignore
             await asyncio.gather(*sport.values())
             sport['sport'] = base.SportStructure.Football
             football_result = base.ModuleResult(
@@ -67,7 +67,7 @@ class FootballSportsipy(Runner):
                         score=base.Score(
                             team=game.points_scored,
                             opposing_team=game.points_allowed
-                        ) if base.GameStatus.Finished else None  
+                        ) if base.GameStatus.Finished else None    # type: ignore
                     ) for game in sport['schedule'].result()
                 ],
                 standings=[
@@ -82,7 +82,7 @@ class FootballSportsipy(Runner):
                 wins=sport['team'].result().wins,
                 losses=sport['team'].result().losses
             )
-            return SportsipyApiResult(api_result=football_result)
+            return SportsipyApiResult(api_result=football_result)  # type: ignore
         except Exception as error:
             self.logger.error(f"Error Occured inside of football module: {error}")
             raise base.SportException(error)

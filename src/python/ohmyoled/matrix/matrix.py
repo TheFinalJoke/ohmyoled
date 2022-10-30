@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 # ABS_Matrix -> Matrix_Module
-import os
 import sys
 from abc import abstractmethod
 import asyncio
@@ -62,7 +61,7 @@ class Matrix(ABSMatrix):
         return font
 
     def make_new_image(self, size: typing.Tuple[int]) -> img_types.Image:
-        return Image.new("RGB", size)
+        return Image.new("RGB", size)  # type: ignore
 
     def add_image_to_images(self, image: img_types.Image) -> None:
         self.images.append(image)
@@ -116,7 +115,7 @@ class Matrix(ABSMatrix):
         return self.image.size
 
     def set_matrix(self, matrix) -> None:
-        self.get_matrix = matrix
+        self.get_matrix = matrix  # type: ignore
     
     def create_matrix(self, options) -> RGBMatrix:
         self.set_matrix(RGBMatrix(options)) 
@@ -172,14 +171,14 @@ class Matrix(ABSMatrix):
         await loop.run_in_executor(
             None,
             functools.partial(
-                self.matrix.SetImage,
+                self.matrix.SetImage,  # type: ignore
                 self.get_image,
                 offset_x=xoffset,
                 offset_y=yoffset
             )
         )
     def nonasync_render_image(self, loop=None, xoffset=0, yoffset=0):
-        self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)
+        self.matrix.SetImage(self.get_image, offset_x=xoffset, offset_y=yoffset)  # type: ignore
  
     def draw_rectangle(self, position: typing.List[typing.Tuple]):
         """
@@ -208,10 +207,10 @@ class Matrix(ABSMatrix):
         return self.draw.multiline_textsize(text)
 
     def get_text_size(self, text: str) -> typing.Tuple[int]:
-        return self.draw.textsize(text)
+         return self.draw.textsize(text)
     
     def clear(self) -> None:
-        self.matrix.Clear()
+        self.matrix.Clear()  # type: ignore
 
 class MatrixBase(Matrix):
     def __init__(self, matrix) -> None:
