@@ -12,6 +12,7 @@ from ohmyoled.lib.asynclib import make_async
 from datetime import datetime
 from ohmyoled.lib.run import Runner
 
+
 class FootballSportsipy(Runner):
     def __init__(self, config):
         super().__init__(config)
@@ -20,8 +21,8 @@ class FootballSportsipy(Runner):
     def run_team(self, team: str) -> Team:
         self.logger.debug("Running Team")
         return Team(team)
-    
-    @make_async 
+
+    @make_async
     def run_schedule(self, team: str) -> Schedule:
         self.logger.debug("Running Schedule")
         return Schedule(team)
@@ -35,52 +36,56 @@ class FootballSportsipy(Runner):
         try:
             self.logger.info("Inside of the Football Sportsipy")
             sport = {}
-            team = logo_map[self.config['sport']['team_logo']['name']]
+            team = logo_map[self.config["sport"]["team_logo"]["name"]]
             self.logger.info("Running Football Sportsipy Api")
-            sport['team'] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")  # type: ignore
-            sport['schedule'] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")  # type: ignore
-            sport['standings'] = asyncio.create_task(self.run_standings(), name="standing_task")  # type: ignore
+            sport["team"] = asyncio.create_task(self.run_team(team.shorthand), name="team_task")  # type: ignore
+            sport["schedule"] = asyncio.create_task(self.run_schedule(team.shorthand), name="schedule_task")  # type: ignore
+            sport["standings"] = asyncio.create_task(self.run_standings(), name="standing_task")  # type: ignore
             await asyncio.gather(*sport.values())
-            sport['sport'] = base.SportStructure.Football
+            sport["sport"] = base.SportStructure.Football
             football_result = base.ModuleResult(
-                name=sport['team'].result().name,
+                name=sport["team"].result().name,
                 team=base.Team(
-                    name=sport['team'].result().name,
-                    logo=logo_map[sport['team'].result().name],
-                    position=sport['team'].result().rank
+                    name=sport["team"].result().name,
+                    logo=logo_map[sport["team"].result().name],
+                    position=sport["team"].result().rank,
                 ),
                 schedule=[
                     base.Game(
-                        team = base.Team(
-                            name=sport['team'].result().name,
-                            logo=logo_map[sport['team'].result().name],
-                            position=sport['team'].result().rank
+                        team=base.Team(
+                            name=sport["team"].result().name,
+                            logo=logo_map[sport["team"].result().name],
+                            position=sport["team"].result().rank,
                         ),
                         timestamp=game.datetime,
-                        status=base.determine_game_status(sport['team'].result(), game)[0],
-                        opposing_team= base.Team(
-                            name=game.opponent_name,
-                            logo=logo_map[game.opponent_name]
+                        status=base.determine_game_status(sport["team"].result(), game)[
+                            0
+                        ],
+                        opposing_team=base.Team(
+                            name=game.opponent_name, logo=logo_map[game.opponent_name]
                         ),
-                        result=base.determine_game_status(sport['team'].result(), game)[1],
+                        result=base.determine_game_status(sport["team"].result(), game)[
+                            1
+                        ],
                         homeoraway=game.location,
                         score=base.Score(
-                            team=game.points_scored,
-                            opposing_team=game.points_allowed
-                        ) if base.GameStatus.Finished else None    # type: ignore
-                    ) for game in sport['schedule'].result()
+                            team=game.points_scored, opposing_team=game.points_allowed
+                        )
+                        if base.GameStatus.Finished
+                        else None,  # type: ignore
+                    )
+                    for game in sport["schedule"].result()
                 ],
                 standings=[
                     base.Team(
-                        name=team.name,
-                        logo=logo_map[team.name],
-                        position=team.rank
-                    ) for team in sport['standings'].result()
+                        name=team.name, logo=logo_map[team.name], position=team.rank
+                    )
+                    for team in sport["standings"].result()
                 ],
-                sport=sport['sport'],
-                games_played=sport['team'].result().games_played,
-                wins=sport['team'].result().wins,
-                losses=sport['team'].result().losses
+                sport=sport["sport"],
+                games_played=sport["team"].result().games_played,
+                wins=sport["team"].result().wins,
+                losses=sport["team"].result().losses,
             )
             return SportsipyApiResult(api_result=football_result)  # type: ignore
         except Exception as error:

@@ -1,8 +1,5 @@
 # All the weather modules and Objects
-from ohmyoled.lib.weather.normal import (
-    NormalizedWeather,
-    WeatherApi
-)
+from ohmyoled.lib.weather.normal import NormalizedWeather, WeatherApi
 
 from ohmyoled.lib.weather.weather_icon import weather_icon_mapping
 
@@ -13,13 +10,13 @@ from ohmyoled.lib.weather.weatherbase import (
     CurrentWeather,
     DayForcast,
     WeatherBase,
-    Weather
+    Weather,
 )
 
 from ohmyoled.lib.weather.openweather.weather import (
     OpenWeatherException,
     OpenWeatherApi,
-    OpenWeather
+    OpenWeather,
 )
 
 from ohmyoled.lib.weather.weathergov.nws import (
