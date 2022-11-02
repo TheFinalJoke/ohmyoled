@@ -82,8 +82,6 @@ class StockApi(Runner):
         self.logger.info("Getting Stock")
         stock_data = {"Stock": {}}
         self.logger.debug("Config has historical data for stocks")
-        # hist_stock = HistoricalStock(self.token, self.config['stock'])
-        # stock_data["Stock"].update({"Historical": await hist_stock.run()})
         self.logger.debug("Getting Quote data")
         quote = SQuote(self.token, self.config["stock"])
         stock_api_return = asyncio.run(quote.run())
