@@ -39,3 +39,4 @@ class TestStocks(tester.ApiTester):
     def test_run_throws_exception(self, run_data) -> None:
         with self.assertRaises(stock_types.StockException):
             asyncio.run(self.api.run())
+    

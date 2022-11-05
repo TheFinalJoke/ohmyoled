@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 
 import asyncio
-from logging import currentframe
 from ohmyoled.lib.run import Runner, Caller
 from ohmyoled.lib.asynclib import make_async
 import sys
 import os
 import json
-from typing import Dict, Tuple, List
+import typing
 from datetime import datetime
 from datetime import timedelta
 import ohmyoled.lib.weather.weatherbase as base
 from ohmyoled.lib.weather.weather_icon import weather_icon_mapping
-import csv
 
 
 class OpenWeatherException(Exception):
@@ -56,7 +54,7 @@ class OpenWeatherApi(Runner):
 
     async def get_long_and_lat(
         self, location: str = None, zipcode: int = None
-    ) -> Tuple:
+    ) -> typing.Tuple:
         """
         Searches for Longitude and latitude for Given City
         """
@@ -76,7 +74,7 @@ class OpenWeatherApi(Runner):
             sys.exit("No City Found")
 
     @make_async
-    def get_current_location(self) -> Dict[str, str]:
+    def get_current_location(self) -> typing.Dict[str, str]:
         url = "http://ipinfo.io/json"
         response = self.run_non_async_request(url)
         return response.json()
@@ -87,7 +85,7 @@ class OpenWeatherApi(Runner):
         """
         self.logger.debug("Building Weather url...")
         if current_location:
-            ip_json: Dict[str, str] = await self.get_current_location()
+            ip_json: typing.Dict[str, str] = await self.get_current_location()
             lon, lat = ip_json["loc"].split(",")[1], ip_json["loc"].split(",")[0]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         elif location:
@@ -99,7 +97,7 @@ class OpenWeatherApi(Runner):
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         return url
 
-    async def run(self) -> Dict:
+    async def run(self):
         try:
             self.logger.info("Running Api for Weather")
             args = await self.parse_args()
@@ -116,7 +114,7 @@ class OpenWeather(Caller):
     Weather object to describe current Polled data
     """
 
-    def __init__(self, api: Dict) -> None:
+    def __init__(self, api: typing.Dict) -> None:
         super().__init__()
         self.api = api
         self.api_json = api
@@ -205,7 +203,7 @@ class OpenWeather(Caller):
         return self._api_caller
 
     @property
-    def get_lat_long(self) -> Tuple[float, float]:
+    def get_lat_long(self) -> typing.Tuple[float, float]:
         return self._lat_long
 
     @property
@@ -216,7 +214,7 @@ class OpenWeather(Caller):
         self._wind_speed = speed
 
     @property
-    def get_daily(self) -> Dict[str, str]:
+    def get_daily(self) -> typing.Dict[str, str]:
         return self._daily
 
     @property
@@ -238,11 +236,11 @@ class OpenWeather(Caller):
     def get_place(self) -> str:
         return self._place
 
-    def set_weather(self, weather: Dict[str, str]) -> None:
+    def set_weather(self, weather: typing.Dict[str, str]) -> None:
         self._weather = weather
 
     @property
-    def get_weather(self) -> Dict[str, str]:
+    def get_weather(self) -> typing.Dict[str, str]:
         return self._weather
 
     def set_conditions(self, conditions: str) -> None:
@@ -294,11 +292,11 @@ class OpenWeather(Caller):
     def get_humidity(self) -> None:
         return self._humidity
 
-    def set_wind(self, wind: Dict) -> None:
+    def set_wind(self, wind: typing.Dict) -> None:
         self._wind = wind
 
     @property
-    def get_wind(self) -> Dict:
+    def get_wind(self) -> typing.Dict:
         return self._wind
 
     def set_time(self, time: int) -> None:

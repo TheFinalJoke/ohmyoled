@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-from typing import Dict, Tuple
+import typing 
 import asyncio
 import ohmyoled.lib.weather.weatherbase as base
 from datetime import datetime, timedelta
-from ohmyoled.lib.weather.openweather.weather import OpenWeatherApi
+import ohmyoled.lib.weather.openweather.weather as open_weather_types
 from ohmyoled.lib.weather.weathergov.nws import NWSApi
 from ohmyoled.lib.run import Caller
 
@@ -21,7 +21,7 @@ class NormalizedWeather:
         return self.api_result.get_icon
 
     @property
-    def get_lat_long(self) -> Tuple[float, float]:
+    def get_lat_long(self) -> typing.Tuple[float, float]:
         return self.api_result.get_lat_long
 
     @property
@@ -29,7 +29,7 @@ class NormalizedWeather:
         return self.api_result.get_wind_speed
 
     @property
-    def get_daily(self) -> Dict[str, str]:
+    def get_daily(self) -> typing.Dict[str, str]:
         return self.api_result.get_daily
 
     @property
@@ -49,7 +49,7 @@ class NormalizedWeather:
         return self.api_result.get_place
 
     @property
-    def get_weather(self) -> Dict[str, str]:
+    def get_weather(self) -> typing.Dict[str, str]:
         return self.api_result.get_weather
 
     @property
@@ -81,7 +81,7 @@ class NormalizedWeather:
         return self.api_result.get_humidity
 
     @property
-    def get_wind(self) -> Dict:
+    def get_wind(self) -> typing.Dict:
         return self.api_result.get_wind
 
     @property
@@ -105,10 +105,10 @@ class WeatherApi(Caller):
         super().__init__()
         self.config = config
 
-    async def run_weather(self):
+    async def run_weather(self) -> typing.Union[NormalizedWeather, base.WeatherErrorResult]:
         try:
             if self.config["weather"]["api"] == "openweather":
-                open_weather = OpenWeatherApi(self.config)
+                open_weather = open_weather_types.OpenWeatherApi(self.config)
                 result = await open_weather.run()
             else:
                 nws = NWSApi(self.config)
@@ -120,7 +120,7 @@ class WeatherApi(Caller):
     def run_weather_with_asyncio(self):
         # This is a binding for external APIs like Rust with complicated Async problems
         if self.config["weather"]["api"] == "openweather":
-            open_weather = OpenWeatherApi(self.config)
+            open_weather = open_weather_types.OpenWeatherApi(self.config)
             result = asyncio.run(open_weather.run())
         else:
             nws = NWSApi(self.config)
