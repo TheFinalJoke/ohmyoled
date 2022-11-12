@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 
 import asyncio
-from ohmyoled.lib.run import Runner, Caller
-from ohmyoled.lib.asynclib import make_async
-import sys
-import os
 import json
+import os
+import sys
 import typing
-from datetime import datetime
-from datetime import timedelta
+from datetime import datetime, timedelta
+
 import ohmyoled.lib.weather.weatherbase as base
+from ohmyoled.lib.asynclib import make_async
+from ohmyoled.lib.run import Caller, Runner
 from ohmyoled.lib.weather.weather_icon import weather_icon_mapping
 
 
@@ -53,7 +53,7 @@ class OpenWeatherApi(Runner):
             return await self.url_builder(location=self.weather["city"])
 
     async def get_long_and_lat(
-        self, location: str = None, zipcode: int = None
+        self, location: typing.Optional[str] = None, zipcode: typing.Optional[int] = None
     ) -> typing.Tuple:
         """
         Searches for Longitude and latitude for Given City
@@ -64,8 +64,8 @@ class OpenWeatherApi(Runner):
                 self.logger.debug("Computing Longitude and Latitude")
                 url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}"
                 response = await self.get_data(url)
-                lon = response.get("coord").get("lon")
-                lat = response.get("coord").get("lat")
+                lon = response.get("coord").get("lon", 0)
+                lat = response.get("coord").get("lat", 0)
                 return lon, lat
             else:
                 raise Exception("Zip Code not Supported")
@@ -85,14 +85,14 @@ class OpenWeatherApi(Runner):
         """
         self.logger.debug("Building Weather url...")
         if current_location:
-            ip_json: typing.Dict[str, str] = await self.get_current_location()
+            ip_json: typing.Dict[str, str] = await self.get_current_location()  # type: ignore
             lon, lat = ip_json["loc"].split(",")[1], ip_json["loc"].split(",")[0]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         elif location:
             lon, lat = await self.get_long_and_lat(location)
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         else:
-            ip_json = await self.get_current_location()
+            ip_json = await self.get_current_location()  # type: ignore
             lon, lat = ip_json["loc"].split(",")[1], ip_json["loc"].split(",")[0]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         return url
@@ -102,7 +102,7 @@ class OpenWeatherApi(Runner):
             self.logger.info("Running Api for Weather")
             args = await self.parse_args()
             api_data = await self.get_data(args)
-            current_data = await self.get_current_location()
+            current_data = await self.get_current_location()  # type: ignore
             api_data["name"] = current_data["city"]
             return OpenWeather(api_data)
         except Exception as e:
