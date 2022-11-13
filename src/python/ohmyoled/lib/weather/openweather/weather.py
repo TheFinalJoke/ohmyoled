@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 
-import asyncio
 import json
 import os
 import sys
 import typing
 from datetime import datetime, timedelta
-
+import ipinfo
 import ohmyoled.lib.weather.weatherbase as base
 from ohmyoled.lib.asynclib import make_async
 from ohmyoled.lib.run import Caller, Runner
@@ -73,11 +72,16 @@ class OpenWeatherApi(Runner):
             self.logger.critical(e)
             sys.exit("No City Found")
 
+    def get_location_via_ip(self, ip: str):
+        access_token = 'c12fa6ddac4bc4'
+        handler = ipinfo.getHandler(access_token)
+        details = handler.getDetails(ip)
+        return details
     @make_async
     def get_current_location(self) -> typing.Dict[str, str]:
-        url = "http://ipinfo.io/json"
+        url = "https://api.ipify.org"
         response = self.run_non_async_request(url)
-        return response.json()
+        return self.get_location_via_ip(response.text).details
 
     async def url_builder(self, location=None, zipcode=None, current_location=False):
         """
@@ -116,7 +120,6 @@ class OpenWeather(Caller):
 
     def __init__(self, api: typing.Dict) -> None:
         super().__init__()
-        breakpoint()
         self.api = api
         self.api_json = api
         self._api_caller = base.APIWeather.OPENWEATHER
@@ -139,7 +142,7 @@ class OpenWeather(Caller):
         self._sunset = datetime.fromtimestamp(self._current.get("sunset"))
         self._pop = self._daily["pop"]
         self._uv = self._daily["uvi"]
-
+        breakpoint()
     def __repr__(self) -> str:
         attrs = [
             f"name={self._place}",

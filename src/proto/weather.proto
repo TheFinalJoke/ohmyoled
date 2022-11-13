@@ -1,4 +1,5 @@
 syntax = "proto3";
+import "google/protobuf/any.proto";
 
 package ohweather;
 
@@ -56,8 +57,16 @@ message Weather {
 message OpenWeather {
     map<string, string> api = 1;
     string api_json = 2;
-    
-
+    WeatherAPICaller api_caller = 3;
+    repeated float lat_long = 4;
+    string place = 5;
+    map<string, google.protobuf.Any> current = 6;
+    map<string, string> weather = 7;
+    string conditions = 7;
+    float temperature = 8;
+    string icon = 9;
+    float feels_like = 10;
+    map<string, google.protobuf.Any> daily = 11;
 }
 message NwsResult {
     map<string, string> api = 1;
