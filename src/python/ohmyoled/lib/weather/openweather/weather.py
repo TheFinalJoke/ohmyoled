@@ -116,6 +116,7 @@ class OpenWeather(Caller):
 
     def __init__(self, api: typing.Dict) -> None:
         super().__init__()
+        breakpoint()
         self.api = api
         self.api_json = api
         self._api_caller = base.APIWeather.OPENWEATHER

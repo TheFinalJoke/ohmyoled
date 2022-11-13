@@ -1,6 +1,6 @@
 # See here for image contents: https://github.com/microsoft/vscode-dev-containers/tree/v0.209.6/containers/python-3/.devcontainer/base.Dockerfile
 
-FROM thefinaljoke/ohmyoleddev:amd64_latest AS python_layer
+FROM thefinaljoke/ohmyoleddev:latest AS python_layer
 RUN apt install zsh -y \
 && pip3 install pylint \
 && pip3 install flake8 \
