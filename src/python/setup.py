@@ -39,6 +39,7 @@ setup(
         "sportsipy",
         "wget",
         "suntime",
+        "ipinfo"
     ],
     extras_require={
         "dev": [
