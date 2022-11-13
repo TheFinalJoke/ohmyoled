@@ -138,3 +138,6 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
+
+# Don't track proto files
+*pb2.py*

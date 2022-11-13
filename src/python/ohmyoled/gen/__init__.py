@@ -1,0 +1,1 @@
+import ohmyoled.gen.weather_pb2
