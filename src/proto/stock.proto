@@ -1,0 +1,25 @@
+syntax = "proto3";
+import "google/protobuf/any.proto";
+
+package ohstock;
+
+enum API {
+    finnhub = 0;
+}
+message StockError {
+    bool error = 1;
+    string msg = 2;
+}
+
+message StockResult {
+    map<string, google.protobuf.Any> stock_data = 1;
+    map<string, google.protobuf.Any> quote = 2;
+    float open_price = 3;
+    float current_price = 4;
+    float highest_price = 5;
+    float lowest_price = 6;
+    float previous_close = 7;
+    string symbol = 8;
+    map<string, google.protobuf.Any> description = 9;
+    string name = 10;
+}

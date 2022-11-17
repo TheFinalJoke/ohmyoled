@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package ohsports;
+
+message SportsError {
+    bool error = 1;
+    optional string msg = 2;
+}
+enum API {
+    APISPORTS = 0;
+    SPORTSIPY = 1;
+    SPORTSDB = 2;
+}
+
+
+enum SportStructure {
+    Hockey = 0;
+    Baseball = 1;
+    Football = 2;
+    Basketball = 3;
+}
+
+enum GameStatus {
+    NotStarted = 0;
+    InGame = 1;
+    Finished = 2;
+    Overtime = 3;
+}
+
+enum GameResult {
+    WIN = 0;
+    LOSS = 1;
+    TIE = 2;
+    OVERTIME = 3;
+}
+
+message Logo {
+    string name = 1;
+    int32 sportsdb_leagueid = 2;
+    string url = 3;
+    string sport = 4;
+    string shorthand = 5;
+    optional int32 apisportsid = 6;
+    optional int32 sportsdbid = 7;
+    optional int32 sportsipyid = 8;
+}
+
+message Team {
+    string name = 1;
+    Logo logo = 2;
+    int32 position = 3;
+    string league = 4;
+}
+
+message Score {
+    int32 team = 1;
+    int32 opposing_team = 2;
+}
+
+message Game {
+    Team team = 1;
+    int64 timestamp = 2;
+    GameStatus status = 3;
+    Team opposing_team = 4;
+    GameResult result = 5;
+    string home_or_away = 6;
+    optional Score score = 7;
+}
+
+message SportResult {
+    string name = 1;
+    Team team = 2;
+    repeated Game game = 3;
+    repeated Team standings = 4;
+    SportStructure sport = 5;
+    int32 games_played = 6;
+    int32 wins = 7;
+    int32 losses = 8;
+}

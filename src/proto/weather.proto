@@ -54,7 +54,7 @@ message Weather {
     Current current = 4;
     DayForcast dayforcase = 5;
 } 
-message OpenWeather {
+message WeatherResult {
     map<string, string> api = 1;
     string api_json = 2;
     WeatherAPICaller api_caller = 3;
@@ -62,14 +62,20 @@ message OpenWeather {
     string place = 5;
     map<string, google.protobuf.Any> current = 6;
     map<string, string> weather = 7;
-    string conditions = 7;
-    float temperature = 8;
-    string icon = 9;
-    float feels_like = 10;
-    map<string, google.protobuf.Any> daily = 11;
+    string conditions = 8;
+    float temperature = 9;
+    string icon = 10;
+    float feels_like = 11;
+    map<string, google.protobuf.Any> daily = 12;
+    float min_temp = 13;
+    float max_temp = 14;
+    int32 humidity = 15;
+    int32 wind_speed = 16;
+    int32 wind_deg = 17;
+    int64 current_time = 18;
+    int64 sunrise = 19;
+    int64 sunset = 20;
+    optional int32 precipitation = 21;
+    optional int32 uv = 22;
 }
-message NwsResult {
-    map<string, string> api = 1;
-    string api_json = 2;
 
-}

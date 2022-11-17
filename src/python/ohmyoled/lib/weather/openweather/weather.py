@@ -142,7 +142,7 @@ class OpenWeather(Caller):
         self._sunset = datetime.fromtimestamp(self._current.get("sunset"))
         self._pop = self._daily["pop"]
         self._uv = self._daily["uvi"]
-        breakpoint()
+
     def __repr__(self) -> str:
         attrs = [
             f"name={self._place}",
