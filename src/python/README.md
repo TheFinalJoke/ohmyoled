@@ -13,7 +13,7 @@ cd to python folder
 Steps to rebuild Dev and Prod Containers 
 
 cd to container folder 
-
+Repeat with different Archs 
 1. Increment the OHMYOLED_VERSION in the dockerfile 
 2. Build Dev Docker file
 `docker build -t dev_cont:latest devcontainer_build`
@@ -24,8 +24,9 @@ cd to container folder
 5. Push To Docker hub
 `docker push thefinaljoke/ohmyoleddev`
 
-Repeat to Prod Container
 
+Repeat to Prod Container
+This will only have to be arm64
 ---------------------------------------------------
 Change the Dockerfile inside of devcontainer
 
