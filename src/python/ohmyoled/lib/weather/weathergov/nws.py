@@ -8,8 +8,9 @@ from ohmyoled.lib.weather.weather_icon import weather_icon_mapping
 from ohmyoled.lib.asynclib import make_async
 from ohmyoled.lib.run import Runner, Caller
 from datetime import datetime, timedelta
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Optional
 from suntime import Sun
+import ipinfo
 
 
 class NWSApi(Runner):
@@ -25,7 +26,7 @@ class NWSApi(Runner):
         return await self.url_builder()
 
     async def get_long_and_lat(
-        self, location: str = None, zipcode: int = None, url=None
+        self, location: Optional[str] = None, zipcode: Optional[int] = None, url=None
     ) -> Tuple:
         """
         Searches for Longitude and latitude for Given City
@@ -44,11 +45,14 @@ class NWSApi(Runner):
             self.logger.critical(e)
             sys.exit("No City Found")
 
-    @make_async
-    def get_current_location(self) -> Dict[str, str]:
-        url = "http://ipinfo.io/json"
-        response = self.run_non_async_request(url)
-        return response.json()
+    async def get_current_location(self) -> Dict[str, str]:
+        if not self.weather.get("current_location_api_key"):
+            raise Exception("No Key for Ip Info")
+        handler = ipinfo.getHandlerAsync(
+            access_token=self.weather.get("current_location_api_key")
+        )
+        response = await handler.getDetails()
+        return response.details
 
     async def url_builder(self):
         """
@@ -56,7 +60,7 @@ class NWSApi(Runner):
         """
         self.logger.debug("Building Weather url...")
         ip_json: Dict[str, str] = await self.get_current_location()
-        lon, lat = ip_json["loc"].split(",")[1], ip_json["loc"].split(",")[0]
+        lon, lat = ip_json["longitude"], ip_json["latitude"]
         url = f"https://api.weather.gov/points/{lat},{lon}"
         return url
 

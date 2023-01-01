@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import typing 
+import typing
 import asyncio
 import ohmyoled.lib.weather.weatherbase as base
 from datetime import datetime, timedelta
@@ -105,7 +105,9 @@ class WeatherApi(Caller):
         super().__init__()
         self.config = config
 
-    async def run_weather(self) -> typing.Union[NormalizedWeather, base.WeatherErrorResult]:
+    async def run_weather(
+        self,
+    ) -> typing.Union[NormalizedWeather, base.WeatherErrorResult]:
         try:
             if self.config["weather"]["api"] == "openweather":
                 open_weather = open_weather_types.OpenWeatherApi(self.config)

@@ -215,7 +215,6 @@ if __name__ == "__main__":
         sys.exit(0)
     with open("/etc/ohmyoled/ohmyoled.json") as file:
         j_object = json.load(file)
-
     logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.json")
     main = Main(j_object)
 

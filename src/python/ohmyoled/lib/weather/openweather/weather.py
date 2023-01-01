@@ -53,7 +53,9 @@ class OpenWeatherApi(Runner):
             return await self.url_builder(location=self.weather["city"])
 
     async def get_long_and_lat(
-        self, location: typing.Optional[str] = None, zipcode: typing.Optional[int] = None
+        self,
+        location: typing.Optional[str] = None,
+        zipcode: typing.Optional[int] = None,
     ) -> typing.Tuple:
         """
         Searches for Longitude and latitude for Given City
@@ -64,8 +66,8 @@ class OpenWeatherApi(Runner):
                 self.logger.debug("Computing Longitude and Latitude")
                 url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}"
                 response = await self.get_data(url)
-                lon = response.get("coord").get("lon", 0)
-                lat = response.get("coord").get("lat", 0)
+                lon = response.get("coord").get("lon", 0)  # type: ignore
+                lat = response.get("coord").get("lat", 0)  # type: ignore
                 return lon, lat
             else:
                 raise Exception("Zip Code not Supported")
@@ -73,16 +75,17 @@ class OpenWeatherApi(Runner):
             self.logger.critical(e)
             sys.exit("No City Found")
 
-    def get_location_via_ip(self, ip: str):
-        access_token = 'c12fa6ddac4bc4'
-        handler = ipinfo.getHandler(access_token)
-        details = handler.getDetails(ip)
-        return details
-    @make_async
-    def get_current_location(self) -> typing.Dict[str, str]:
-        url = "https://api.ipify.org"
-        response = self.run_non_async_request(url)
-        return self.get_location_via_ip(response.text).details
+    async def get_current_location(self) -> typing.Dict[str, str]:
+        if (
+            not self.weather.get("current_location_api_key")
+            or self.weather.get("current_location_api_key") == "null"
+        ):
+            raise Exception("No Key for Ip Info")
+        handler = ipinfo.getHandler(
+            access_token=self.weather.get("current_location_api_key")
+        )
+        response = handler.getDetails()
+        return response.details
 
     async def url_builder(self, location=None, zipcode=None, current_location=False):
         """
@@ -91,24 +94,30 @@ class OpenWeatherApi(Runner):
         self.logger.debug("Building Weather url...")
         if current_location:
             ip_json: typing.Dict[str, str] = await self.get_current_location()  # type: ignore
-            lon, lat = ip_json["loc"].split(",")[1], ip_json["loc"].split(",")[0]
+
+            lon, lat = ip_json["longitude"], ip_json["latitude"]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         elif location:
             lon, lat = await self.get_long_and_lat(location)
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         else:
             ip_json = await self.get_current_location()  # type: ignore
-            lon, lat = ip_json["loc"].split(",")[1], ip_json["loc"].split(",")[0]
+            lon, lat = ip_json["longitude"], ip_json["latitude"]
             url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         return url
 
     async def run(self):
         try:
             self.logger.info("Running Api for Weather")
+
             args = await self.parse_args()
+
             api_data = await self.get_data(args)
+
             current_data = await self.get_current_location()  # type: ignore
+
             api_data["name"] = current_data["city"]
+
             return OpenWeather(api_data)
         except Exception as e:
             raise base.WeatherApiException(e)
@@ -127,20 +136,20 @@ class OpenWeather(Caller):
         self._lat_long = (self.api["lat"], self.api["lon"])
         self._place = self.api_json.get("name")
         self._current = self.api_json.get("current")
-        self._weather = self._current.get("weather")
+        self._weather = self._current.get("weather")  # type: ignore
         self._conditions = self._weather[0].get("main")
         self._weather_icon = self._weather[0].get("icon")
-        self._temp = self._current.get("temp")
-        self._feels_like = self._current.get("feels_like")
-        self._daily = self.api_json.get("daily")[0]
+        self._temp = self._current.get("temp")  # type: ignore
+        self._feels_like = self._current.get("feels_like")  # type: ignore
+        self._daily = self.api_json.get("daily")[0]  # type: ignore
         self._min_temp = self._daily["temp"]["min"]
         self._max_temp = self._daily["temp"]["max"]
-        self._humidity = self._current.get("humidity")
-        self._wind_speed = self._current.get("wind_speed")
-        self._wind_deg = self._current.get("wind_deg")
-        self._time = datetime.fromtimestamp(self._current.get("dt"))
-        self._sunrise = datetime.fromtimestamp(self._current.get("sunrise"))
-        self._sunset = datetime.fromtimestamp(self._current.get("sunset"))
+        self._humidity = self._current.get("humidity")  # type: ignore
+        self._wind_speed = self._current.get("wind_speed")  # type: ignore
+        self._wind_deg = self._current.get("wind_deg")  # type: ignore
+        self._time = datetime.fromtimestamp(self._current.get("dt"))  # type: ignore
+        self._sunrise = datetime.fromtimestamp(self._current.get("sunrise"))  # type: ignore
+        self._sunset = datetime.fromtimestamp(self._current.get("sunset"))  # type: ignore
         self._pop = self._daily["pop"]
         self._uv = self._daily["uvi"]
 
@@ -170,7 +179,7 @@ class OpenWeather(Caller):
 
     @property
     def get_icon(self):
-        owm_wxcode: int = int(self._weather[0]["id"])
+        owm_wxcode: int = int(self._weather[0]["id"])  # type: ignore
         if owm_wxcode in range(200, 299):
             # Thunderstorm Class
             owm_icon = weather_icon_mapping[17]
@@ -239,7 +248,7 @@ class OpenWeather(Caller):
 
     @property
     def get_place(self) -> str:
-        return self._place
+        return self._place  # type: ignore
 
     def set_weather(self, weather: typing.Dict[str, str]) -> None:
         self._weather = weather
@@ -295,7 +304,7 @@ class OpenWeather(Caller):
 
     @property
     def get_humidity(self) -> None:
-        return self._humidity
+        return self._humidity  # type: ignore
 
     def set_wind(self, wind: typing.Dict) -> None:
         self._wind = wind
