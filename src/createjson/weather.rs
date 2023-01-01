@@ -25,6 +25,7 @@ pub struct WeatherOptions {
     pub current_location: bool,
     pub city: Option<String>,
     pub weather_format: Option<WeatherFormat>,
+    pub current_location_api_key: Option<String>,
 }
 impl Default for WeatherOptions {
     fn default() -> Self {
@@ -35,6 +36,7 @@ impl Default for WeatherOptions {
             current_location: true,
             city: None,
             weather_format: Some(WeatherFormat::IMPERIAL),
+            current_location_api_key: None,
         }
     }
 }
@@ -44,6 +46,7 @@ impl IntoPy<PyObject> for WeatherOptions {
 
     }
 }
+
 impl IntoPyDict for WeatherOptions {
     fn into_py_dict(self, py: Python) -> &PyDict {
         let result = PyDict::new(py);
@@ -53,6 +56,7 @@ impl IntoPyDict for WeatherOptions {
         result.set_item("current_location", self.current_location).unwrap();
         result.set_item("city", self.match_city()).unwrap();
         result.set_item("weather_format", self.unwrap_weather_format()).unwrap();
+        result.set_item("current_location_api_key", self.current_location_api_key.unwrap_or("null".to_string())).unwrap();
         result.into()
     }
 }
@@ -94,6 +98,10 @@ impl WeatherOptions {
             "weather_format": match &self.weather_format {
                 Some(format) => format.get_format(),
                 None => "null".to_string(),
+            },
+            "current_location_api_key": match &self.current_location_api_key {
+                Some(key) => key,
+                None => "null",
             }
         }
     }
@@ -120,6 +128,7 @@ impl WeatherOptions {
                 city => Some(city.to_string())
                 }
             },
+            current_location_api_key: Some(weather_json["current_location_api_key"].to_string()),
             weather_format: {
                 match weather_json["weather_format"].as_str().unwrap() {
                     "null" => None,
@@ -164,10 +173,15 @@ fn get_weather_api() -> api::WeatherApiType {
 pub fn configure_location() -> api::WeatherLocationData {
     println!("Do you want to use the current location??(Default) (y/n)");
     match oledlib::get_input().unwrap().to_lowercase().as_str() {
-        "y" => api::WeatherLocationData {
-            current_location: true,
-            zipcode: None,
-            city_and_state: None,
+        "y" => {
+            println!("Enter Api key (ipinfo) ->");
+            let input: Option<String> = oledlib::get_input();
+            api::WeatherLocationData {
+                current_location: true,
+                zipcode: None,
+                city_and_state: None,
+                current_location_api_key: input
+            }
         },
         "n" => {
             println!("Enter zipcode ->");
@@ -176,6 +190,7 @@ pub fn configure_location() -> api::WeatherLocationData {
                 current_location: false,
                 zipcode: Some(input.unwrap().parse::<i32>().unwrap()),
                 city_and_state: None,
+                current_location_api_key: None
             }
         }
         _ => {
@@ -184,6 +199,7 @@ pub fn configure_location() -> api::WeatherLocationData {
                 current_location: true,
                 zipcode: None,
                 city_and_state: None,
+                current_location_api_key: None
             }
         }
     }
@@ -218,6 +234,7 @@ pub fn configure() -> Result<WeatherOptions, String> {
                     current_location: location.current_location,
                     city: location.city_and_state,
                     weather_format: config_format(),
+                    current_location_api_key: location.current_location_api_key,
                 })
             }
             _ => {

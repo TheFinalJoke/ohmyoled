@@ -1,4 +1,1 @@
-from ohmyoled.lib.upgrade.upgrade import (
-    Upgrader,
-    UpgradeClassException
-)
+from ohmyoled.lib.upgrade.upgrade import Upgrader, UpgradeClassException

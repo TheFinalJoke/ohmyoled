@@ -33,7 +33,6 @@ BASEBALL_TEAMS = {
     "Toronto Blue Jays": "Jays",
     "Washington Nationals": "Nationals",
     "Albuquerque Isotopes": "Isotopes",
-
 }
 BASKETBALL_TEAMS = {
     "Atlanta Hawks": "Hawks",
@@ -65,5 +64,5 @@ BASKETBALL_TEAMS = {
     "San Antonio Spurs": "Spurs",
     "Toronto Raptors": "Raptors",
     "Utah Jazz": "Jazz",
-    "Washington Wizards":  "Wizards"
+    "Washington Wizards": "Wizards",
 }

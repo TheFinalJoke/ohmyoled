@@ -1,4 +1,5 @@
 from ohmyoled.lib.asynclib import make_async, run_async_command
+
 # Abstract Classes
 from ohmyoled.lib.run import (
     Runner,
@@ -7,15 +8,10 @@ from ohmyoled.lib.run import (
 )
 
 # Upgrade Classes
-from ohmyoled.lib.upgrade.upgrade import (
-    Upgrader,
-    UpgradeClassException
-)
+from ohmyoled.lib.upgrade.upgrade import Upgrader, UpgradeClassException
+
 # All the weather modules and Objects
-from ohmyoled.lib.weather.normal import (
-    NormalizedWeather,
-    WeatherApi
-)
+from ohmyoled.lib.weather.normal import NormalizedWeather, WeatherApi
 
 from ohmyoled.lib.weather.weather_icon import weather_icon_mapping
 
@@ -26,13 +22,13 @@ from ohmyoled.lib.weather.weatherbase import (
     CurrentWeather,
     DayForcast,
     WeatherBase,
-    Weather
+    Weather,
 )
 
 from ohmyoled.lib.weather.openweather.weather import (
     OpenWeatherException,
     OpenWeatherApi,
-    OpenWeather
+    OpenWeather,
 )
 
 from ohmyoled.lib.weather.weathergov.nws import (
@@ -40,33 +36,21 @@ from ohmyoled.lib.weather.weathergov.nws import (
     NWSTransform,
 )
 
-# All Stock Classes 
-from ohmyoled.lib.stock.stocks import (
-    StockApi,
-    Stock
-)
+# All Stock Classes
+from ohmyoled.lib.stock.stocks import StockApi, Stock
 
-from ohmyoled.lib.stock.stockquote import (
-    SQuote
-)
+from ohmyoled.lib.stock.stockquote import SQuote
 
-# All Sports Classes 
-from ohmyoled.lib.sports.sports import (
-    SportApi,
-    Sport,
-    SportTransform
-)
+# All Sports Classes
+from ohmyoled.lib.sports.sports import SportApi, Sport, SportTransform
 
-from ohmyoled.lib.sports.logo import (
-    logo_map, 
-    Logo
-)
+from ohmyoled.lib.sports.logo import logo_map, Logo
 
 from ohmyoled.lib.sports.sportbase import (
     ModuleException,
     RequestException,
     API,
-    SportStructure, 
+    SportStructure,
     GameStatus,
     GameResult,
     SportBase,
@@ -82,7 +66,7 @@ from ohmyoled.lib.sports.sportbase import (
     BaseballResult,
     determine_apisports_game_status,
     determine_game_status,
-    determine_team
+    determine_team,
 )
 
 from ohmyoled.lib.sports.apisports.apisports import ApiSports
@@ -101,5 +85,4 @@ from ohmyoled.lib.sports.sportsipy.baseball.baseball import BaseballSportsipy
 from ohmyoled.lib.sports.sportsipy.basketball.basketball import BasketballSportsipy
 from ohmyoled.lib.sports.sportsipy.football.football import FootballSportsipy
 from ohmyoled.lib.sports.sportsipy.hockey.hockey import HockeySportsipy
-
-
+from ohmyoled.lib.tester import ApiTester

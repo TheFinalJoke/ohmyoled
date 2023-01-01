@@ -1,20 +1,13 @@
-# All Sports Classes 
-from ohmyoled.lib.sports.sports import (
-    SportApi,
-    Sport,
-    SportTransform
-)
+# All Sports Classes
+from ohmyoled.lib.sports.sports import SportApi, Sport, SportTransform
 
-from ohmyoled.lib.sports.logo import (
-    logo_map, 
-    Logo
-)
+from ohmyoled.lib.sports.logo import logo_map, Logo
 
 from ohmyoled.lib.sports.sportbase import (
     ModuleException,
     RequestException,
     API,
-    SportStructure, 
+    SportStructure,
     GameStatus,
     GameResult,
     SportBase,
@@ -30,7 +23,7 @@ from ohmyoled.lib.sports.sportbase import (
     BaseballResult,
     determine_apisports_game_status,
     determine_game_status,
-    determine_team
+    determine_team,
 )
 
 from ohmyoled.lib.sports.apisports.apisports import ApiSports

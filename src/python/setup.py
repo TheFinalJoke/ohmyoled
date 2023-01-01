@@ -4,9 +4,9 @@ with open("ohmyoled/README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="2.2.4",
-    python_requires='>=3.8.9',
-    py_modules=["ohmyoled"], # Tells the name 
+    version="2.2.45",
+    python_requires=">=3.8.9",
+    py_modules=["ohmyoled"],  # Tells the name
     packages=find_packages(),
     description="64x32 Oled Matrix Display",
     author="thefinaljoke",
@@ -39,12 +39,13 @@ setup(
         "sportsipy",
         "wget",
         "suntime",
-        ],
-    extras_require = {
+        "ipinfo"
+    ],
+    extras_require={
         "dev": [
             "pytest==6.2.5",
             "twine",
         ],
     },
-    url="https://github.com/TheFinalJoke/ohmyoled"
+    url="https://github.com/TheFinalJoke/ohmyoled",
 )

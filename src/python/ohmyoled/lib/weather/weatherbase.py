@@ -4,18 +4,22 @@ from typing import Tuple, Union
 from enum import Enum
 from ohmyoled.lib.run import Caller
 
+
 class WeatherApiException(Exception):
     pass
+
 
 @dataclass(repr=True, init=True)
 class WeatherErrorResult(Caller):
     error: bool = False
     msg: str = None
 
+
 class APIWeather(Enum):
     OPENWEATHER = 1
     # National Weather Service
     NWS = 2
+
 
 class WindDirection(Enum):
     S = 180
@@ -35,6 +39,7 @@ class WindDirection(Enum):
     WNW = 285
     NNW = 345
 
+
 @dataclass(repr=True)
 class WeatherIcon:
     condition: str
@@ -43,12 +48,13 @@ class WeatherIcon:
     time_of_day: str
     url: str = None
     owmcode: int = None
-    
+
     def request_url_icon(self):
         pass
 
+
 @dataclass(repr=True)
-class CurrentWeather():
+class CurrentWeather:
     conditions: str
     temp: Union[int, float]
     feels_like: Union[int, float]
@@ -59,6 +65,7 @@ class CurrentWeather():
     wind_direction: int = None
     weather_icon: WeatherIcon = None
 
+
 @dataclass(repr=True)
 class DayForcast:
     todayhigh: int
@@ -66,8 +73,9 @@ class DayForcast:
     sunrise: datetime
     sunset: datetime
 
+
 @dataclass(repr=True)
-class WeatherBase():
+class WeatherBase:
     api: APIWeather
     # (lat, lng)
     location: Tuple[float, float]
@@ -75,14 +83,16 @@ class WeatherBase():
     current: CurrentWeather
     dayforcast: DayForcast
 
+
 @dataclass(repr=True)
-class Weather():
+class Weather:
     api: APIWeather
     # (lat, lng)
     location: Tuple[float, float]
     location_name: str
     current: CurrentWeather
     dayforcast: DayForcast
+
 
 def get_wind_dir_direction(deg) -> str:
     if deg <= WindDirection.N.value and deg < WindDirection.NNE.value:
@@ -94,7 +104,7 @@ def get_wind_dir_direction(deg) -> str:
     elif deg <= WindDirection.ENE.value and deg < WindDirection.E.value:
         return WindDirection.ENE.name
     elif deg <= WindDirection.E.value and deg < WindDirection.ESE.value:
-            return WindDirection.E.name
+        return WindDirection.E.name
     elif deg <= WindDirection.ESE.value and deg < WindDirection.SE.value:
         return WindDirection.ESE.name
     elif deg <= WindDirection.SE.value and deg < WindDirection.SSE.value:

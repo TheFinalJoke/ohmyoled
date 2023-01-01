@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
-from PIL.Image import Image
+import PIL.Image as image_types
 from ohmyoled.matrix.matrix import MatrixBase
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 from enum import Enum
-import time 
+import time
+
 
 class TimeFormat(Enum):
     TWELEVE = 1
     TWENTYFOUR = 2
+
+
 class TimeMatrix(MatrixBase):
     def __init__(self, matrix, config) -> None:
         super().__init__(matrix)
@@ -20,8 +23,8 @@ class TimeMatrix(MatrixBase):
     def __str__(self) -> str:
         return "TimeMatrix"
 
-    def return_time(self, fmt: str) -> datetime:
-        return datetime.now().strftime(fmt) 
+    def return_time(self, fmt: str) -> str:
+        return datetime.now().strftime(fmt)
 
     async def poll_api(self) -> None:
         """
@@ -32,22 +35,34 @@ class TimeMatrix(MatrixBase):
 
     def nonasync_poll(self):
         # This is a binding for rust to run an non async function
-        return None 
-    
+        return None
+
     def build_fmt(self) -> str:
-        return "%I:%M:%S %p" if TimeFormat.TWELEVE else "%H:%M:%S"  
+        return "%I:%M:%S %p" if TimeFormat.TWELEVE else "%H:%M:%S"
 
     async def render(self, poll: None, loop):
         # Build something that Loads in corner for all the modules loaded
         self.logger.info("Running Module TimeMatrix")
         counter = 0
         while counter < 30:
-            self.logger.debug(f'Counter for module run {counter}')
-            font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
+            self.logger.debug(f"Counter for module run {counter}")
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10
+            )
             self.set_image(Image.new("RGB", (64, 32)))
-            self.set_draw(ImageDraw.Draw(self.get_image))
-            self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=tuple(self.config.get('color')))
-            self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=tuple(self.config.get('color')))
+            self.set_draw(ImageDraw.Draw(self.get_image))  # type: ignore
+            self.draw_text(
+                (3, 5),
+                f"{self.return_time('%m/%d/%Y')}",
+                font=font,
+                fill=tuple(self.config.get("color")),
+            )
+            self.draw_text(
+                (8, 16),
+                f"{self.return_time('%I:%M:%S')}",
+                font=font,
+                fill=tuple(self.config.get("color")),
+            )
             await self.render_image()
             counter = counter + 1
             time.sleep(1)
@@ -57,12 +72,25 @@ class TimeMatrix(MatrixBase):
         self.logger.info("Running Module TimeMatrix")
         counter = 0
         while counter < 30:
-            self.logger.debug(f'Counter for module run {counter}')
-            font = ImageFont.truetype("/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10)
-            self.set_image(Image.new("RGB", (64, 32)))
-            self.set_draw(ImageDraw.Draw(self.get_image))
-            self.draw_text((3, 5), f"{self.return_time('%m/%d/%Y')}", font=font, fill=tuple(self.config.get('color')))
-            self.draw_text((8, 16), f"{self.return_time('%I:%M:%S')}", font=font, fill=tuple(self.config.get('color')))
+            self.logger.debug(f"Counter for module run {counter}")
+            font = ImageFont.truetype(
+                "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf", 10
+            )
+            img = Image.new("RGB", (64, 32))
+            self.set_image(img)
+            self.set_draw(ImageDraw.Draw(self.get_image))  # type: ignore
+            self.draw_text(
+                (3, 5),
+                f"{self.return_time('%m/%d/%Y')}",
+                font=font,
+                fill=tuple(self.config.get("color")),
+            )
+            self.draw_text(
+                (8, 16),
+                f"{self.return_time('%I:%M:%S')}",
+                font=font,
+                fill=tuple(self.config.get("color")),
+            )
             self.nonasync_render_image()
             counter = counter + 1
             time.sleep(1)
