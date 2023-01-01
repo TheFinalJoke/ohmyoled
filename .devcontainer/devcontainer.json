@@ -32,7 +32,7 @@
     "ms-python.python",
     "ms-python.vscode-pylance",
     "kevinrose.vsc-python-indent",
-    "rust-lang.rust",
+    "rust-lang.rust-analyzer",
     "ms-python.black-formatter"
   ],
   "runArgs": ["--privileged"],

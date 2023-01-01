@@ -159,7 +159,7 @@ async fn main() -> PyResult<()> {
         } else {
             let main_json = createjson::create_json(false);
             let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
-            main_json.write(&mut file).unwrap_err();
+            main_json.write(&mut file).unwrap();
         }
         std::process::exit(0);
     } else if matches.is_present("json_file") {
