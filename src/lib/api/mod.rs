@@ -15,7 +15,7 @@ pub struct WeatherLocationData {
     pub current_location: bool,
     pub zipcode: Option<i32>,
     pub city_and_state: Option<String>,
-    pub current_location_api_key: Option<String>
+    pub current_location_api_key: Option<String>,
 }
 pub struct WeatherApiType {
     pub api: WeatherApi,
