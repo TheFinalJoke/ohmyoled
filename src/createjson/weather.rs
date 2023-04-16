@@ -1,8 +1,8 @@
+use json;
 use log::info;
 use oledlib::api;
-use json;
-use pyo3::{Python, PyObject, IntoPy};
-use pyo3::types::{PyDict, IntoPyDict};
+use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::{IntoPy, PyObject, Python};
 
 #[derive(Debug)]
 pub enum WeatherFormat {
@@ -43,7 +43,6 @@ impl Default for WeatherOptions {
 impl IntoPy<PyObject> for WeatherOptions {
     fn into_py(self, py: Python) -> PyObject {
         self.run.into_py(py)
-
     }
 }
 
@@ -51,12 +50,25 @@ impl IntoPyDict for WeatherOptions {
     fn into_py_dict(self, py: Python) -> &PyDict {
         let result = PyDict::new(py);
         result.set_item("run", self.run).unwrap();
-        result.set_item("api", self.api.get_api()).unwrap_or_default();
-        result.set_item("api_key", self.match_api_key()).unwrap_or_default();
-        result.set_item("current_location", self.current_location).unwrap();
+        result
+            .set_item("api", self.api.get_api())
+            .unwrap_or_default();
+        result
+            .set_item("api_key", self.match_api_key())
+            .unwrap_or_default();
+        result
+            .set_item("current_location", self.current_location)
+            .unwrap();
         result.set_item("city", self.match_city()).unwrap();
-        result.set_item("weather_format", self.unwrap_weather_format()).unwrap();
-        result.set_item("current_location_api_key", self.current_location_api_key.unwrap_or("null".to_string())).unwrap();
+        result
+            .set_item("weather_format", self.unwrap_weather_format())
+            .unwrap();
+        result
+            .set_item(
+                "current_location_api_key",
+                self.current_location_api_key.unwrap_or("null".to_string()),
+            )
+            .unwrap();
         result.into()
     }
 }
@@ -75,12 +87,12 @@ impl WeatherOptions {
     }
     pub fn unwrap_weather_format(&self) -> String {
         match &self.weather_format {
-                Some(format) => format.get_format(),
-                None => "null".to_string(),
-            }
+            Some(format) => format.get_format(),
+            None => "null".to_string(),
+        }
     }
     pub fn convert_to_json(&self) -> json::JsonValue {
-        json::object!{
+        json::object! {
             "run": self.run,
             "api": match &self.api {
                 api::WeatherApi::Nws => "nws".to_string(),
@@ -112,20 +124,20 @@ impl WeatherOptions {
                 match weather_json["api"].as_str().unwrap() {
                     "nws" => api::WeatherApi::Nws,
                     "openweather" => api::WeatherApi::Openweather,
-                    _ => api::WeatherApi::Nws
+                    _ => api::WeatherApi::Nws,
                 }
             },
             api_key: {
                 match weather_json["api_key"].as_str().unwrap() {
                     "null" => None,
-                    key => Some(key.to_string())
+                    key => Some(key.to_string()),
                 }
             },
             current_location: weather_json["current_location"].as_bool().unwrap(),
             city: {
                 match weather_json["city"].as_str().unwrap() {
-                "null" => None,
-                city => Some(city.to_string())
+                    "null" => None,
+                    city => Some(city.to_string()),
                 }
             },
             current_location_api_key: Some(weather_json["current_location_api_key"].to_string()),
@@ -136,7 +148,7 @@ impl WeatherOptions {
                     "metric" => Some(WeatherFormat::METRIC),
                     _ => Some(WeatherFormat::IMPERIAL),
                 }
-            }
+            },
         }
     }
 }
@@ -180,9 +192,9 @@ pub fn configure_location() -> api::WeatherLocationData {
                 current_location: true,
                 zipcode: None,
                 city_and_state: None,
-                current_location_api_key: input
+                current_location_api_key: input,
             }
-        },
+        }
         "n" => {
             println!("Enter zipcode ->");
             let input: Option<String> = oledlib::get_input();
@@ -190,7 +202,7 @@ pub fn configure_location() -> api::WeatherLocationData {
                 current_location: false,
                 zipcode: Some(input.unwrap().parse::<i32>().unwrap()),
                 city_and_state: None,
-                current_location_api_key: None
+                current_location_api_key: None,
             }
         }
         _ => {
@@ -199,7 +211,7 @@ pub fn configure_location() -> api::WeatherLocationData {
                 current_location: true,
                 zipcode: None,
                 city_and_state: None,
-                current_location_api_key: None
+                current_location_api_key: None,
             }
         }
     }

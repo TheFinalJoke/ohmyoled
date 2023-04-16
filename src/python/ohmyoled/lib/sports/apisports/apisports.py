@@ -28,7 +28,7 @@ class ApiSports(SportBase):
         sport_data = {"Sport": {}}
         if "football" == self.sport.get("sport").lower():
             self.logger.debug("Running football data")
-            football = Football(self.token, self.sport, self.headers)
+            football = Football(self.token, self.sport)
             football_return = await football.run()
             sport_data["Sport"].update({"football": football_return})
         elif "baseball" == self.sport.get("sport").lower():

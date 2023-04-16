@@ -1,8 +1,8 @@
-use oledlib::api::StockApi;
-use log::{info};
 use json;
-use pyo3::{Python};
-use pyo3::types::{PyDict, IntoPyDict};
+use log::info;
+use oledlib::api::StockApi;
+use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::Python;
 
 #[derive(Debug)]
 pub struct StockOptions {
@@ -26,17 +26,22 @@ impl IntoPyDict for StockOptions {
         let result = PyDict::new(py);
         result.set_item("run", self.run).unwrap();
         result.set_item("api", self.api.get_api()).unwrap();
-        result.set_item("api_key", match self.api_key.clone().unwrap().as_str(){
-            "null" => "null",
-            key => key,
-        }).unwrap(); 
+        result
+            .set_item(
+                "api_key",
+                match self.api_key.clone().unwrap().as_str() {
+                    "null" => "null",
+                    key => key,
+                },
+            )
+            .unwrap();
         result.set_item("symbol", self.symbol.to_string()).unwrap();
         result.into()
     }
 }
 impl StockOptions {
     pub fn convert_to_json(&self) -> json::JsonValue {
-        json::object!{
+        json::object! {
             "run": self.run,
             "api": match &self.api {
                 StockApi::Finnhub => "finnhub".to_string()
@@ -54,7 +59,7 @@ impl StockOptions {
             api: StockApi::str_to_api(stock_json["api"].to_string()),
             api_key: match stock_json["api_key"].as_str().unwrap() {
                 "null" => None,
-                key => Some(key.to_string())
+                key => Some(key.to_string()),
             },
             symbol: stock_json["symbol"].to_string(),
         }
@@ -77,30 +82,26 @@ fn get_symbol() -> Result<String, &'static str> {
     println!("Please enter symbol for stock -> ");
     match oledlib::get_input() {
         Some(input) => Ok(input.to_owned()),
-        _ =>  {
-            Err("No input")
-        },
+        _ => Err("No input"),
     }
 }
 pub fn configure() -> Result<StockOptions, &'static str> {
     info!("In stock configuration");
     println!("[stock]: Do you want to use the default config?? (y/n)");
     match oledlib::get_input() {
-        Some(input) => {
-            match &*input.to_lowercase() {
-                "y" => Ok(StockOptions::default()),
-                "n" => Ok(StockOptions {
-                    run: true,
-                    api: get_stock_api()?,
-                    api_key: Some(get_stock_api_key()),
-                    symbol: get_symbol()?,
-                    }),
-                _ => {
-                    info!("That is a wrong input");
-                    Err("That is a wrong input")
-                }
+        Some(input) => match &*input.to_lowercase() {
+            "y" => Ok(StockOptions::default()),
+            "n" => Ok(StockOptions {
+                run: true,
+                api: get_stock_api()?,
+                api_key: Some(get_stock_api_key()),
+                symbol: get_symbol()?,
+            }),
+            _ => {
+                info!("That is a wrong input");
+                Err("That is a wrong input")
             }
-        }
-        None => Err("Problem while figuring")
+        },
+        None => Err("Problem while figuring"),
     }
 }

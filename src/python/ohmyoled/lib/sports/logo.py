@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 @dataclass(repr=True)
@@ -8,10 +8,10 @@ class Logo:
     sportsdb_leagueid: int
     url: str
     sport: str
-    shorthand: str
-    apisportsid: int
-    sportsdbid: int
-    sportsipyid: int
+    shorthand: Optional[str]
+    apisportsid: Optional[int]
+    sportsdbid: Optional[int]
+    sportsipyid: Optional[int]
 
 
 baseball_teams = {

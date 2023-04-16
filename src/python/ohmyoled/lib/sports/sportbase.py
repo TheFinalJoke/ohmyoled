@@ -60,15 +60,15 @@ class SportResultBase(Caller):
 @dataclass(repr=True, init=True)
 class SportErrorResult(Caller):
     error: bool = False
-    msg: str = None
+    msg: Optional[str] = None
 
 
 @dataclass(repr=True)
 class Team:
     name: str
     logo: Logo
-    position: int = None
-    league: str = None
+    position: Optional[int] = None
+    league: Optional[str] = None
 
 
 @dataclass(repr=True)
@@ -90,7 +90,7 @@ class Game:
     opposing_team: Team
     result: GameResult
     homeoraway: str
-    score: Score = None
+    score: Optional[Score] = None
 
 
 @dataclass(repr=True)
@@ -151,6 +151,8 @@ class BaseballResult(BaseModuleResult):
 
 
 def determine_game_status(team, game) -> Tuple[GameStatus, GameResult]:
+    len_games = 0
+    game_num = 0
     if hasattr(game, "game"):
         game_num = game.game
     elif hasattr(game, "week"):

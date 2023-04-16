@@ -4,7 +4,7 @@ with open("ohmyoled/README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="2.2.45",
+    version="2.2.46",
     python_requires=">=3.8.9",
     py_modules=["ohmyoled"],  # Tells the name
     packages=find_packages(),
@@ -39,7 +39,8 @@ setup(
         "sportsipy",
         "wget",
         "suntime",
-        "ipinfo"
+        "ipinfo",
+        "thesportsdb",
     ],
     extras_require={
         "dev": [

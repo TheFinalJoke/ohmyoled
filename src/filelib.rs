@@ -4,10 +4,9 @@ use std::path::Path;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum FileError{
+pub enum FileError {
     #[error("File Not Found, Try Creating json with -c option")]
-    FileNotFound(#[from] std::io::Error)
-
+    FileNotFound(#[from] std::io::Error),
 }
 pub fn open_file(file_name: &str) -> Result<String, FileError> {
     let mut f = fs::File::open(file_name)?;
@@ -20,7 +19,7 @@ pub fn check_if_exists(path: &str) -> bool {
 }
 #[allow(dead_code)]
 pub fn write_to_file(path: &str, content: &str, overwrite: bool) -> std::io::Result<()> {
-    if check_if_exists(path){
+    if check_if_exists(path) {
         if overwrite {
             fs::remove_file(&path)?;
             fs::File::create(&path).expect("Unable to create file");
@@ -30,7 +29,6 @@ pub fn write_to_file(path: &str, content: &str, overwrite: bool) -> std::io::Res
             println!("File exists and do not want to overwite");
             std::process::exit(2)
         }
-
     } else {
         fs::File::create(&path).expect("Unable to create file");
         fs::write(path, content).expect("Unable to write to file");

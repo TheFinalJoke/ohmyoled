@@ -1,7 +1,7 @@
-use std::collections::HashMap;
 use json;
-use pyo3::{Python};
-use pyo3::types::{PyDict, IntoPyDict};
+use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::Python;
+use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone)]
 pub enum SportsTypes {
@@ -52,22 +52,33 @@ impl IntoPyDict for Logo {
     fn into_py_dict(self, py: Python) -> &PyDict {
         let result = PyDict::new(py);
         result.set_item("name", self.name.to_string()).unwrap();
-        result.set_item("sportsdb_leagueid", self.sportsdb_leagueid).unwrap();
+        result
+            .set_item("sportsdb_leagueid", self.sportsdb_leagueid)
+            .unwrap();
         result.set_item("url", self.url.to_string()).unwrap();
-        result.set_item("sport", self.sport.get_sport_str()).unwrap();
-        result.set_item("shorthand", self.shorthand.to_string()).unwrap();
+        result
+            .set_item("sport", self.sport.get_sport_str())
+            .unwrap();
+        result
+            .set_item("shorthand", self.shorthand.to_string())
+            .unwrap();
         result.set_item("apisportsid", self.apisportsid).unwrap();
         result.set_item("sportsdbid", self.sportsdbid).unwrap();
-        result.set_item("sportsipyid", match self.sportsipyid {
-            Some(id) => id,
-            None => 0,
-        }).unwrap();
+        result
+            .set_item(
+                "sportsipyid",
+                match self.sportsipyid {
+                    Some(id) => id,
+                    None => 0,
+                },
+            )
+            .unwrap();
         result.into()
     }
 }
 impl Logo {
     pub fn to_json(&self) -> json::JsonValue {
-        json::object!{
+        json::object! {
             "name": self.name.to_string(),
             "sportsdb_leagueid": self.sportsdb_leagueid,
             "url": self.url.to_string(),
@@ -82,7 +93,7 @@ impl Logo {
         }
     }
     pub fn from_json(logo_json: &json::JsonValue) -> Self {
-        Self { 
+        Self {
             name: logo_json["name"].to_string(),
             sportsdb_leagueid: logo_json["sportsdb_leagueid"].as_i32().unwrap(),
             url: logo_json["url"].to_string(),
@@ -92,15 +103,15 @@ impl Logo {
             sportsdbid: logo_json["sportsdbid"].as_i32().unwrap(),
             sportsipyid: match logo_json["sportsipyid"].as_i32().unwrap() {
                 0 => None,
-                id => Some(id)
-            }
+                id => Some(id),
+            },
         }
     }
 }
 #[derive(Debug, Clone)]
-pub struct Sport{
+pub struct Sport {
     pub sport: SportsTypes,
-    pub teams: HashMap<String, Logo>
+    pub teams: HashMap<String, Logo>,
 }
 impl Sport {
     pub fn build_baseball() -> Self {
@@ -266,11 +277,11 @@ pub fn validate(user_input: String, sport: &SportsTypes) -> Result<Logo, String>
         SportsTypes::BASEBALL => Sport::build_baseball(),
         SportsTypes::BASKETBALL => Sport::build_basketball(),
         SportsTypes::FOOTBALL => Sport::build_football(),
-        SportsTypes::HOCKEY => Sport::build_hockey(),            
+        SportsTypes::HOCKEY => Sport::build_hockey(),
     };
     match valid_choices.teams.remove(user_input.as_str()) {
         Some(logo) => Ok(logo),
-        None => Err("That is not a valid team".to_string())
+        None => Err("That is not a valid team".to_string()),
     }
 }
 pub fn print_teams(sport: &SportsTypes) {
@@ -278,9 +289,9 @@ pub fn print_teams(sport: &SportsTypes) {
         SportsTypes::BASEBALL => Sport::build_baseball(),
         SportsTypes::BASKETBALL => Sport::build_basketball(),
         SportsTypes::FOOTBALL => Sport::build_football(),
-        SportsTypes::HOCKEY => Sport::build_hockey(),            
+        SportsTypes::HOCKEY => Sport::build_hockey(),
     };
-    for team in valid_choices.teams.keys(){
+    for team in valid_choices.teams.keys() {
         println!("{}", team);
     }
 }
