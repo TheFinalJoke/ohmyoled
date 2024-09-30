@@ -24,7 +24,7 @@ import logging
 import json
 
 
-stream_formatter = logging.Formatter("%(asctime)s:%(module)s: %(message)s")
+stream_formatter = logging.Formatter("%(asctime)s:%(module)s:%(lineno)d: %(message)s")
 sh = logging.StreamHandler()
 filehandler = logging.FileHandler("/var/log/ohmyoled/ohmyoled.log", "a")
 sh.setFormatter(stream_formatter)
@@ -43,6 +43,7 @@ class OledExecption(Exception):
 
 
 class Main:
+    @classmethod
     def version(cls):
         return cls.version
 

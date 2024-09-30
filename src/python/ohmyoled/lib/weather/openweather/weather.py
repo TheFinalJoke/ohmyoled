@@ -64,7 +64,8 @@ class OpenWeatherApi(Runner):
         try:
             if location:
                 self.logger.debug("Computing Longitude and Latitude")
-                url = f"http://api.openweathermap.org/data/2.5/weather?q={location}&appid={self.token}"
+                url = f"http://api.openweathermap.org/data/3.0/weather?q={location}&appid={self.token}"
+                self.logger.debug(f"Runinng to get location {url}")
                 response = await self.get_data(url)
                 lon = response.get("coord").get("lon", 0)  # type: ignore
                 lat = response.get("coord").get("lat", 0)  # type: ignore
@@ -96,14 +97,14 @@ class OpenWeatherApi(Runner):
             ip_json: typing.Dict[str, str] = await self.get_current_location()  # type: ignore
 
             lon, lat = ip_json["longitude"], ip_json["latitude"]
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
+            url = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         elif location:
             lon, lat = await self.get_long_and_lat(location)
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
+            url = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         else:
             ip_json = await self.get_current_location()  # type: ignore
             lon, lat = ip_json["longitude"], ip_json["latitude"]
-            url = f"https://api.openweathermap.org/data/2.5/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
+            url = f"https://api.openweathermap.org/data/3.0/onecall?lat={lat}&lon={lon}&appid={self.token}&units={self.weather.get('weather_format')}"
         return url
 
     async def run(self):
