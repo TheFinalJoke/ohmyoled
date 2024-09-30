@@ -1,0 +1,33 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
+// https://github.com/microsoft/vscode-dev-containers/tree/v0.209.6/containers/python-3
+{
+  "name": "OhMyOLED Dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "..",
+    "args": {
+      "VARIANT": "latest",
+      // Options
+      "NODE_VERSION": "none"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.editor.formatOnSave": true
+      
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "kevinrose.vsc-python-indent",
+        "rust-lang.rust-analyzer",
+        "ms-python.black-formatter"
+      ]
+    }
+  },
+  "runArgs": ["--privileged"],
+  "remoteUser": "root",
+  "features": {}
+}
