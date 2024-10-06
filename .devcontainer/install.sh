@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-OLED_VERSION="2.2.6"
+OLED_VERSION="2.2.8"
 
 RGBMATRIX_GIT_URL="https://github.com/hzeller/rpi-rgb-led-matrix.git"
 

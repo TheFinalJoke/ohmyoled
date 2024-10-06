@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import pdb
 import time
 from typing import Dict, Tuple
 from datetime import datetime
@@ -21,7 +20,6 @@ class WeatherMatrix(Matrix):
 
     async def poll_api(self):
         try:
-            pdb.set_trace()
             result: NormalizedWeather = await self.api.run_weather()
             if isinstance(result, base.WeatherErrorResult):
                 self.logger.error(f"{result.msg}")
@@ -54,7 +52,7 @@ class WeatherMatrix(Matrix):
 
     def nonasync_poll(self):
         try:
-            pdb.set_trace()
+
             # if isinstance(result, base.WeatherErrorResult):
             #     self.logger.error(f"{result}")
             #     return None
@@ -285,7 +283,6 @@ class WeatherMatrix(Matrix):
             xpos += 1
             self.nonasync_render_image()
             time.sleep(3) if xpos == 1 else time.sleep(0.05)
-        pdb.set_trace()
         self.reload_image()
         self.render_temp(api)
         self.render_icon(api)

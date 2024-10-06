@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import asyncio
 import time
 import os
 from typing import Dict, Tuple
@@ -117,9 +118,8 @@ class StockMatrix(Matrix):
     def nonasync_poll(self):
         return Stock(self.api.run_with_asyncio())
 
-    def check_size(self, draw, text: str, size: Tuple[int]):
-        if draw.textsize(text)[0] > size[0]:
-            return True
+    def check_size(self, draw, text: str, size: Tuple[int]) -> bool:
+        return draw.textlength(text) > size[0]
 
     def render_symbol(self, api, size, location, draw, xpos) -> None:
         font = ImageFont.truetype("fonts/04B_03B_.TTF", 8)
@@ -403,13 +403,34 @@ class StockMatrix(Matrix):
             await error_matrix.render()
 
     def non_async_render(self, api) -> None:
-        self.logger.info("Started Render for Stock Matrix")
-        self.clear()
-        self.reload_image()
-        self.render_symbol(api)
-        self.render_current_price(api)
-        self.render_previous_close(api)
-        self.render_highest_price(api)
-        self.render_lowest_price(api)
-        self.nonasync_render_image()
-        time.sleep(30)
+        try:
+            self.clear()
+            self.reload_image()
+            if not api:
+                raise FailedApiException("Error while getting API")
+            xpos = 0
+            while xpos < 50:
+                images = [
+                    self.build_top_image(api, xpos),
+                    self.build_middle_image(api, xpos),
+                    self.build_right_image(api, xpos),
+                ]
+                for image in images:
+                    self.paste_image(image[0], image[1])
+                asyncio.run(self.render_image())
+                xpos += 1
+                time.sleep(3) if xpos == 1 else time.sleep(0.05)
+
+            images = [
+                self.build_top_image(api, 0),
+                self.build_middle_image(api, 0),
+                self.build_right_image(api, 0),
+            ]
+            for image in images:
+                self.paste_image(image[0], image[1])
+            asyncio.run(self.render_image())
+            time.sleep(30)
+        except Exception as e:
+            self.logger.exception(e)
+            error_matrix = ErrorMatrix(self.matrix, self.logger, "Stock Matrix")
+            asyncio.run(error_matrix.render())
