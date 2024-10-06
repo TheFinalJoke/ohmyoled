@@ -4,8 +4,8 @@ with open("ohmyoled/README.md") as file:
     ld = file.read()
 setup(
     name="ohmyoled",
-    version="2.2.6",
-    python_requires=">=3.10.15",
+    version="2.2.8",
+    python_requires="<=3.10.15",
     py_modules=["ohmyoled"],  # Tells the name
     packages=find_packages(),
     description="64x32 Oled Matrix Display",
@@ -17,7 +17,7 @@ setup(
         "Cython",
         "numpy",
         "noaa-sdk",
-        "numpy==2.1.1",
+        "numpy",
         "ephem==4.1.5",
         "fastjsonschema>=2.20.0",
         "geocoder==1.38.1",
