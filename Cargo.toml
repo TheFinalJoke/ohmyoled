@@ -7,19 +7,19 @@ edition = "2021"
 
 [dependencies]
 json = "0.12.4"
-clap = { version = "3.0.10", features = ["derive"] }
-log = "0.4.14"
-env_logger = "0.8.4"
-tokio = "1.9"
-thiserror = "1.0"
+clap = { version = "4", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+tokio = "1"
+thiserror = "2"
 
 [dependencies.pyo3]
-version = "0.15.1"
+version = "0.23"
 features = ["auto-initialize"]
 
-[dependencies.pyo3-asyncio]
-version = "0.15.0"
-features = ["attributes", "tokio-runtime"] 
+[dependencies.pyo3-async-runtimes]
+version = "0.23"
+features = ["attributes", "tokio-runtime"]
 
 [lib]
 name = "oledlib"

@@ -1,6 +1,6 @@
 use json;
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::Python;
+use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
+use pyo3::{Bound, PyResult, Python};
 
 #[derive(Debug)]
 pub struct TimeOptions {
@@ -9,16 +9,14 @@ pub struct TimeOptions {
     pub time_format: Option<String>,
     pub timezone: Option<String>,
 }
-impl IntoPyDict for TimeOptions {
-    fn into_py_dict(self, py: Python) -> &PyDict {
+impl IntoPyDict<'_> for TimeOptions {
+    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let result = PyDict::new(py);
-        result.set_item("run", self.run).unwrap();
-        result.set_item("color", self.color).unwrap();
-        result
-            .set_item("time_format", self.unwrap_time_format())
-            .unwrap();
-        result.set_item("timezone", self.unwrap_timezone()).unwrap();
-        result.into()
+        result.set_item("run", self.run)?;
+        result.set_item("color", self.color)?;
+        result.set_item("time_format", self.unwrap_time_format())?;
+        result.set_item("timezone", self.unwrap_timezone())?;
+        Ok(result)
     }
 }
 impl TimeOptions {

@@ -1,12 +1,12 @@
 mod createjson;
 mod filelib;
 extern crate log;
-use clap::{App, Arg};
+use clap::{Arg, ArgAction, Command};
 use env_logger::Env;
 use json;
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyDict, PyTuple};
-use pyo3_asyncio;
+use pyo3::types::{IntoPyDict, PyDict, PyDictMethods, PyTuple};
+use pyo3::Bound;
 
 #[derive(Debug)]
 struct ModuleApiConfiguration {
@@ -16,28 +16,23 @@ struct ModuleApiConfiguration {
     stock: Option<createjson::stock::StockOptions>,
     sport: Option<createjson::sport::SportOptions>,
 }
-impl IntoPyDict for ModuleApiConfiguration {
-    fn into_py_dict(self, py: Python) -> &PyDict {
-        // iterate over the modules and transform them into a pydict
+impl IntoPyDict<'_> for ModuleApiConfiguration {
+    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let pydict = PyDict::new(py);
-        pydict
-            .set_item("matrix_options", self.matrix_options.into_py_dict(py))
-            .unwrap();
+        pydict.set_item("matrix_options", self.matrix_options.into_py_dict(py)?)?;
         if let Some(time) = self.time {
-            pydict.set_item("time", time.into_py_dict(py)).unwrap();
+            pydict.set_item("time", time.into_py_dict(py)?)?;
         }
         if let Some(weather) = self.weather {
-            pydict
-                .set_item("weather", weather.into_py_dict(py))
-                .unwrap();
+            pydict.set_item("weather", weather.into_py_dict(py)?)?;
         }
         if let Some(stock) = self.stock {
-            pydict.set_item("stock", stock.into_py_dict(py)).unwrap();
+            pydict.set_item("stock", stock.into_py_dict(py)?)?;
         }
         if let Some(sport) = self.sport {
-            pydict.set_item("sport", sport.into_py_dict(py)).unwrap();
+            pydict.set_item("sport", sport.into_py_dict(py)?)?;
         }
-        pydict
+        Ok(pydict)
     }
 }
 impl ModuleApiConfiguration {
@@ -92,36 +87,43 @@ fn get_modules(json_config: &json::JsonValue) -> ModuleApiConfiguration {
     }
     module_config
 }
+fn ensure_config_dir(path: &str) {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        std::fs::create_dir_all(parent).expect("Can not create config directory");
+    }
+}
+
 fn init_logger() {
     let env = Env::default()
         .filter_or("RUST_LOG", "error")
-        .write_style("always");
+        .write_style_or("RUST_LOG_STYLE", "always");
     env_logger::init_from_env(env);
 }
 
-#[pyo3_asyncio::tokio::main]
+#[pyo3_async_runtimes::tokio::main]
 async fn main() -> PyResult<()> {
     init_logger();
     let mut configuration = json::JsonValue::Null;
-    let app = App::new("ohmyoled").version("2.2.8");
+    let cmd = Command::new("ohmyoled").version("2.2.8");
     let args_vec = vec![
         Arg::new("create_json")
             .short('c')
             .long("create_json")
-            .help("Creates a json for oled configuration"),
+            .help("Creates a json for oled configuration")
+            .action(ArgAction::SetTrue),
         Arg::new("json_file")
             .short('f')
             .long("json_file")
-            .help("Pass a location of json file")
-            .takes_value(true),
+            .help("Pass a location of json file"),
         Arg::new("dev_mode")
             .long("dev")
-            .help("creates a dev enviornment"),
+            .help("creates a dev enviornment")
+            .action(ArgAction::SetTrue),
     ];
 
-    let app = app.args(args_vec);
-    let matches = app.get_matches();
-    if matches.is_present("dev_mode") {
+    let cmd = cmd.args(args_vec);
+    let matches = cmd.get_matches();
+    if matches.get_flag("dev_mode") {
         let default_json_path = "/etc/ohmyoled/ohmyoled.json";
         println!(
             "Building a dev environment, Replacing /etc/ohmyoled/ohmyoled.json with a dev json"
@@ -130,14 +132,14 @@ async fn main() -> PyResult<()> {
         if filelib::check_if_exists(&default_json_path) {
             std::fs::remove_file(&default_json_path).expect("Can not Remove file");
         }
+        ensure_config_dir(default_json_path);
         let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
         println!("Writing config to file {}", &default_json_path);
         main_json.write(&mut file).unwrap();
         println!("Wrote to {}, a dev json", default_json_path);
         std::process::exit(0);
     }
-    if matches.is_present("create_json") {
-        // make an array of options
+    if matches.get_flag("create_json") {
         let default_json_path = "/etc/ohmyoled/ohmyoled.json";
         if filelib::check_if_exists(&default_json_path) {
             println!(
@@ -148,6 +150,7 @@ async fn main() -> PyResult<()> {
                 "y" => {
                     let main_json = createjson::create_json(false);
                     std::fs::remove_file(&default_json_path).expect("Can not Remove file");
+                    ensure_config_dir(default_json_path);
                     let mut file =
                         std::fs::File::create(&default_json_path).expect("Can not create file");
                     println!("Writing config to file {}", &default_json_path);
@@ -168,25 +171,26 @@ async fn main() -> PyResult<()> {
             }
         } else {
             let main_json = createjson::create_json(false);
+            ensure_config_dir(default_json_path);
             let mut file = std::fs::File::create(&default_json_path).expect("Can not create file");
             main_json.write(&mut file).unwrap();
         }
         std::process::exit(0);
-    } else if matches.is_present("json_file") {
-        configuration = parse_json_file(matches.value_of("json_file").unwrap());
+    } else if matches.contains_id("json_file") {
+        if let Some(json_file) = matches.get_one::<String>("json_file") {
+            configuration = parse_json_file(json_file);
+        }
     }
 
     if configuration == json::JsonValue::Null {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
     let config_mod: ModuleApiConfiguration = get_modules(&configuration);
-    // Pull in the main Function
-    // Run an async
     let fut = Python::with_gil(|py| {
         let ohmyoled_import = py.import("ohmyoled.main")?;
-        let args = PyTuple::new(py, &[config_mod.into_py_dict(py)]);
-        let main = ohmyoled_import.getattr("Main")?.call1(args)?;
-        pyo3_asyncio::tokio::into_future(main.call_method0("main_run")?)
+        let args = PyTuple::new(py, &[config_mod.into_py_dict(py)?])?;
+        let main = ohmyoled_import.getattr("Main")?.call1(&args)?;
+        pyo3_async_runtimes::tokio::into_future(main.call_method0("main_run")?)
     })?;
     fut.await?;
     Ok(())

@@ -9,7 +9,7 @@ def make_async(func):
     @functools.wraps(func)
     async def run_func_as_async(*args, loop=None, executor=None, **kwargs):
         if not loop:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             executor, functools.partial(func, *args, **kwargs)
         )

@@ -1,6 +1,6 @@
 use json;
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::Python;
+use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
+use pyo3::{Bound, PyResult, Python};
 use std::collections::HashMap;
 
 #[derive(Debug, Copy, Clone)]
@@ -48,32 +48,24 @@ pub struct Logo {
     pub sportsdbid: i32,
     pub sportsipyid: Option<i32>,
 }
-impl IntoPyDict for Logo {
-    fn into_py_dict(self, py: Python) -> &PyDict {
+impl IntoPyDict<'_> for Logo {
+    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let result = PyDict::new(py);
-        result.set_item("name", self.name.to_string()).unwrap();
-        result
-            .set_item("sportsdb_leagueid", self.sportsdb_leagueid)
-            .unwrap();
-        result.set_item("url", self.url.to_string()).unwrap();
-        result
-            .set_item("sport", self.sport.get_sport_str())
-            .unwrap();
-        result
-            .set_item("shorthand", self.shorthand.to_string())
-            .unwrap();
-        result.set_item("apisportsid", self.apisportsid).unwrap();
-        result.set_item("sportsdbid", self.sportsdbid).unwrap();
-        result
-            .set_item(
-                "sportsipyid",
-                match self.sportsipyid {
-                    Some(id) => id,
-                    None => 0,
-                },
-            )
-            .unwrap();
-        result.into()
+        result.set_item("name", self.name.to_string())?;
+        result.set_item("sportsdb_leagueid", self.sportsdb_leagueid)?;
+        result.set_item("url", self.url.to_string())?;
+        result.set_item("sport", self.sport.get_sport_str())?;
+        result.set_item("shorthand", self.shorthand.to_string())?;
+        result.set_item("apisportsid", self.apisportsid)?;
+        result.set_item("sportsdbid", self.sportsdbid)?;
+        result.set_item(
+            "sportsipyid",
+            match self.sportsipyid {
+                Some(id) => id,
+                None => 0,
+            },
+        )?;
+        Ok(result)
     }
 }
 impl Logo {

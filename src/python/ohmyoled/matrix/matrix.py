@@ -142,7 +142,7 @@ class Matrix(ABSMatrix):
         """
         When Working with a single image
         """
-        self.set_image(self.image.resize((width, height), Image.ANTIALIAS))
+        self.set_image(self.image.resize((width, height), Image.LANCZOS))
         self.set_draw(ImageDraw.Draw(self.image))
 
     def get_color(self, r, g, b):
@@ -174,7 +174,7 @@ class Matrix(ABSMatrix):
 
     async def render_image(self, loop=None, xoffset=0, yoffset=0) -> None:
         if not loop:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
         await loop.run_in_executor(
             None,
             functools.partial(
@@ -204,10 +204,12 @@ class Matrix(ABSMatrix):
         self.draw.multiline_text(align, text, fill, font, spacing=spacing)
 
     def get_multiline_textsize(self, text: str) -> typing.Tuple[int, int]:
-        return self.draw.multiline_textsize(text)
+        bbox = self.draw.multiline_textbbox((0, 0), text)
+        return (bbox[2] - bbox[0], bbox[3] - bbox[1])
 
-    def get_text_size(self, text: str) -> typing.Tuple[int]:
-        return self.draw.textsize(text)
+    def get_text_size(self, text: str) -> typing.Tuple[int, int]:
+        bbox = self.draw.textbbox((0, 0), text)
+        return (bbox[2] - bbox[0], bbox[3] - bbox[1])
 
     def clear(self) -> None:
         self.matrix.Clear()  # type: ignore

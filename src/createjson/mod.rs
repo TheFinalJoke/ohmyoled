@@ -3,8 +3,8 @@ pub mod stock;
 pub mod time;
 pub mod weather;
 use oledlib;
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::Python;
+use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
+use pyo3::{Bound, PyResult, Python};
 
 #[derive(Debug)]
 pub struct MatrixOptions {
@@ -25,20 +25,15 @@ impl Default for MatrixOptions {
         }
     }
 }
-impl IntoPyDict for MatrixOptions {
-    fn into_py_dict(self, py: Python) -> &PyDict {
-        // iterate over the modules and transform them into a pydict
+impl IntoPyDict<'_> for MatrixOptions {
+    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let pydict = PyDict::new(py);
-        pydict.set_item("chain_length", self.chain_length).unwrap();
-        pydict.set_item("parallel", self.parallel).unwrap();
-        pydict.set_item("brightness", self.brightness).unwrap();
-        pydict
-            .set_item("oled_slowdown", self.oled_slowdown)
-            .unwrap();
-        pydict
-            .set_item("fail_on_error", self.fail_on_error)
-            .unwrap();
-        pydict
+        pydict.set_item("chain_length", self.chain_length)?;
+        pydict.set_item("parallel", self.parallel)?;
+        pydict.set_item("brightness", self.brightness)?;
+        pydict.set_item("oled_slowdown", self.oled_slowdown)?;
+        pydict.set_item("fail_on_error", self.fail_on_error)?;
+        Ok(pydict)
     }
 }
 impl MatrixOptions {

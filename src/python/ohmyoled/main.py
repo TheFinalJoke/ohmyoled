@@ -136,7 +136,7 @@ class Main:
 
     async def main_run(self, loop=None):
         if not loop:
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
         try:
             self.logger.info("Starting OhMyOled")
             self.logger.debug("Built Options for RGBMatrix")
@@ -219,16 +219,12 @@ if __name__ == "__main__":
     logger.info("Pulling configuration /etc/ohmyoled/ohmyoled.json")
     main = Main(j_object)
 
-    loop = asyncio.get_event_loop()
     try:
         if not args.non_async:
-            loop.create_task(main.main_run(loop))
-            loop.run_forever()
+            asyncio.run(main.main_run())
         else:
             main.nonasync_main_run()
     except KeyboardInterrupt:
         logger.critical("Key Interrupt")
     except Exception as e:
         logger.critical(e)
-    finally:
-        loop.stop()
