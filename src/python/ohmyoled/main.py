@@ -14,9 +14,11 @@ from ohmyoled.lib.weather.normal import WeatherApi
 from ohmyoled.matrix.stock.stockmatrix import StockMatrix
 from ohmyoled.lib.stock.stocks import StockApi
 from ohmyoled.lib.sports.sports import SportApi
-from ohmyoled.matrix.time import TimeMatrix
 from ohmyoled.matrix.weathermatrix import WeatherMatrix
 from ohmyoled.matrix.sport.sportmatrix import SportMatrix
+
+# Note: the `time` module is now rendered by pure-Rust `ohmyoled_matrix::modules::TimeMatrix`,
+# invoked from `main.rs` before this Python loop starts. It is intentionally absent here.
 
 import traceback
 import logging
@@ -74,9 +76,6 @@ class Main:
         self.logger.info("Getting Modules")
         for section, runtime in parsed.items():
             if runtime:
-                if section == "time":
-                    self.logger.debug("Time midule selected from config")
-                    api_modules.update({"time": " "})
                 if section == "weather":
                     self.logger.debug("Weather Module Selected From Config")
                     api_modules.update({"weather": WeatherApi(self.config)})
@@ -107,9 +106,7 @@ class Main:
     async def init_matrix(self, matrix):
         verified_modules = []
         modules = self.get_modules_to_run()
-        if "time" in modules:
-            self.logger.debug("Initialized Time")
-            verified_modules.append(TimeMatrix(matrix, self.config["time"]))
+        # `time` is handled in Rust before this loop runs — see main.rs::run_time_module.
         if "weather" in modules:
             self.logger.debug("Initialized Weather")
             verified_modules.append(WeatherMatrix(matrix, modules["weather"], logger))

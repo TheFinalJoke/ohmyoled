@@ -4,9 +4,12 @@ extern crate log;
 use clap::{Arg, ArgAction, Command};
 use env_logger::Env;
 use json;
+use ohmyoled_matrix::modules::TimeMatrix;
+use ohmyoled_matrix::{Color, MatrixOptions, RGBMatrix};
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict, PyDictMethods, PyTuple};
 use pyo3::Bound;
+use std::time::Duration;
 
 #[derive(Debug)]
 struct ModuleApiConfiguration {
@@ -98,6 +101,50 @@ fn init_logger() {
         .filter_or("RUST_LOG", "error")
         .write_style_or("RUST_LOG_STYLE", "always");
     env_logger::init_from_env(env);
+}
+
+/// Build an `RGBMatrix` from the workspace `MatrixOptions` JSON section.
+///
+/// Mirrors what `Main.poll_rgbmatrix()` did in Python, but stays on the Rust
+/// side so pure-Rust modules (e.g. `TimeMatrix`) can drive the panel without
+/// going through pyo3.
+fn build_matrix(cfg: &createjson::MatrixOptions, dev: bool) -> RGBMatrix {
+    let opts = MatrixOptions {
+        cols: 64,
+        rows: 32,
+        chain_length: cfg.chain_length.max(1) as u32,
+        parallel: cfg.parallel.max(1) as u32,
+        gpio_slowdown: cfg.oled_slowdown.max(0) as u32,
+        brightness: cfg.brightness.max(0) as u32,
+        hardware_mapping: "adafruit-hat".to_string(),
+    };
+    if dev {
+        RGBMatrix::test(opts)
+    } else {
+        RGBMatrix::new(opts)
+    }
+}
+
+/// Run the Rust-native `TimeMatrix` for one cycle (30 frames at 1s).
+///
+/// Replaces the deleted Python `ohmyoled.matrix.time.TimeMatrix`. The Python
+/// `Main.main_run` loop no longer dispatches `time`; we handle it here before
+/// handing off to Python for weather/stock/sport.
+async fn run_time_module(time_cfg: &createjson::time::TimeOptions, dev: bool, matrix_cfg: &createjson::MatrixOptions) {
+    let (r, g, b) = time_cfg.color;
+    let color = Color::new(r.clamp(0, 255) as u8, g.clamp(0, 255) as u8, b.clamp(0, 255) as u8);
+
+    let tm = match TimeMatrix::new(color, None) {
+        Ok(tm) => tm,
+        Err(e) => {
+            log::error!("Skipping time module: failed to load font ({e})");
+            return;
+        }
+    };
+
+    let mut matrix = build_matrix(matrix_cfg, dev);
+    tm.run_async(&mut matrix, 30, Duration::from_secs(1)).await;
+    matrix.clear();
 }
 
 // Async-signal-safe SIGINT handler.
@@ -204,6 +251,16 @@ async fn main() -> PyResult<()> {
         configuration = parse_json_file("/etc/ohmyoled/ohmyoled.json");
     }
     let config_mod: ModuleApiConfiguration = get_modules(&configuration);
+    let dev = std::env::var("DEV").is_ok();
+
+    // Pure-Rust time module: render before Python takes over so we don't share
+    // the matrix concurrently. Python's `Main.main_run` no longer dispatches time.
+    if let Some(ref time_cfg) = config_mod.time {
+        if time_cfg.run {
+            run_time_module(time_cfg, dev, &config_mod.matrix_options).await;
+        }
+    }
+
     let fut = Python::with_gil(|py| {
         let ohmyoled_import = py.import("ohmyoled.main")?;
         let args = PyTuple::new(py, &[config_mod.into_py_dict(py)?])?;

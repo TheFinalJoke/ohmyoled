@@ -10,9 +10,13 @@ description = "LED matrix abstraction with terminal test mode and RPi hardware b
 # hardware feature compiles the RPi backend stub. Disabled on non-Pi builds.
 default = ["hardware"]
 hardware = []
+# tokio feature enables async-friendly module loops (TimeMatrix::run_async etc.).
+tokio = ["dep:tokio"]
 
 [dependencies]
 log = "0.4"
 image = "0.25"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+tokio = { version = "1", features = ["time"], optional = true }
 
 [dev-dependencies]

@@ -98,6 +98,16 @@ impl PyRGBMatrix {
         Ok(())
     }
 
+    /// Push raw RGB bytes to the display (3 bytes/pixel).
+    ///
+    /// Used by Rust-implemented modules that build images natively — no PIL
+    /// round-trip needed. `bytes` length must equal `width * height * 3`.
+    #[pyo3(signature = (width, height, bytes, offset_x=0, offset_y=0))]
+    fn set_image_bytes(&mut self, width: u32, height: u32, bytes: Vec<u8>, offset_x: i32, offset_y: i32) -> PyResult<()> {
+        self.inner.set_image_bytes(width, height, bytes, offset_x, offset_y)
+            .map_err(PyRuntimeError::new_err)
+    }
+
     /// Clear the display to black.
     fn Clear(&mut self) {
         self.inner.clear();

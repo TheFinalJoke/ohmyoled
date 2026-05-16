@@ -23,6 +23,7 @@
 
 pub mod backend;
 pub mod graphics;
+pub mod modules;
 pub mod options;
 pub mod terminal;
 
@@ -130,6 +131,18 @@ impl RGBMatrix {
     /// `offset_x` / `offset_y` shift where the image is placed on the panel.
     pub fn set_image(&mut self, img: &image::RgbImage, offset_x: i32, offset_y: i32) {
         self.backend.set_image(img, offset_x, offset_y);
+    }
+
+    /// Push raw RGB bytes to the display (3 bytes/pixel, no padding).
+    ///
+    /// Returns `Err` if the byte length doesn't match `width * height * 3`.
+    /// This is the fast path for Rust modules that build images natively — no
+    /// PIL or other intermediate format needed.
+    pub fn set_image_bytes(&mut self, width: u32, height: u32, bytes: Vec<u8>, offset_x: i32, offset_y: i32) -> Result<(), String> {
+        let img = image::RgbImage::from_raw(width, height, bytes)
+            .ok_or_else(|| format!("byte buffer wrong size for {width}x{height} RGB image"))?;
+        self.backend.set_image(&img, offset_x, offset_y);
+        Ok(())
     }
 
     /// Clear the display to black.

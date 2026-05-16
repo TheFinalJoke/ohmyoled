@@ -1,4 +1,4 @@
-from ohmyoled.matrix.time import TimeMatrix
+# TimeMatrix moved to Rust (ohmyoled_matrix::modules::TimeMatrix).
 from ohmyoled.matrix.error import ErrorMatrix
 from ohmyoled.matrix.weathermatrix import WeatherMatrix
 from ohmyoled.matrix.stock.stockmatrix import StockMatrix

@@ -96,10 +96,14 @@ impl BdfFont {
                 in_char = false;
                 in_bitmap = false;
             } else if in_bitmap && !line.is_empty() {
-                // Each bitmap row is a hex string. We store it as a u32 MSB-first.
+                // Each bitmap row is a hex string, padded to a byte boundary.
+                // Per BDF spec the first hex digit's MSB is the leftmost pixel,
+                // so left-align into a u32 (bit 31 = pixel 0) for `draw_text`.
+                let hex_chars = line.len() as u32;
                 let val = u32::from_str_radix(line, 16)
                     .map_err(|e| format!("bad bitmap hex '{line}': {e}"))?;
-                rows.push(val);
+                let shift = 32u32.saturating_sub(hex_chars.saturating_mul(4));
+                rows.push(val << shift);
             }
         }
 
@@ -151,5 +155,14 @@ ENDFONT
         assert_eq!(g.height, 6);
         assert_eq!(g.dwidth, 4);
         assert_eq!(g.rows.len(), 6);
+    }
+
+    #[test]
+    fn bitmap_rows_are_left_aligned() {
+        // "60" hex = 0b0110_0000 from the byte's perspective, so pixels 0–3
+        // are 0,1,1,0. Bit 31 must be pixel 0 (MSB of the original byte).
+        let font = BdfFont::from_reader(TINY_BDF.as_bytes()).unwrap();
+        let g = font.glyphs.get(&65).unwrap();
+        assert_eq!(g.rows[0], 0x6000_0000, "first row left-aligned to bit 31");
     }
 }
