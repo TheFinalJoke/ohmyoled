@@ -4,7 +4,7 @@ import time
 import sys
 import datetime
 import urllib.request as req
-from rgbmatrix import RGBMatrix, RGBMatrixOptions, graphics, FrameCanvas
+from ohmyoled_matrix import RGBMatrix, RGBMatrixOptions
 from PIL import ImageDraw, Image, ImageFont
 bottom_options = RGBMatrixOptions()
 bottom_options.rows = 32

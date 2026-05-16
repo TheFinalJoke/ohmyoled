@@ -2,8 +2,6 @@
 
 set -euo pipefail
 
-RGBMATRIX_GIT_URL="https://github.com/hzeller/rpi-rgb-led-matrix.git"
-
 ## Update apt
 echo "Installing any apt upgrades"
 apt-get update && apt-get upgrade -y
@@ -27,16 +25,12 @@ update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 echo "Upgrading pip"
 python3 -m pip install --upgrade pip
 
-python3 -m pip install "Cython>=3.0"
+python3 -m pip install "Cython>=3.0" maturin
 
-echo "Clone the RGBMatrix"
-if [ ! -d /tmp/rpi-rgb-led-matrix ]; then
-    git clone "$RGBMATRIX_GIT_URL" /tmp/rpi-rgb-led-matrix
-fi
-
-# Build RGB Matrix
-echo "Install RGB Matrix"
-cd /tmp/rpi-rgb-led-matrix && make build-python PYTHON="$(which python3)" && make install-python PYTHON="$(which python3)" && cd bindings && python3 -m pip install -e python/ -I
+# Build and install the ohmyoled-matrix Python bindings (replaces the old rgbmatrix clone)
+echo "Building ohmyoled-matrix Python bindings"
+cd /workspaces/ohmyoled/crates/ohmyoled-matrix-py && maturin build --release
+pip3 install --force-reinstall /workspaces/ohmyoled/target/wheels/ohmyoled_matrix-*.whl
 
 CFLAGS=-fcommon python3 -m pip install Pyinstaller RPi.GPIO
 CFLAGS=-fcommon python3 -m pip install -e /workspaces/ohmyoled/src/python/

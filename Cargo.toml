@@ -1,7 +1,12 @@
+[workspace]
+members = [".", "crates/ohmyoled-matrix", "crates/ohmyoled-matrix-py"]
+resolver = "2"
+
 [package]
 name = "ohmyoled"
 version = "2.2.8"
 edition = "2021"
+default-run = "ohmyoled"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,6 +17,7 @@ log = "0.4"
 env_logger = "0.11"
 tokio = "1"
 thiserror = "2"
+ohmyoled-matrix = { path = "crates/ohmyoled-matrix" }
 
 [dependencies.pyo3]
 version = "0.23"
@@ -23,4 +29,8 @@ features = ["attributes", "tokio-runtime"]
 
 [lib]
 name = "oledlib"
-path= "src/lib/lib.rs"
+path = "src/lib/lib.rs"
+
+[[bin]]
+name = "ohmyoled"
+path = "src/main.rs"

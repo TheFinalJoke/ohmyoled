@@ -12,7 +12,7 @@ import PIL.Image as img_types
 import PIL.ImageDraw as draw_types
 import typing
 from collections import deque
-from rgbmatrix import RGBMatrix, graphics
+from ohmyoled_matrix import RGBMatrix
 
 stream_formatter = logging.Formatter("%(levelname)s:%(asctime)s:%(module)s:%(message)s")
 sh = logging.StreamHandler()
@@ -59,11 +59,6 @@ class Matrix(ABSMatrix):
         self.config = config
         self.logger = logger
         self.logger.debug(f"Logger is set to {self.logger.getEffectiveLevel()}")
-
-    def get_font_graphics(self, font_file):
-        font = graphics.Font()
-        font.LoadFont(f"/etc/ohmyoled/fonts/{font_file}")
-        return font
 
     def make_new_image(self, size: typing.Tuple[int]) -> img_types.Image:
         return Image.new("RGB", size)  # type: ignore

@@ -192,6 +192,16 @@ async fn main() -> PyResult<()> {
         let main = ohmyoled_import.getattr("Main")?.call1(&args)?;
         pyo3_async_runtimes::tokio::into_future(main.call_method0("main_run")?)
     })?;
-    fut.await?;
+    if let Err(e) = fut.await {
+        // KeyboardInterrupt → clean exit (standard SIGINT code 130), no panic, no traceback.
+        let is_interrupt = Python::with_gil(|py| {
+            e.is_instance_of::<pyo3::exceptions::PyKeyboardInterrupt>(py)
+        });
+        if is_interrupt {
+            eprintln!("Interrupted");
+            std::process::exit(130);
+        }
+        return Err(e);
+    }
     Ok(())
 }

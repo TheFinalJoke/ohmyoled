@@ -1,0 +1,15 @@
+[package]
+name = "ohmyoled-matrix-py"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Python bindings for ohmyoled-matrix via pyo3"
+
+[lib]
+name = "ohmyoled_matrix"
+crate-type = ["cdylib"]
+
+[dependencies]
+ohmyoled-matrix = { path = "../ohmyoled-matrix", default-features = false }
+pyo3 = { version = "0.23", features = ["extension-module"] }
+image = "0.25"

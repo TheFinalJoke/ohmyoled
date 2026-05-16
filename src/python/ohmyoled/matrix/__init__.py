@@ -4,4 +4,3 @@ from ohmyoled.matrix.weathermatrix import WeatherMatrix
 from ohmyoled.matrix.stock.stockmatrix import StockMatrix
 from ohmyoled.matrix.sport.sportmatrix import SportMatrix
 from ohmyoled.matrix.stock.stockutils import StockImage
-from ohmyoled.matrix.terminal import TerminalMatrix

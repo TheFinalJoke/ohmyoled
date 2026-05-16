@@ -5,7 +5,7 @@ import time
 import argparse
 import os
 import sys
-from rgbmatrix import (
+from ohmyoled_matrix import (
     RGBMatrixOptions,
     RGBMatrix,
 )
@@ -17,7 +17,6 @@ from ohmyoled.lib.sports.sports import SportApi
 from ohmyoled.matrix.time import TimeMatrix
 from ohmyoled.matrix.weathermatrix import WeatherMatrix
 from ohmyoled.matrix.sport.sportmatrix import SportMatrix
-from ohmyoled.matrix.terminal import TerminalMatrix
 
 import traceback
 import logging
@@ -26,11 +25,14 @@ import json
 
 stream_formatter = logging.Formatter("%(asctime)s:%(module)s:%(lineno)d: %(message)s")
 sh = logging.StreamHandler()
-filehandler = logging.FileHandler("/var/log/ohmyoled/ohmyoled.log", "a")
 sh.setFormatter(stream_formatter)
-filehandler.setFormatter(stream_formatter)
 logger = logging.getLogger(__name__)
 logger.addHandler(sh)
+
+_log_path = "/var/log/ohmyoled/ohmyoled.log"
+os.makedirs(os.path.dirname(_log_path), exist_ok=True)
+filehandler = logging.FileHandler(_log_path, "a")
+filehandler.setFormatter(stream_formatter)
 logger.addHandler(filehandler)
 
 
@@ -137,13 +139,11 @@ class Main:
     async def main_run(self, loop=None):
         if not loop:
             loop = asyncio.get_running_loop()
+        matrix = None
         try:
             self.logger.info("Starting OhMyOled")
             self.logger.debug("Built Options for RGBMatrix")
-            if os.getenv("DEV"):
-                matrix = TerminalMatrix(options=self.poll_rgbmatrix())
-            else:
-                matrix = RGBMatrix(options=self.poll_rgbmatrix())
+            matrix = RGBMatrix(options=self.poll_rgbmatrix(), test_mode=bool(os.getenv("DEV")))
             self.logger.debug("Built Options for RGBMatrix")
             # Make the matrixes to a Queue
             matrixes = await self.init_matrix(matrix)
@@ -170,12 +170,20 @@ class Main:
                     logger.info(
                         f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s"
                     )
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            self.logger.info("Shutting down OhMyOled (interrupted)")
         except Exception as E:
             logger.error(E)
             traceback.print_exc()
-            loop.stop()
+        finally:
+            if matrix is not None:
+                try:
+                    matrix.Clear()
+                except Exception:
+                    pass
 
     def nonasync_main_run(self):
+        matrix = None
         try:
             self.logger.info("Starting OhMyOled")
             matrix = RGBMatrix(options=self.poll_rgbmatrix())
@@ -192,10 +200,17 @@ class Main:
                     logger.info(
                         f"{matrix} rendered for {matrix_finish_time - matrix_start_time:0.4f}s"
                     )
+        except KeyboardInterrupt:
+            self.logger.info("Shutting down OhMyOled (interrupted)")
         except Exception as E:
             logger.error(E)
             traceback.print_exc()
-            loop.stop()
+        finally:
+            if matrix is not None:
+                try:
+                    matrix.Clear()
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":
