@@ -5,7 +5,7 @@ with open("ohmyoled/README.md") as file:
 setup(
     name="ohmyoled",
     version="2.2.8",
-    python_requires="<=3.10.15",
+    python_requires=">=3.12",
     py_modules=["ohmyoled"],  # Tells the name
     packages=find_packages(),
     description="64x32 Oled Matrix Display",
@@ -43,7 +43,7 @@ setup(
     ],
     extras_require={
         "dev": [
-            "pytest==6.2.5",
+            "pytest>=8.0.0",
             "twine",
         ],
     },

@@ -89,7 +89,7 @@ image2.thumbnail((17,17))
 main_image.paste(img1_text, (0,0))
 main_image.paste(image1, (-2, 6), 255)
 main_image.paste(image2, (50, 6), 255)
-#image1.thumbnail((7, 10), Image.ANTIALIAS)
+#image1.thumbnail((7, 10), Image.LANCZOS)
 scrolling_matrix.SetImage(main_image.convert('RGB'))
 time.sleep(30)
 """
@@ -137,7 +137,8 @@ scrolling_font = ImageFont.truetype("/usr/share/fonts/fonts/04B_03B_.TTF", 8)
 image = Image.new("RGB", (64, 32))
 draw = ImageDraw.Draw(image)
 
-width, height = draw.multiline_textsize(text)
+bbox = draw.multiline_textbbox((0, 0), text)
+width, height = bbox[2] - bbox[0], bbox[3] - bbox[1]
 print(width, height)
 test_image = Image.new("RGB", (64,32))
 test_draw = ImageDraw.Draw(test_image)
@@ -170,7 +171,7 @@ while True:
     if ypos > 100:
         ypos = 0
     image = Image.new("RGB", (64, 32))
-    image = image.resize((64, height), Image.ANTIALIAS)
+    image = image.resize((64, height), Image.LANCZOS)
     draw = ImageDraw.Draw(image)
 
     draw.multiline_text((0, -ypos), text, font=scrolling_font, fill=(255,255,255), spacing=1)

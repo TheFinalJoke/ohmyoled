@@ -1,8 +1,8 @@
 use json;
 use log::info;
 use oledlib::{api, teams};
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::Python;
+use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
+use pyo3::{Bound, PyResult, Python};
 
 #[derive(Debug)]
 pub struct SportOptions {
@@ -33,27 +33,21 @@ impl Default for SportOptions {
         }
     }
 }
-impl IntoPyDict for SportOptions {
-    fn into_py_dict(self, py: Python) -> &PyDict {
+impl IntoPyDict<'_> for SportOptions {
+    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let result = PyDict::new(py);
-        result.set_item("run", self.run).unwrap();
-        result.set_item("api", self.api.get_api()).unwrap();
-        result
-            .set_item(
-                "api_key",
-                match &self.api_key {
-                    Some(key) => key,
-                    None => "null",
-                },
-            )
-            .unwrap_or_default();
-        result
-            .set_item("sport", self.sport.get_sport_str())
-            .unwrap();
-        result
-            .set_item("team_logo", self.team_logo.into_py_dict(py))
-            .unwrap();
-        result.into()
+        result.set_item("run", self.run)?;
+        result.set_item("api", self.api.get_api())?;
+        result.set_item(
+            "api_key",
+            match &self.api_key {
+                Some(key) => key.as_str(),
+                None => "null",
+            },
+        )?;
+        result.set_item("sport", self.sport.get_sport_str())?;
+        result.set_item("team_logo", self.team_logo.into_py_dict(py)?)?;
+        Ok(result)
     }
 }
 impl SportOptions {

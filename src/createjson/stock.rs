@@ -1,8 +1,8 @@
 use json;
 use log::info;
 use oledlib::api::StockApi;
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::Python;
+use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
+use pyo3::{Bound, PyResult, Python};
 
 #[derive(Debug)]
 pub struct StockOptions {
@@ -21,22 +21,20 @@ impl Default for StockOptions {
         }
     }
 }
-impl IntoPyDict for StockOptions {
-    fn into_py_dict(self, py: Python) -> &PyDict {
+impl IntoPyDict<'_> for StockOptions {
+    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
         let result = PyDict::new(py);
-        result.set_item("run", self.run).unwrap();
-        result.set_item("api", self.api.get_api()).unwrap();
-        result
-            .set_item(
-                "api_key",
-                match self.api_key.clone().unwrap().as_str() {
-                    "null" => "null",
-                    key => key,
-                },
-            )
-            .unwrap();
-        result.set_item("symbol", self.symbol.to_string()).unwrap();
-        result.into()
+        result.set_item("run", self.run)?;
+        result.set_item("api", self.api.get_api())?;
+        result.set_item(
+            "api_key",
+            match self.api_key.clone().unwrap().as_str() {
+                "null" => "null",
+                key => key,
+            },
+        )?;
+        result.set_item("symbol", self.symbol.to_string())?;
+        Ok(result)
     }
 }
 impl StockOptions {
