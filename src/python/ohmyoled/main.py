@@ -176,6 +176,16 @@ class Main:
             logger.error(E)
             traceback.print_exc()
         finally:
+            # Cancel any pending tasks so they don't try to run on a closed loop.
+            current = asyncio.current_task()
+            pending = [t for t in asyncio.all_tasks(loop) if t is not current and not t.done()]
+            for t in pending:
+                t.cancel()
+            if pending:
+                try:
+                    await asyncio.gather(*pending, return_exceptions=True)
+                except Exception:
+                    pass
             if matrix is not None:
                 try:
                     matrix.Clear()

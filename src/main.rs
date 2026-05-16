@@ -100,6 +100,24 @@ fn init_logger() {
     env_logger::init_from_env(env);
 }
 
+// Async-signal-safe SIGINT handler.
+// Writes a message via raw libc::write, then calls libc::_exit to bypass
+// atexit handlers — std::process::exit triggers Python/pyo3 atexit code that
+// panics during shutdown of in-flight async tasks.
+extern "C" fn sigint_handler(_: std::os::raw::c_int) {
+    unsafe {
+        let msg = b"\nInterrupted\n";
+        libc::write(libc::STDERR_FILENO, msg.as_ptr() as *const _, msg.len());
+        libc::_exit(130);
+    }
+}
+
+fn install_sigint_handler() {
+    unsafe {
+        libc::signal(libc::SIGINT, sigint_handler as *const () as libc::sighandler_t);
+    }
+}
+
 #[pyo3_async_runtimes::tokio::main]
 async fn main() -> PyResult<()> {
     init_logger();
@@ -192,16 +210,14 @@ async fn main() -> PyResult<()> {
         let main = ohmyoled_import.getattr("Main")?.call1(&args)?;
         pyo3_async_runtimes::tokio::into_future(main.call_method0("main_run")?)
     })?;
-    if let Err(e) = fut.await {
-        // KeyboardInterrupt → clean exit (standard SIGINT code 130), no panic, no traceback.
-        let is_interrupt = Python::with_gil(|py| {
-            e.is_instance_of::<pyo3::exceptions::PyKeyboardInterrupt>(py)
-        });
-        if is_interrupt {
-            eprintln!("Interrupted");
-            std::process::exit(130);
+    // Install AFTER Python init so we override Python's default SIGINT handler.
+    // Ctrl+C now calls libc::_exit(130) directly — no atexit, no panic.
+    install_sigint_handler();
+    match fut.await {
+        Ok(_) => Ok(()),
+        Err(e) => {
+            eprintln!("{e}");
+            unsafe { libc::_exit(1); }
         }
-        return Err(e);
     }
-    Ok(())
 }
