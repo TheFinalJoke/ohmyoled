@@ -23,7 +23,6 @@
 
 pub mod backend;
 pub mod graphics;
-pub mod modules;
 pub mod options;
 pub mod terminal;
 

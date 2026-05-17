@@ -1,14 +1,10 @@
-use json;
 use log::info;
-use oledlib::{api, teams};
-use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
-use pyo3::{Bound, PyResult, Python};
+use oledlib::teams;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SportOptions {
     pub run: bool,
-    pub api: api::SportApi,
-    pub api_key: Option<String>,
     pub sport: teams::SportsTypes,
     pub team_logo: teams::Logo,
 }
@@ -16,8 +12,6 @@ impl Default for SportOptions {
     fn default() -> Self {
         Self {
             run: true,
-            api: api::SportApi::Sportsipy,
-            api_key: None,
             sport: teams::SportsTypes::BASEBALL,
             team_logo: teams::Logo {
                 name: "Chicago Cubs".to_string(),
@@ -33,82 +27,7 @@ impl Default for SportOptions {
         }
     }
 }
-impl IntoPyDict<'_> for SportOptions {
-    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run)?;
-        result.set_item("api", self.api.get_api())?;
-        result.set_item(
-            "api_key",
-            match &self.api_key {
-                Some(key) => key.as_str(),
-                None => "null",
-            },
-        )?;
-        result.set_item("sport", self.sport.get_sport_str())?;
-        result.set_item("team_logo", self.team_logo.into_py_dict(py)?)?;
-        Ok(result)
-    }
-}
-impl SportOptions {
-    pub fn convert_to_json(&self) -> json::JsonValue {
-        json::object! {
-            "run": self.run,
-            "api": self.api.get_api(),
-            "api_key": match &self.api_key {
-                Some(key) => key,
-                None => "null"
-            },
-            "sport": self.sport.get_sport_str(),
-            "team_logo": self.team_logo.to_json(),
-        }
-    }
-    pub fn from_json(sport_json: &json::JsonValue) -> Self {
-        Self {
-            run: sport_json["run"].as_bool().unwrap(),
-            api: api::SportApi::api_to_str(sport_json["api"].to_string()),
-            api_key: {
-                match sport_json["api_key"].as_str().unwrap() {
-                    "null" => None,
-                    key => Some(key.to_string()),
-                }
-            },
-            sport: teams::SportsTypes::str_to_sport(sport_json["sport"].to_string()),
-            team_logo: teams::Logo::from_json(&sport_json["team_logo"]),
-        }
-    }
-}
 
-fn get_sport_api_key() -> String {
-    println!("You Entered a api that requires an API Key");
-    println!("Please enter Key now -> ");
-    let api_key = match oledlib::get_input() {
-        Some(input) => input,
-        None => "No Key".to_string(),
-    };
-    api_key
-}
-fn get_sport_api() -> api::SportApiType {
-    loop {
-        println!("Please enter api, Sportsipy(Default) (sptipy),");
-        println!("APISPORTS Api (apisport) , Requires an Api -> ");
-        let api_map = match &*oledlib::get_input().unwrap().to_lowercase() {
-            "sptipy" => api::SportApiType {
-                api: api::SportApi::Sportsipy,
-                api_key: None,
-            },
-            "apisport" => api::SportApiType {
-                api: api::SportApi::ApiSports,
-                api_key: Some(get_sport_api_key()),
-            },
-            _ => {
-                println!("Not a Valid API, Try Again");
-                continue;
-            }
-        };
-        return api_map;
-    }
-}
 pub fn configure_sport() -> teams::SportsTypes {
     loop {
         teams::SportsTypes::print_apis();
@@ -148,13 +67,10 @@ pub fn configure() -> Result<SportOptions, String> {
         Some(input) => match &*input.to_lowercase() {
             "y" => Ok(SportOptions::default()),
             "n" => {
-                let api_decision: api::SportApiType = get_sport_api();
                 let sport_choice: teams::SportsTypes = configure_sport();
                 let team_choosen: teams::Logo = team_choice(&sport_choice);
                 Ok(SportOptions {
                     run: true,
-                    api: api_decision.api,
-                    api_key: api_decision.api_key,
                     sport: sport_choice,
                     team_logo: team_choosen,
                 })

@@ -1,30 +1,36 @@
-use json;
 use log::info;
 use oledlib::api;
-use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
-use pyo3::{Bound, PyResult, Python};
+use oledlib::serde_helpers::null_string_as_none;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum WeatherFormat {
-    IMPERIAL,
-    METRIC,
+    Imperial,
+    Metric,
 }
 impl WeatherFormat {
-    fn get_format(&self) -> String {
+    #[allow(dead_code)]
+    pub fn get_format(&self) -> String {
         match self {
-            WeatherFormat::IMPERIAL => "imperial".to_string(),
-            WeatherFormat::METRIC => "metric".to_string(),
+            WeatherFormat::Imperial => "imperial".to_string(),
+            WeatherFormat::Metric => "metric".to_string(),
         }
     }
 }
-#[derive(Debug)]
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct WeatherOptions {
     pub run: bool,
     pub api: api::WeatherApi,
+    #[serde(default, deserialize_with = "null_string_as_none")]
     pub api_key: Option<String>,
     pub current_location: bool,
+    #[serde(default, deserialize_with = "null_string_as_none")]
     pub city: Option<String>,
+    #[serde(default)]
     pub weather_format: Option<WeatherFormat>,
+    #[serde(default, deserialize_with = "null_string_as_none")]
     pub current_location_api_key: Option<String>,
 }
 impl Default for WeatherOptions {
@@ -35,115 +41,16 @@ impl Default for WeatherOptions {
             api_key: None,
             current_location: true,
             city: None,
-            weather_format: Some(WeatherFormat::IMPERIAL),
+            weather_format: Some(WeatherFormat::Imperial),
             current_location_api_key: None,
         }
     }
 }
-impl IntoPyDict<'_> for WeatherOptions {
-    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run)?;
-        result.set_item("api", self.api.get_api())?;
-        result.set_item("api_key", self.match_api_key())?;
-        result.set_item("current_location", self.current_location)?;
-        result.set_item("city", self.match_city())?;
-        result.set_item("weather_format", self.unwrap_weather_format())?;
-        result.set_item(
-            "current_location_api_key",
-            self.current_location_api_key.unwrap_or("null".to_string()),
-        )?;
-        Ok(result)
-    }
-}
-impl WeatherOptions {
-    pub fn match_api_key(&self) -> String {
-        match &self.api_key {
-            Some(key) => key.to_string(),
-            None => "".to_string(),
-        }
-    }
-    pub fn match_city(&self) -> String {
-        match &self.city {
-            Some(city) => city.to_string(),
-            None => "".to_string(),
-        }
-    }
-    pub fn unwrap_weather_format(&self) -> String {
-        match &self.weather_format {
-            Some(format) => format.get_format(),
-            None => "null".to_string(),
-        }
-    }
-    pub fn convert_to_json(&self) -> json::JsonValue {
-        json::object! {
-            "run": self.run,
-            "api": match &self.api {
-                api::WeatherApi::Nws => "nws".to_string(),
-                api::WeatherApi::Openweather => "openweather".to_string(),
-            },
-            "api_key": match &self.api_key {
-                Some(key) => key,
-                None => "null"
-            },
-            "current_location": self.current_location,
-            "city": match &self.city {
-                Some(city) => city,
-                None => "null",
-            },
-            "weather_format": match &self.weather_format {
-                Some(format) => format.get_format(),
-                None => "null".to_string(),
-            },
-            "current_location_api_key": match &self.current_location_api_key {
-                Some(key) => key,
-                None => "null",
-            }
-        }
-    }
-    pub fn from_json(weather_json: &json::JsonValue) -> Self {
-        Self {
-            run: weather_json["run"].as_bool().unwrap(),
-            api: {
-                match weather_json["api"].as_str().unwrap() {
-                    "nws" => api::WeatherApi::Nws,
-                    "openweather" => api::WeatherApi::Openweather,
-                    _ => api::WeatherApi::Nws,
-                }
-            },
-            api_key: {
-                match weather_json["api_key"].as_str().unwrap() {
-                    "null" => None,
-                    key => Some(key.to_string()),
-                }
-            },
-            current_location: weather_json["current_location"].as_bool().unwrap(),
-            city: {
-                match weather_json["city"].as_str().unwrap() {
-                    "null" => None,
-                    city => Some(city.to_string()),
-                }
-            },
-            current_location_api_key: Some(weather_json["current_location_api_key"].to_string()),
-            weather_format: {
-                match weather_json["weather_format"].as_str().unwrap() {
-                    "null" => None,
-                    "imperal" => Some(WeatherFormat::IMPERIAL),
-                    "metric" => Some(WeatherFormat::METRIC),
-                    _ => Some(WeatherFormat::IMPERIAL),
-                }
-            },
-        }
-    }
-}
+
 fn get_weather_api_key() -> String {
     println!("You Entered a api that requires an API Key");
     println!("Please enter Key now -> ");
-    let api_key = match oledlib::get_input() {
-        Some(input) => input,
-        None => "No Key".to_string(),
-    };
-    api_key
+    oledlib::get_input().unwrap_or_else(|| "No Key".to_string())
 }
 fn get_weather_api() -> api::WeatherApiType {
     loop {
@@ -204,8 +111,8 @@ pub fn config_format() -> Option<WeatherFormat> {
     loop {
         println!("What Weather Format, Imperial or Metric? (I, M)");
         let format = match oledlib::get_input().unwrap().to_lowercase().as_str() {
-            "i" => Some(WeatherFormat::IMPERIAL),
-            "m" => Some(WeatherFormat::METRIC),
+            "i" => Some(WeatherFormat::Imperial),
+            "m" => Some(WeatherFormat::Metric),
             _ => {
                 println!("Invalid format, Try again..");
                 continue;

@@ -1,9 +1,5 @@
-// This is for traits for the Options
-use json::JsonValue;
-pub trait ApiOptions {
-    fn run(&self) -> bool;
-}
-// Figure out how to use traits
-pub trait IntoJson {
-    fn convert(&self) -> JsonValue;
-}
+//! Common-trait module retained for compatibility.
+//!
+//! After the serde migration the hand-rolled `IntoJson`/`ApiOptions` traits are
+//! no longer needed — `serde::Serialize`/`Deserialize` derives replace them.
+//! This file is kept as an empty placeholder so external imports don't break.

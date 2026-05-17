@@ -1,13 +1,38 @@
-#[derive(Debug)]
+//! API collectors and the trait every new module implements.
+//!
+//! See [`collector::Collector`] for the contract, [`http::get_json`] for the
+//! shared HTTP helper, and [`error::ApiError`] for the error type.
+
+pub mod collector;
+pub mod error;
+pub mod f1;
+pub mod golf;
+pub mod http;
+pub mod sport;
+pub mod stock;
+pub mod weather;
+
+pub use collector::Collector;
+pub use error::ApiError;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum WeatherApi {
     Nws,
     Openweather,
+    Accuweather,
+    #[serde(rename = "pirate", alias = "pirateweather", alias = "pirate_weather")]
+    Pirate,
 }
 impl WeatherApi {
     pub fn get_api(&self) -> &'static str {
         match self {
             WeatherApi::Nws => "nws",
             WeatherApi::Openweather => "openweather",
+            WeatherApi::Accuweather => "accuweather",
+            WeatherApi::Pirate => "pirate",
         }
     }
 }
@@ -22,7 +47,8 @@ pub struct WeatherApiType {
     pub api_key: Option<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum StockApi {
     Finnhub,
 }
@@ -39,9 +65,12 @@ impl StockApi {
         }
     }
 }
-#[derive(Debug)]
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum SportApi {
     Sportsipy,
+    #[serde(rename = "api-sports")]
     ApiSports,
 }
 impl SportApi {

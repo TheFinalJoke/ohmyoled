@@ -1,13 +1,13 @@
-use json;
 use log::info;
 use oledlib::api::StockApi;
-use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
-use pyo3::{Bound, PyResult, Python};
+use oledlib::serde_helpers::null_string_as_none;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StockOptions {
     pub run: bool,
     pub api: StockApi,
+    #[serde(default, deserialize_with = "null_string_as_none")]
     pub api_key: Option<String>,
     pub symbol: String,
 }
@@ -16,61 +16,16 @@ impl Default for StockOptions {
         StockOptions {
             run: true,
             api: StockApi::Finnhub,
-            api_key: None, // this will fail because finnhub requires a Api Key
+            api_key: None,
             symbol: "fb".to_owned(),
         }
     }
 }
-impl IntoPyDict<'_> for StockOptions {
-    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run)?;
-        result.set_item("api", self.api.get_api())?;
-        result.set_item(
-            "api_key",
-            match self.api_key.clone().unwrap().as_str() {
-                "null" => "null",
-                key => key,
-            },
-        )?;
-        result.set_item("symbol", self.symbol.to_string())?;
-        Ok(result)
-    }
-}
-impl StockOptions {
-    pub fn convert_to_json(&self) -> json::JsonValue {
-        json::object! {
-            "run": self.run,
-            "api": match &self.api {
-                StockApi::Finnhub => "finnhub".to_string()
-            },
-            "api_key": match &self.api_key {
-                Some(key) => key.to_string(),
-                None => json::Null.to_string()
-            },
-            "symbol": self.symbol.as_str(),
-        }
-    }
-    pub fn from_json(stock_json: &json::JsonValue) -> Self {
-        Self {
-            run: stock_json["run"].as_bool().unwrap(),
-            api: StockApi::str_to_api(stock_json["api"].to_string()),
-            api_key: match stock_json["api_key"].as_str().unwrap() {
-                "null" => None,
-                key => Some(key.to_string()),
-            },
-            symbol: stock_json["symbol"].to_string(),
-        }
-    }
-}
+
 fn get_stock_api_key() -> String {
     println!("You Entered a api that requires an API Key");
     println!("Please enter Key now -> ");
-    let api_key = match oledlib::get_input() {
-        Some(input) => input,
-        None => "No Key".to_string(),
-    };
-    api_key
+    oledlib::get_input().unwrap_or_else(|| "No Key".to_string())
 }
 fn get_stock_api() -> Result<StockApi, &'static str> {
     info!("For now, the only api is finnhub");
@@ -79,7 +34,7 @@ fn get_stock_api() -> Result<StockApi, &'static str> {
 fn get_symbol() -> Result<String, &'static str> {
     println!("Please enter symbol for stock -> ");
     match oledlib::get_input() {
-        Some(input) => Ok(input.to_owned()),
+        Some(input) => Ok(input),
         _ => Err("No input"),
     }
 }

@@ -1,13 +1,16 @@
-use json;
-use pyo3::types::{IntoPyDict, PyDict, PyDictMethods};
-use pyo3::{Bound, PyResult, Python};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SportsTypes {
+    #[serde(alias = "BASKETBALL")]
     BASKETBALL,
+    #[serde(alias = "BASEBALL")]
     BASEBALL,
+    #[serde(alias = "FOOTBALL")]
     FOOTBALL,
+    #[serde(alias = "HOCKEY")]
     HOCKEY,
 }
 impl SportsTypes {
@@ -37,7 +40,7 @@ impl SportsTypes {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Logo {
     pub name: String,
     pub sportsdb_leagueid: i32,
@@ -46,60 +49,22 @@ pub struct Logo {
     pub shorthand: String,
     pub apisportsid: i32,
     pub sportsdbid: i32,
+    #[serde(default, deserialize_with = "zero_as_none")]
     pub sportsipyid: Option<i32>,
 }
-impl IntoPyDict<'_> for Logo {
-    fn into_py_dict(self, py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
-        let result = PyDict::new(py);
-        result.set_item("name", self.name.to_string())?;
-        result.set_item("sportsdb_leagueid", self.sportsdb_leagueid)?;
-        result.set_item("url", self.url.to_string())?;
-        result.set_item("sport", self.sport.get_sport_str())?;
-        result.set_item("shorthand", self.shorthand.to_string())?;
-        result.set_item("apisportsid", self.apisportsid)?;
-        result.set_item("sportsdbid", self.sportsdbid)?;
-        result.set_item(
-            "sportsipyid",
-            match self.sportsipyid {
-                Some(id) => id,
-                None => 0,
-            },
-        )?;
-        Ok(result)
-    }
+
+fn zero_as_none<'de, D>(de: D) -> Result<Option<i32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::<i32>::deserialize(de)?;
+    Ok(match opt {
+        Some(0) => None,
+        other => other,
+    })
 }
-impl Logo {
-    pub fn to_json(&self) -> json::JsonValue {
-        json::object! {
-            "name": self.name.to_string(),
-            "sportsdb_leagueid": self.sportsdb_leagueid,
-            "url": self.url.to_string(),
-            "sport": self.sport.get_sport_str(),
-            "shorthand": self.shorthand.to_string(),
-            "apisportsid": self.apisportsid,
-            "sportsdbid": self.sportsdbid,
-            "sportsipyid": match self.sportsipyid {
-                Some(id) => id,
-                None => 0,
-            },
-        }
-    }
-    pub fn from_json(logo_json: &json::JsonValue) -> Self {
-        Self {
-            name: logo_json["name"].to_string(),
-            sportsdb_leagueid: logo_json["sportsdb_leagueid"].as_i32().unwrap(),
-            url: logo_json["url"].to_string(),
-            sport: SportsTypes::str_to_sport(logo_json["sport"].to_string()),
-            shorthand: logo_json["shorthand"].to_string(),
-            apisportsid: logo_json["apisportsid"].as_i32().unwrap(),
-            sportsdbid: logo_json["sportsdbid"].as_i32().unwrap(),
-            sportsipyid: match logo_json["sportsipyid"].as_i32().unwrap() {
-                0 => None,
-                id => Some(id),
-            },
-        }
-    }
-}
+// (Logo's old `to_json`/`from_json`/`IntoPyDict` impls were dropped — serde
+// handles both wire formats; the pyo3 binding is gone.)
 #[derive(Debug, Clone)]
 pub struct Sport {
     pub sport: SportsTypes,

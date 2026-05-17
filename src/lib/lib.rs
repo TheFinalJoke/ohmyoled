@@ -1,5 +1,8 @@
 pub mod api;
 pub mod debug;
+pub mod matrix;
+pub mod modules;
+pub mod serde_helpers;
 pub mod teams;
 
 pub fn get_input() -> Option<String> {
