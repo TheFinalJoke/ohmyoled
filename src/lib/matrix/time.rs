@@ -22,16 +22,11 @@ use std::time::Duration;
 pub const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/4x6.bdf";
 
 /// 12-hour vs 24-hour clock format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum TimeFormat {
+    #[default]
     Twelve,
     TwentyFour,
-}
-
-impl Default for TimeFormat {
-    fn default() -> Self {
-        Self::Twelve
-    }
 }
 
 impl TimeFormat {

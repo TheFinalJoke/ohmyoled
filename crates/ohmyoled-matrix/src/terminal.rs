@@ -11,6 +11,7 @@ use image::RgbImage;
 use std::io::Write;
 
 /// The terminal (test-mode) backend.
+#[derive(Default)]
 pub struct TerminalBackend;
 
 impl TerminalBackend {

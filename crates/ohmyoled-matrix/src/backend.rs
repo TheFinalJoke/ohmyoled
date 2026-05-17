@@ -7,20 +7,15 @@
 use image::RgbImage;
 
 /// Selects which backend the matrix uses.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MatrixMode {
     /// Try hardware first; fall back to terminal if GPIO is unavailable.
+    #[default]
     Auto,
     /// Always use the ANSI terminal backend (works on any machine).
     Test,
     /// Always use the RPi hardware backend; fails if not on Pi.
     Hardware,
-}
-
-impl Default for MatrixMode {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 /// Core matrix operations — implemented by both backends.

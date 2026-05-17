@@ -21,8 +21,8 @@ pub fn check_if_exists(path: &str) -> bool {
 pub fn write_to_file(path: &str, content: &str, overwrite: bool) -> std::io::Result<()> {
     if check_if_exists(path) {
         if overwrite {
-            fs::remove_file(&path)?;
-            fs::File::create(&path).expect("Unable to create file");
+            fs::remove_file(path)?;
+            fs::File::create(path).expect("Unable to create file");
             fs::write(path, content).expect("Unable to write to file");
             Ok(())
         } else {
@@ -30,7 +30,7 @@ pub fn write_to_file(path: &str, content: &str, overwrite: bool) -> std::io::Res
             std::process::exit(2)
         }
     } else {
-        fs::File::create(&path).expect("Unable to create file");
+        fs::File::create(path).expect("Unable to create file");
         fs::write(path, content).expect("Unable to write to file");
         Ok(())
     }

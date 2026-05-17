@@ -190,8 +190,8 @@ impl SportMatrix {
 
         // Names slide left at one-pixel-per-tick. The slot is 22px wide; once a
         // name fully scrolls off, reset by modulo so it loops.
-        let home_x = -((xpos as i32) % (home_name.chars().count() as i32 * 4 + 22).max(1));
-        let away_x = 44 - ((xpos as i32) % (away_name.chars().count() as i32 * 4 + 22).max(1));
+        let home_x = -(xpos % (home_name.chars().count() as i32 * 4 + 22).max(1));
+        let away_x = 44 - (xpos % (away_name.chars().count() as i32 * 4 + 22).max(1));
 
         draw_text(img, font, home_x, baseline, Color::WHITE, home_name);
         draw_text(img, font, 28, baseline, Color::WHITE, "VS");

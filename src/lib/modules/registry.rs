@@ -9,10 +9,16 @@
 //! ```json
 //! "sport": { "run": true, "sport": "basketball", ... }
 //! "sport": [
-//!   { "run": true, "sport": "basketball", ... },
-//!   { "run": true, "sport": "hockey",     ... }
+//!   { "run": true, "sport": "basketball", "team_logo": { ... } },
+//!   { "run": true, "sport": "hockey",     "team_logo": { ... } },
+//!   { "run": true, "sport": "golf",       "tour": "pga" },
+//!   { "run": true, "sport": "f1" }
 //! ]
 //! ```
+//!
+//! Sport entries are discriminated by their inner `"sport"` field: the team
+//! sports (`basketball`/`baseball`/`football`/`hockey`) take a `team_logo`;
+//! `golf` takes an optional `tour`; `f1` takes nothing extra.
 
 use crate::api::f1::F1Collector;
 use crate::api::golf::{GolfCollector, GolfTour};
@@ -35,7 +41,6 @@ use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
 use crate::modules::{DynModule, Module};
 use crate::serde_helpers::one_or_many;
-use crate::teams::SportsTypes;
 use serde::Deserialize;
 
 /// Subset of the on-disk config the registry cares about.
@@ -50,12 +55,10 @@ pub struct RegistryConfig {
     pub weather: Vec<WeatherSection>,
     #[serde(default, deserialize_with = "one_or_many")]
     pub stock: Vec<StockSection>,
+    /// Team sports + golf + F1 all live here, discriminated by the `"sport"`
+    /// field of each entry.
     #[serde(default, deserialize_with = "one_or_many")]
     pub sport: Vec<SportSection>,
-    #[serde(default, deserialize_with = "one_or_many")]
-    pub golf: Vec<GolfSection>,
-    #[serde(default, deserialize_with = "one_or_many")]
-    pub f1: Vec<F1Section>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -93,27 +96,38 @@ pub struct StockSection {
     pub symbol: String,
 }
 
+/// One entry in the `sport` array. The `sport` field selects which renderer
+/// to instantiate; remaining fields are variant-specific.
 #[derive(Debug, Deserialize)]
-pub struct SportSection {
-    pub run: bool,
-    pub sport: SportsTypes,
-    pub team_logo: crate::teams::Logo,
+#[serde(tag = "sport", rename_all = "lowercase")]
+pub enum SportSection {
+    Basketball { run: bool, team_logo: crate::teams::Logo },
+    Baseball { run: bool, team_logo: crate::teams::Logo },
+    Football { run: bool, team_logo: crate::teams::Logo },
+    Hockey { run: bool, team_logo: crate::teams::Logo },
+    Golf {
+        run: bool,
+        #[serde(default = "default_golf_tour")]
+        tour: GolfTour,
+    },
+    F1 { run: bool },
 }
 
-#[derive(Debug, Deserialize)]
-pub struct GolfSection {
-    pub run: bool,
-    #[serde(default = "default_golf_tour")]
-    pub tour: GolfTour,
+impl SportSection {
+    fn run(&self) -> bool {
+        match self {
+            Self::Basketball { run, .. }
+            | Self::Baseball { run, .. }
+            | Self::Football { run, .. }
+            | Self::Hockey { run, .. }
+            | Self::Golf { run, .. }
+            | Self::F1 { run } => *run,
+        }
+    }
 }
 
 fn default_golf_tour() -> GolfTour {
     GolfTour::Pga
-}
-
-#[derive(Debug, Deserialize)]
-pub struct F1Section {
-    pub run: bool,
 }
 
 /// Build the active `Vec<Box<dyn DynModule>>` from a parsed config.
@@ -141,22 +155,10 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
             Err(e) => log::error!("stock: skipping module: {e}"),
         }
     }
-    for s in cfg.sport.iter().filter(|s| s.run) {
+    for s in cfg.sport.iter().filter(|s| s.run()) {
         match build_sport(s).await {
             Ok(m) => modules.push(m),
             Err(e) => log::error!("sport: skipping module: {e}"),
-        }
-    }
-    for g in cfg.golf.iter().filter(|g| g.run) {
-        match build_golf(g).await {
-            Ok(m) => modules.push(m),
-            Err(e) => log::error!("golf: skipping module: {e}"),
-        }
-    }
-    for f in cfg.f1.iter().filter(|f| f.run) {
-        match build_f1(f).await {
-            Ok(m) => modules.push(m),
-            Err(e) => log::error!("f1: skipping module: {e}"),
         }
     }
 
@@ -233,35 +235,47 @@ async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
 }
 
 async fn build_sport(s: &SportSection) -> Result<Box<dyn DynModule>, String> {
-    let sport_kind = match s.sport {
-        SportsTypes::BASEBALL => SportKind::Baseball,
-        SportsTypes::BASKETBALL => SportKind::Basketball,
-        SportsTypes::FOOTBALL => SportKind::Football,
-        SportsTypes::HOCKEY => SportKind::Hockey,
-    };
+    match s {
+        SportSection::Basketball { team_logo, .. } => {
+            build_team_sport(SportKind::Basketball, team_logo).await
+        }
+        SportSection::Baseball { team_logo, .. } => {
+            build_team_sport(SportKind::Baseball, team_logo).await
+        }
+        SportSection::Football { team_logo, .. } => {
+            build_team_sport(SportKind::Football, team_logo).await
+        }
+        SportSection::Hockey { team_logo, .. } => {
+            build_team_sport(SportKind::Hockey, team_logo).await
+        }
+        SportSection::Golf { tour, .. } => {
+            let collector = GolfCollector::from_espn(*tour);
+            let renderer = GolfMatrix::new_async()
+                .await
+                .map_err(|e| format!("golf fonts: {e}"))?;
+            Ok(Box::new(Module::new(collector, renderer)))
+        }
+        SportSection::F1 { .. } => {
+            let collector = F1Collector::from_jolpica();
+            let renderer = F1Matrix::new_async()
+                .await
+                .map_err(|e| format!("f1 fonts: {e}"))?;
+            Ok(Box::new(Module::new(collector, renderer)))
+        }
+    }
+}
+
+async fn build_team_sport(
+    kind: SportKind,
+    team_logo: &crate::teams::Logo,
+) -> Result<Box<dyn DynModule>, String> {
     let collector = SportCollector::from_espn(EspnConfig {
-        sport: sport_kind,
-        team_name: s.team_logo.name.clone(),
-        team_abbreviation: s.team_logo.shorthand.clone(),
+        sport: kind,
+        team_name: team_logo.name.clone(),
+        team_abbreviation: team_logo.shorthand.clone(),
     });
     let renderer = SportMatrix::new_async()
         .await
         .map_err(|e| format!("sport fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
-}
-
-async fn build_golf(g: &GolfSection) -> Result<Box<dyn DynModule>, String> {
-    let collector = GolfCollector::from_espn(g.tour);
-    let renderer = GolfMatrix::new_async()
-        .await
-        .map_err(|e| format!("golf fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
-}
-
-async fn build_f1(_f: &F1Section) -> Result<Box<dyn DynModule>, String> {
-    let collector = F1Collector::from_jolpica();
-    let renderer = F1Matrix::new_async()
-        .await
-        .map_err(|e| format!("f1 fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }

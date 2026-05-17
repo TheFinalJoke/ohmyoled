@@ -11,7 +11,7 @@ pub fn get_input() -> Option<String> {
         println!("Please enter your data again");
     }
     let input = buffer.trim().to_owned();
-    if &input == "" {
+    if input.is_empty() {
         None
     } else {
         Some(input)
