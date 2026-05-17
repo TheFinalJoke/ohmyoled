@@ -15,6 +15,41 @@
 //! Logos are fetched on first render via `reqwest`, decoded with the `image`
 //! crate, resized to 16×16 with `Lanczos3`, and cached in-memory for the life
 //! of the renderer.
+//!
+//! Middle-line color: green ⇐ home winning, red ⇐ home losing, white ⇐ tied
+//! or scheduled. Off-season shows a two-line "season ended" placeholder.
+//!
+//! # Config
+//!
+//! Team sports live under the unified `sport` array. Each entry is tagged
+//! by its `sport` field — basketball/baseball/football/hockey all take a
+//! `team_logo`. The same array carries golf and F1 entries; see
+//! [`crate::matrix::golf`] and [`crate::matrix::f1`].
+//!
+//! ```yaml
+//! sport:
+//!   - run: true
+//!     sport: basketball        # basketball | baseball | football | hockey
+//!     team_logo:
+//!       name: "Boston Celtics"
+//!       shorthand: BOS
+//!       sport: basketball
+//!       url: "https://.../badge.png"
+//!       sportsdb_leagueid: 4387
+//!       apisportsid: 133
+//!       sportsdbid: 134860
+//!       sportsipyid: 0
+//! ```
+//!
+//! Multiple entries with different sports rotate through together —
+//! basketball + hockey + golf + F1 in one display sequence is just four
+//! entries in the `sport` list.
+//!
+//! # Data source
+//!
+//! `SportCollector::from_espn(cfg)` polls ESPN's public scoreboard +
+//! standings endpoints. No API key required. Team identity is resolved
+//! once via `/teams/{abbreviation}` and cached for the process lifetime.
 
 use crate::api::http::shared_client;
 use crate::api::sport::model::{

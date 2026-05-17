@@ -3,6 +3,46 @@
 //! Two scrolling screens, each ~100 frames at 0.05s + a long dwell. Screen 1
 //! shows temp/feels-like/high/low + weather icon + location/conditions. Screen 2
 //! shows humidity/wind/sunrise/sunset + icon + location.
+//!
+//! # Layout (64×32) — screen 1
+//!
+//! ```text
+//!   ┌─────────────┬─────────┬──────────────┐
+//!   │ 72°F        │  icon   │ feels 70°F   │
+//!   │ city        │         │ ↑78  ↓64     │
+//!   │ scrolling conditions text            │
+//!   └──────────────────────────────────────┘
+//! ```
+//!
+//! Screen 2 swaps the temperature column for humidity / wind / sunrise /
+//! sunset. Temp color: blue ⇐ cold, white ⇐ mild, red ⇐ hot.
+//!
+//! # Config
+//!
+//! Weather is a list — each entry maps one provider to one rendered slot,
+//! so multi-location displays are just multiple entries.
+//!
+//! ```yaml
+//! weather:
+//!   - run: true
+//!     api: openweather              # openweather | nws | accuweather | pirate
+//!     api_key: YOUR_KEY             # not required for nws
+//!     current_location: true
+//!     current_location_api_key: YOUR_IPINFO_TOKEN  # needed if current_location
+//!     city: "Boston, MA"            # alternative to current_location
+//!     weather_format: imperial      # imperial | metric
+//! ```
+//!
+//! # Data sources
+//!
+//! - `openweather` → OneCall 3.0 (`api.openweathermap.org`)
+//! - `nws` → US-only, no API key (`api.weather.gov`, two-step: points then forecast)
+//! - `accuweather` → current conditions + 5-day forecast
+//! - `pirate` → Pirate Weather drop-in for Dark Sky
+//!
+//! All providers normalize to the same `Weather` shape; icon table is shared
+//! via OWM codes (NWS condition strings are mapped to OWM-equivalent codes).
+//! Refresh interval: 10 minutes.
 
 use crate::api::weather::model::{Weather, WindDirection};
 use crate::matrix::error::RenderError;

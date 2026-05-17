@@ -1,0 +1,61 @@
+{
+  "matrix_options": {
+    "chain_length": 1,
+    "parallel": 1,
+    "brightness": 50,
+    "oled_slowdown": 3,
+    "fail_on_error": false
+  },
+  "time": {
+    "run": true,
+    "color": [255, 255, 255],
+    "time_format": "12h",
+    "timezone": "America/New_York"
+  },
+  "weather": [
+    {
+      "run": true,
+      "api": "openweather",
+      "api_key": "YOUR_OPENWEATHER_KEY",
+      "current_location": true,
+      "current_location_api_key": "YOUR_IPINFO_TOKEN",
+      "weather_format": "imperial"
+    }
+  ],
+  "stock": [
+    { "run": true, "api": "finnhub", "api_key": "YOUR_FINNHUB_KEY", "symbol": "AAPL" },
+    { "run": true, "api": "finnhub", "api_key": "YOUR_FINNHUB_KEY", "symbol": "MSFT" }
+  ],
+  "sport": [
+    {
+      "run": true,
+      "sport": "basketball",
+      "team_logo": {
+        "name": "Boston Celtics",
+        "sportsdb_leagueid": 4387,
+        "url": "https://www.thesportsdb.com/images/media/team/badge/...png",
+        "sport": "basketball",
+        "shorthand": "BOS",
+        "apisportsid": 133,
+        "sportsdbid": 134860,
+        "sportsipyid": 0
+      }
+    },
+    {
+      "run": true,
+      "sport": "hockey",
+      "team_logo": {
+        "name": "Boston Bruins",
+        "sportsdb_leagueid": 4380,
+        "url": "https://www.thesportsdb.com/images/media/team/badge/...png",
+        "sport": "hockey",
+        "shorthand": "BOS",
+        "apisportsid": 673,
+        "sportsdbid": 134830,
+        "sportsipyid": 0
+      }
+    },
+    { "run": true, "sport": "golf", "tour": "pga" },
+    { "run": true, "sport": "f1" }
+  ]
+}

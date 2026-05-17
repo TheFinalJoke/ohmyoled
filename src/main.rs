@@ -1,3 +1,4 @@
+mod config_io;
 mod createjson;
 mod filelib;
 extern crate log;
@@ -6,18 +7,29 @@ use env_logger::Env;
 use oledlib::modules::{registry, scheduler};
 use ohmyoled_matrix::{MatrixOptions, RGBMatrix};
 
-fn parse_json_file(file: &str) -> serde_json::Value {
-    let contents = match filelib::open_file(file) {
-        Err(e) => {
-            println!("File: {} failed: {}", file, e);
-            std::process::exit(2);
-        }
-        Ok(returned) => returned,
-    };
-    serde_json::from_str(&contents).unwrap_or_else(|e| {
-        println!("Failed to parse {file}: {e}");
-        std::process::exit(32)
+fn parse_config_file(file: &str) -> serde_json::Value {
+    config_io::load(file).unwrap_or_else(|e| {
+        println!("Failed to load {file}: {e}");
+        std::process::exit(32);
     })
+}
+
+/// Resolve the default config path, preferring an existing file across
+/// known formats so the user can keep their config in their format of choice
+/// without passing `-f` every time.
+fn default_config_path() -> String {
+    const CANDIDATES: &[&str] = &[
+        "/etc/ohmyoled/ohmyoled.json",
+        "/etc/ohmyoled/ohmyoled.yaml",
+        "/etc/ohmyoled/ohmyoled.yml",
+        "/etc/ohmyoled/ohmyoled.toml",
+    ];
+    for c in CANDIDATES {
+        if filelib::check_if_exists(c) {
+            return c.to_string();
+        }
+    }
+    CANDIDATES[0].to_string()
 }
 
 fn ensure_config_dir(path: &str) {
@@ -78,15 +90,17 @@ async fn main() {
     init_logger();
     let cmd = Command::new("ohmyoled").version("2.2.8");
     let args_vec = vec![
-        Arg::new("create_json")
+        Arg::new("create_config")
             .short('c')
-            .long("create_json")
-            .help("Creates a json for oled configuration")
+            .long("create_config")
+            .alias("create_json")
+            .help("Interactively builds a new config file (format chosen by --config extension)")
             .action(ArgAction::SetTrue),
         Arg::new("json_file")
             .short('f')
-            .long("json_file")
-            .help("Pass a location of json file"),
+            .long("config")
+            .alias("json_file")
+            .help("Path to config file (json/yaml/toml — format chosen by extension)"),
         Arg::new("dev_mode")
             .long("dev")
             .help("creates a dev enviornment")
@@ -96,32 +110,34 @@ async fn main() {
     let cmd = cmd.args(args_vec);
     let matches = cmd.get_matches();
 
+    // For -c/--dev, write to the path passed via -f if given; otherwise default JSON.
+    let target_path = matches
+        .get_one::<String>("json_file")
+        .cloned()
+        .unwrap_or_else(|| "/etc/ohmyoled/ohmyoled.json".to_string());
+
     if matches.get_flag("dev_mode") {
-        let default_json_path = "/etc/ohmyoled/ohmyoled.json";
-        println!("Building a dev environment, Replacing /etc/ohmyoled/ohmyoled.json with a dev json");
+        println!("Building a dev environment, replacing {target_path} with a dev config");
         let main_json = createjson::create_json(true);
-        if filelib::check_if_exists(default_json_path) {
-            std::fs::remove_file(default_json_path).expect("Can not Remove file");
+        if filelib::check_if_exists(&target_path) {
+            std::fs::remove_file(&target_path).expect("Can not Remove file");
         }
-        ensure_config_dir(default_json_path);
-        let file = std::fs::File::create(default_json_path).expect("Can not create file");
-        serde_json::to_writer_pretty(file, &main_json).unwrap();
-        println!("Wrote dev json to {}", default_json_path);
+        ensure_config_dir(&target_path);
+        config_io::write(&target_path, &main_json).expect("write failed");
+        println!("Wrote dev config to {target_path}");
         return;
     }
 
-    if matches.get_flag("create_json") {
-        let default_json_path = "/etc/ohmyoled/ohmyoled.json";
-        if filelib::check_if_exists(default_json_path) {
-            println!("Would you like to overwrite ({})? (y/n)", &default_json_path);
+    if matches.get_flag("create_config") {
+        if filelib::check_if_exists(&target_path) {
+            println!("Would you like to overwrite ({})? (y/n)", &target_path);
             match oledlib::get_input().unwrap().to_lowercase().as_str() {
                 "y" => {
                     let main_json = createjson::create_json(false);
-                    std::fs::remove_file(default_json_path).expect("Can not Remove file");
-                    ensure_config_dir(default_json_path);
-                    let file = std::fs::File::create(default_json_path).expect("Can not create file");
-                    serde_json::to_writer_pretty(file, &main_json).expect("write failed");
-                    println!("Wrote changes to File: {}", default_json_path);
+                    std::fs::remove_file(&target_path).expect("Can not Remove file");
+                    ensure_config_dir(&target_path);
+                    config_io::write(&target_path, &main_json).expect("write failed");
+                    println!("Wrote changes to File: {target_path}");
                 }
                 _ => {
                     println!("Exiting...");
@@ -130,17 +146,16 @@ async fn main() {
             }
         } else {
             let main_json = createjson::create_json(false);
-            ensure_config_dir(default_json_path);
-            let file = std::fs::File::create(default_json_path).expect("Can not create file");
-            serde_json::to_writer_pretty(file, &main_json).unwrap();
+            ensure_config_dir(&target_path);
+            config_io::write(&target_path, &main_json).expect("write failed");
         }
         return;
     }
 
     let configuration: serde_json::Value = if let Some(json_file) = matches.get_one::<String>("json_file") {
-        parse_json_file(json_file)
+        parse_config_file(json_file)
     } else {
-        parse_json_file("/etc/ohmyoled/ohmyoled.json")
+        parse_config_file(&default_config_path())
     };
 
     let parsed: ParsedConfig = serde_json::from_value(configuration.clone()).unwrap_or_else(|e| {

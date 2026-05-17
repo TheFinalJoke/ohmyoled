@@ -4,6 +4,32 @@
 //! and pushes the result to the supplied `RGBMatrix`. Acts as the canonical
 //! example of the [`crate::api::Collector`] + [`crate::matrix::Renderer`]
 //! contract: the data type bridging the two is [`TimeSnapshot`].
+//!
+//! # Layout (64×32)
+//!
+//! ```text
+//!   ┌──────────────────────────────────────┐
+//!   │   MM/DD/YYYY                         │ rows 5..14
+//!   │     HH:MM:SS                         │ rows 16..28
+//!   └──────────────────────────────────────┘
+//! ```
+//!
+//! Frame rate: 1 fps for 30 frames = ~30s per cycle. Each frame re-samples
+//! the system clock so the seconds tick visibly even though the collector
+//! only polls once per second.
+//!
+//! # Config
+//!
+//! ```yaml
+//! time:
+//!   run: true
+//!   color: [255, 255, 255]
+//!   time_format: "12h"          # "12h" | "24h"
+//!   timezone: "America/New_York" # optional; defaults to system tz
+//! ```
+//!
+//! Color is RGB 0-255. Missing fields fall back to defaults; `timezone`
+//! follows the system clock when omitted.
 
 use crate::api::error::ApiError;
 use crate::api::Collector;

@@ -1,4 +1,38 @@
 //! Formula 1 renderer — next race header + driver standings podium + scrolling tail.
+//!
+//! # Layout (64×32)
+//!
+//! ```text
+//!   ┌──────────────────────────────────────┐
+//!   │ NEXT: <race name>     (scrolling)    │ rows 0..8
+//!   │ <circuit>             <date>         │ rows 8..14
+//!   ├──────────────────────────────────────┤
+//!   │ 🥇 DRIVER   123 pts                  │ rows 14..32
+//!   │ 🥈 DRIVER   115 pts                  │ — podium (top 3)
+//!   │ 🥉 DRIVER    98 pts                  │
+//!   │ 4..10 DRIVER pts (scrolling)         │
+//!   └──────────────────────────────────────┘
+//! ```
+//!
+//! Podium colors: gold / silver / bronze. The header band is F1 red.
+//! Off-season shows a "season ended" placeholder for ~20s.
+//!
+//! # Config
+//!
+//! F1 lives under the unified `sport` array, discriminated by
+//! `"sport": "f1"`. No extra fields:
+//!
+//! ```yaml
+//! sport:
+//!   - run: true
+//!     sport: f1
+//! ```
+//!
+//! # Data source
+//!
+//! `F1Collector::from_jolpica()` issues two parallel requests against the
+//! free `api.jolpi.ca` Ergast-compatible endpoint: `current/next.json` for
+//! the upcoming race and `current/driverStandings.json` for points.
 
 use crate::api::f1::F1Data;
 use crate::matrix::error::RenderError;

@@ -1,4 +1,40 @@
 //! Golf renderer — tournament name + status header, 5-row leaderboard.
+//!
+//! # Layout (64×32)
+//!
+//! ```text
+//!   ┌──────────────────────────────────────┐
+//!   │ TOURNAMENT NAME (scrolling)          │ rows 0..8
+//!   │ status: round / cut / final          │ rows 8..14
+//!   ├──────────────────────────────────────┤
+//!   │ 1  PLAYER       -12                  │
+//!   │ 2  PLAYER        -8                  │ rows 14..32
+//!   │ 3  PLAYER        -6                  │ — top 5 leaderboard
+//!   │ 4  PLAYER        -4                  │
+//!   │ 5  PLAYER        -3                  │
+//!   └──────────────────────────────────────┘
+//! ```
+//!
+//! Score colors: red ⇐ under par, white ⇐ even, yellow ⇐ over par.
+//! Off-season shows a two-line placeholder for ~20s.
+//!
+//! # Config
+//!
+//! Golf lives under the unified `sport` array, discriminated by
+//! `"sport": "golf"`. The `tour` field selects which ESPN scoreboard to
+//! pull from; default is `pga`.
+//!
+//! ```yaml
+//! sport:
+//!   - run: true
+//!     sport: golf
+//!     tour: pga          # pga | lpga | champions | korn | liv
+//! ```
+//!
+//! # Data source
+//!
+//! `GolfCollector::from_espn(tour)` polls ESPN's public scoreboard endpoint
+//! (`site.api.espn.com/.../scoreboard`). No API key required.
 
 use crate::api::golf::{GolfData, LeaderboardEntry};
 use crate::matrix::error::RenderError;

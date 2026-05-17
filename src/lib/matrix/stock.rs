@@ -14,6 +14,31 @@
 //!
 //! The top row and the long-form symbol may scroll if they overflow their
 //! allotted width; that mirrors the Python `check_size`/`-xpos` pattern.
+//!
+//! Direction colors: green ⇐ price up, red ⇐ price down. The right column
+//! tracks live change since previous close.
+//!
+//! # Config
+//!
+//! Stock is a list — one entry per symbol you want on rotation.
+//!
+//! ```yaml
+//! stock:
+//!   - run: true
+//!     api: finnhub               # only finnhub supported today
+//!     api_key: YOUR_FINNHUB_KEY
+//!     symbol: AAPL
+//!   - run: true
+//!     api: finnhub
+//!     api_key: YOUR_FINNHUB_KEY
+//!     symbol: MSFT
+//! ```
+//!
+//! # Data source
+//!
+//! `StockCollector::from_finnhub(cfg)` — uses the `finnhub` crate for the
+//! `/quote` endpoint. Refresh interval: 30s. Get a free key at
+//! <https://finnhub.io>.
 
 use crate::api::stock::model::{Direction, StockQuote};
 use crate::matrix::error::RenderError;
