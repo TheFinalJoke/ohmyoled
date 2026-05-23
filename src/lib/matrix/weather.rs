@@ -499,34 +499,53 @@ fn max_double_period(cells: &[(i32, i32)]) -> u32 {
     (max_period as u32).saturating_mul(2)
 }
 
-/// Temperature → color, mirroring `WeatherMatrix.get_temp_color` (weathermatrix.py:86-96).
+/// Temperature → color, six bands tuned to read intuitively at a glance.
+///
+/// Boundaries (°F):
+///   ≥95   deep red       extreme heat
+///   75–94 orange         hot
+///   60–74 yellow / gold  warm
+///   45–59 green          comfortable
+///   30–44 cyan           cool
+///   <30   blue           cold
 fn temp_color(temp: f32) -> Color {
     let t = temp.round() as i32;
     match t {
-        n if n >= 100 => Color::new(255, 12, 3),
-        70..=99 => Color::new(247, 157, 3),
-        40..=69 => Color::new(5, 223, 3),
-        20..=39 => Color::new(0, 255, 255),
-        _ => Color::new(0, 76, 255),
+        n if n >= 95 => Color::new(220, 30, 30),
+        75..=94 => Color::new(255, 130, 20),
+        60..=74 => Color::new(255, 215, 0),
+        45..=59 => Color::new(50, 220, 50),
+        30..=44 => Color::new(60, 200, 230),
+        _ => Color::new(50, 100, 240),
     }
 }
 
-/// Icon color, mirroring `WeatherMatrix.render_icon`'s cascade (weathermatrix.py:131-156).
+/// Icon color, keyed off the OWM condition code so each category reads at a
+/// glance from across the room: warm yellow-orange for sun, vivid blue for rain,
+/// cool grey for clouds, etc.
 fn icon_color(owm_code: u16, sunset: &chrono::DateTime<Local>) -> Color {
     match owm_code {
-        200..=299 => Color::new(254, 204, 1),   // thunderstorm
-        300..=399 => Color::new(220, 220, 220), // drizzle
-        500..=599 => Color::new(108, 204, 228), // rain
-        600..=699 => Color::WHITE,              // snow
-        700..=780 => Color::new(192, 192, 192), // haze/smoke/fog
+        // Thunderstorm — bright lightning yellow
+        200..=299 => Color::new(255, 215, 0),
+        // Drizzle — pale blue (lighter than full rain)
+        300..=399 => Color::new(135, 180, 220),
+        // Rain — vivid mid blue
+        500..=599 => Color::new(50, 130, 230),
+        // Snow — bright white
+        600..=699 => Color::WHITE,
+        // Haze / smoke / fog — neutral grey
+        700..=780 => Color::new(180, 180, 180),
+        // Clear sky — warm yellow-orange in the day, pale moonlight blue at night
         800 => {
             if *sunset > Local::now() {
-                Color::new(220, 149, 3) // sunny day
+                Color::new(255, 195, 30)
             } else {
-                Color::WHITE // clear night
+                Color::new(210, 215, 255)
             }
         }
-        801..=805 => Color::new(220, 220, 220),
+        // Clouds (few → broken → overcast) — cool grey with a hint of blue
+        801..=805 => Color::new(170, 175, 195),
+        // Anything outside the known ranges — fall back to white so it stays visible
         _ => Color::WHITE,
     }
 }
@@ -582,11 +601,28 @@ mod tests {
 
     #[test]
     fn temp_color_ranges() {
-        assert_eq!(temp_color(105.0), Color::new(255, 12, 3));
-        assert_eq!(temp_color(85.0), Color::new(247, 157, 3));
-        assert_eq!(temp_color(55.0), Color::new(5, 223, 3));
-        assert_eq!(temp_color(30.0), Color::new(0, 255, 255));
-        assert_eq!(temp_color(10.0), Color::new(0, 76, 255));
+        assert_eq!(temp_color(100.0), Color::new(220, 30, 30), "extreme heat");
+        assert_eq!(temp_color(85.0), Color::new(255, 130, 20), "hot");
+        assert_eq!(temp_color(68.0), Color::new(255, 215, 0), "warm");
+        assert_eq!(temp_color(55.0), Color::new(50, 220, 50), "comfortable");
+        assert_eq!(temp_color(38.0), Color::new(60, 200, 230), "cool");
+        assert_eq!(temp_color(10.0), Color::new(50, 100, 240), "cold");
+    }
+
+    #[test]
+    fn temp_color_band_boundaries() {
+        // Inclusive lower bounds — temp at the band edge should land in the
+        // *higher* band (e.g. 75 is hot, 74 is warm; 95 is extreme, 94 is hot).
+        assert_eq!(temp_color(95.0), Color::new(220, 30, 30));
+        assert_eq!(temp_color(94.0), Color::new(255, 130, 20));
+        assert_eq!(temp_color(75.0), Color::new(255, 130, 20));
+        assert_eq!(temp_color(74.0), Color::new(255, 215, 0));
+        assert_eq!(temp_color(60.0), Color::new(255, 215, 0));
+        assert_eq!(temp_color(59.0), Color::new(50, 220, 50));
+        assert_eq!(temp_color(45.0), Color::new(50, 220, 50));
+        assert_eq!(temp_color(44.0), Color::new(60, 200, 230));
+        assert_eq!(temp_color(30.0), Color::new(60, 200, 230));
+        assert_eq!(temp_color(29.0), Color::new(50, 100, 240));
     }
 
     #[test]
