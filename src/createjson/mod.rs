@@ -17,6 +17,15 @@ pub struct MatrixOptions {
     pub brightness: i32,
     pub oled_slowdown: i32,
     pub fail_on_error: bool,
+    /// One of: `adafruit-hat`, `adafruit-hat-pwm`, `regular`, `regular-pi1`,
+    /// `classic`, `classic-pi1`. Defaults to `adafruit-hat` so existing configs
+    /// that predate this field keep parsing.
+    #[serde(default = "default_hardware_mapping")]
+    pub hardware_mapping: String,
+}
+
+fn default_hardware_mapping() -> String {
+    "adafruit-hat".to_string()
 }
 
 impl Default for MatrixOptions {
@@ -27,6 +36,7 @@ impl Default for MatrixOptions {
             brightness: 50,
             oled_slowdown: 3,
             fail_on_error: false,
+            hardware_mapping: default_hardware_mapping(),
         }
     }
 }
@@ -95,6 +105,11 @@ fn configure_matrix(current: &mut MatrixOptions) {
     .parse()
     .unwrap_or(current.oled_slowdown);
 
+    current.hardware_mapping = ui::read_line_default(
+        "Hardware mapping (adafruit-hat | adafruit-hat-pwm | regular | regular-pi1 | classic | classic-pi1)",
+        &current.hardware_mapping,
+    );
+
     ui::success("Matrix options updated");
 }
 
@@ -116,7 +131,7 @@ fn fold_section(values: Vec<Value>) -> Option<Value> {
 /// with `REPLACE_ME_*` placeholders for the keys the user has to fill in.
 pub fn default_config() -> Value {
     let json = r#"{
-        "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false},
+        "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
         "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
         "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial"},
         "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL"},
@@ -130,7 +145,7 @@ pub fn default_config() -> Value {
 pub fn create_json(dev_mode: bool) -> Value {
     if dev_mode {
         let dev_json = r#"{
-            "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false},
+            "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
             "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
             "weather": {"run":true,"api":"nws","current_location":true,"current_location_api_key":"null","weather_format":"imperial"},
             "stock": {"run":true,"api":"finnhub","api_key":"null","symbol":"AAPL"},

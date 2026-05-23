@@ -7,6 +7,7 @@ parallel = 1
 brightness = 50
 oled_slowdown = 3
 fail_on_error = false
+hardware_mapping = "adafruit-hat"  # adafruit-hat | adafruit-hat-pwm | regular | regular-pi1 | classic | classic-pi1
 
 [time]
 run = true

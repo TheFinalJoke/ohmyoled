@@ -4,7 +4,8 @@
     "parallel": 1,
     "brightness": 50,
     "oled_slowdown": 3,
-    "fail_on_error": false
+    "fail_on_error": false,
+    "hardware_mapping": "adafruit-hat"
   },
   "time": {
     "run": true,

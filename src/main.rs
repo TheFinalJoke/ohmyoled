@@ -47,7 +47,7 @@ fn build_matrix(cfg: &createjson::MatrixOptions, dev: bool) -> RGBMatrix {
         parallel: cfg.parallel.max(1) as u32,
         gpio_slowdown: cfg.oled_slowdown.max(0) as u32,
         brightness: cfg.brightness.max(0) as u32,
-        hardware_mapping: "adafruit-hat".to_string(),
+        hardware_mapping: cfg.hardware_mapping.clone(),
     };
     if dev {
         RGBMatrix::test(opts)
@@ -199,11 +199,12 @@ async fn main() {
 
     let matrix = build_matrix(&parsed.matrix_options, dev);
     log::debug!(
-        "matrix configured: chain={} parallel={} brightness={} slowdown={}",
+        "matrix configured: chain={} parallel={} brightness={} slowdown={} mapping={}",
         parsed.matrix_options.chain_length,
         parsed.matrix_options.parallel,
         parsed.matrix_options.brightness,
-        parsed.matrix_options.oled_slowdown
+        parsed.matrix_options.oled_slowdown,
+        parsed.matrix_options.hardware_mapping,
     );
     let modules = registry::build(&registry_cfg).await;
     log::info!("registry built: {} module(s) active", modules.len());
