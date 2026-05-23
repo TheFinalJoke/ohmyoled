@@ -108,10 +108,15 @@ impl Default for WeatherFonts {
     }
 }
 
-/// Weather renderer state. Owns the three TTF fonts.
+/// Weather renderer state. Owns the four TTF fonts.
 pub struct WeatherMatrix {
     body_font: Font,
+    /// Inline weather glyph next to wind on screen 2 — kept small so it fits
+    /// in the tight vertical space between the wind text and the sunrise row.
     body_icon_font: Font,
+    /// Bigger version of the same icon font, used for the prominent
+    /// top-right corner icon on screens 1 and 2.
+    corner_icon_font: Font,
     big_icon_font: Font,
     temp_font: Font,
 }
@@ -133,8 +138,11 @@ impl WeatherMatrix {
     pub fn with_fonts(paths: WeatherFonts) -> Result<Self, String> {
         Ok(Self {
             body_font: Font::load_ttf(&paths.body, 8.0)?,
-            // 9pt for inline weather glyphs; 11pt for sunrise/sunset symbols.
+            // 9pt for the inline wind glyph (tight vertical clearance);
+            // 13pt for the prominent top-right corner icon;
+            // 11pt for the sunrise/sunset glyphs.
             body_icon_font: Font::load_ttf(&paths.icon, 9.0)?,
+            corner_icon_font: Font::load_ttf(&paths.icon, 13.0)?,
             big_icon_font: Font::load_ttf(&paths.icon, 11.0)?,
             // BMmini at 8pt — pixel font with a visible gap before the trailing
             // F. Keep the file in sync with install.sh.
@@ -347,8 +355,12 @@ impl WeatherMatrix {
     fn render_icon(&self, img: &mut RgbImage, data: &Weather) {
         let glyph = data.current.icon.glyph.to_string();
         let color = data.current.icon.color;
-        let baseline = top_to_baseline(0, self.body_icon_font.ascent());
-        draw_text(img, &self.body_icon_font, 50, baseline, color, &glyph);
+        // Center the glyph in the right-hand strip (x=50..63, 14 px wide).
+        let font = &self.corner_icon_font;
+        let glyph_w = font.text_width(&glyph);
+        let x = 50 + ((14 - glyph_w) / 2).max(0);
+        let baseline = top_to_baseline(0, font.ascent());
+        draw_text(img, font, x, baseline, color, &glyph);
     }
 
     fn render_location(&self, img: &mut RgbImage, data: &Weather, xpos: i32) {
