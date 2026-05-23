@@ -109,6 +109,22 @@ fn fold_section(values: Vec<Value>) -> Option<Value> {
     }
 }
 
+/// Non-interactive starter config. Used by `--init-config` so users who
+/// download a release binary get a config they can edit without having to
+/// run the interactive `-c` flow. Time is enabled out of the box (no
+/// external API needed); the other modules are wired in but `run: false`
+/// with `REPLACE_ME_*` placeholders for the keys the user has to fill in.
+pub fn default_config() -> Value {
+    let json = r#"{
+        "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false},
+        "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
+        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial"},
+        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL"},
+        "sport": []
+    }"#;
+    serde_json::from_str(json).expect("starter config must parse")
+}
+
 /// Build the on-disk config interactively (or with `dev_mode = true` for the
 /// canned dev config).
 pub fn create_json(dev_mode: bool) -> Value {

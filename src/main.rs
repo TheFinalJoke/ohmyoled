@@ -80,7 +80,7 @@ struct ParsedConfig {
 
 #[tokio::main]
 async fn main() {
-    let cmd = Command::new("ohmyoled").version("2.2.8");
+    let cmd = Command::new("ohmyoled").version(env!("CARGO_PKG_VERSION"));
     let args_vec = vec![
         Arg::new("create_config")
             .short('c')
@@ -88,6 +88,11 @@ async fn main() {
             .alias("create_json")
             .help("Interactively builds a new config file (format chosen by --config extension)")
             .action(ArgAction::SetTrue),
+        Arg::new("init_config")
+            .long("init-config")
+            .alias("init_config")
+            .help("Write a non-interactive starter config to PATH (json/yaml/toml — format from extension)")
+            .value_name("PATH"),
         Arg::new("json_file")
             .short('f')
             .long("config")
@@ -130,6 +135,21 @@ async fn main() {
         ensure_config_dir(&target_path);
         config_io::write(&target_path, &main_json).expect("write failed");
         println!("Wrote dev config to {target_path}");
+        return;
+    }
+
+    // Non-interactive starter config — for users who downloaded a release
+    // binary and want a config template without running through the
+    // interactive `-c` flow.
+    if let Some(init_path) = matches.get_one::<String>("init_config") {
+        if filelib::check_if_exists(init_path) {
+            eprintln!("init-config: refusing to overwrite existing file at {init_path}");
+            std::process::exit(1);
+        }
+        let main_json = createjson::default_config();
+        ensure_config_dir(init_path);
+        config_io::write(init_path, &main_json).expect("write failed");
+        println!("Wrote starter config to {init_path}");
         return;
     }
 

@@ -473,6 +473,36 @@ that the current `scripts/fetch-fonts.sh` points at is `fonts-v1`
 
 ---
 
+## Releasing the binary
+
+`.github/workflows/release.yml` fires on `v*.*.*` tags. It does three
+things in parallel and then publishes one GitHub Release:
+
+- Cross-compiles `ohmyoled` for `aarch64-unknown-linux-gnu` and
+  `armv7-unknown-linux-gnueabihf` via [cross-rs](https://github.com/cross-rs/cross).
+- Builds the same commit natively and runs `ohmyoled --init-config
+  ohmyoled-starter.json` to emit a fresh starter config — keeps the
+  shipped JSON in lockstep with `createjson::default_config()` so a
+  hand-edited sample can never drift from the code.
+- Uploads `ohmyoled-aarch64`, `ohmyoled-armv7`, and
+  `ohmyoled-starter.json` to the release, with auto-generated release
+  notes.
+
+To cut a release:
+
+```bash
+# Bump version in Cargo.toml first, commit, push, then:
+git tag v3.0.0
+git push origin v3.0.0
+```
+
+The `--init-config PATH` flag is what powers the starter generation —
+end users can run it on their own machine to regenerate a template
+config without going through the interactive `-c` flow. Format is
+chosen by the extension on PATH (json / yaml / toml).
+
+---
+
 ## Quick verification loop
 
 ```bash
