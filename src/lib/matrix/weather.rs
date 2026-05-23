@@ -72,16 +72,19 @@ const SCREEN2_DWELL: Duration = Duration::from_secs(30);
 // --- Invisible cell layout --------------------------------------------------
 // Row 1 (temp/humidity, y_top=8) lives alongside the weather icon at x≥50, so
 // the two cells share x=[0, 49) with a 1-px gutter at the midline. Row 2
-// (high/low, y_top=18) has no icon — full-width 30/31-px cells.
+// (high/low, y_top=18) has no icon, but its cells start at the SAME x as row
+// 1's so the H/L labels sit directly under the T/R labels above them. The
+// right cell on row 2 then extends further (no icon to leave room for), which
+// gives extreme values like -12F more marquee headroom.
 const ROW1_LEFT_X: i32 = 0;
 const ROW1_BOX_W: i32 = 24;
 const ROW1_RIGHT_X: i32 = 25;
 const ROW1_RIGHT_W: i32 = 24;
 
 const ROW2_LEFT_X: i32 = 0;
-const ROW2_BOX_W: i32 = 30;
-const ROW2_RIGHT_X: i32 = 32;
-const ROW2_RIGHT_W: i32 = 31;
+const ROW2_BOX_W: i32 = 24;
+const ROW2_RIGHT_X: i32 = 25;
+const ROW2_RIGHT_W: i32 = 39;
 
 /// Paths to the three fonts the renderer needs.
 ///
@@ -663,15 +666,13 @@ mod tests {
                     "row 1 gutter (24,{y}) lit at frame {frame}"
                 );
             }
-            // Row-2 gutter at x=30..32, y in H/L band.
-            for x in 30..32u32 {
-                for y in 18..26u32 {
-                    assert_eq!(
-                        img.get_pixel(x, y).0,
-                        [0, 0, 0],
-                        "row 2 gutter ({x},{y}) lit at frame {frame}"
-                    );
-                }
+            // Row-2 gutter at x=24, y in H/L band (now aligned with row 1).
+            for y in 18..26u32 {
+                assert_eq!(
+                    img.get_pixel(24, y).0,
+                    [0, 0, 0],
+                    "row 2 gutter (24,{y}) lit at frame {frame}"
+                );
             }
         }
     }
