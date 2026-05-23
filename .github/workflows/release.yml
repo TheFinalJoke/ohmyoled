@@ -63,8 +63,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build native
-        run: cargo build --release
+      # --no-default-features skips the hardware backend (rpi-led-matrix-sys
+      # refuses to build on non-Pi targets). --init-config doesn't need it.
+      - name: Build native (no hardware feature)
+        run: cargo build --release --no-default-features
 
       - name: Generate starter
         run: ./target/release/ohmyoled --init-config ohmyoled-starter.json

@@ -26,7 +26,15 @@ toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
 async-trait = "0.1"
 sunrise = { version = "3", features = ["std"] }
-ohmyoled-matrix = { path = "crates/ohmyoled-matrix" }
+ohmyoled-matrix = { path = "crates/ohmyoled-matrix", default-features = false }
+
+[features]
+# Hardware backend on by default. Disable with `--no-default-features` for
+# host builds that only need the bin to emit a starter config (`--init-config`)
+# or run the test/dev modes — skipping it avoids pulling in rpi-led-matrix-sys,
+# whose build script refuses to compile for non-Pi targets.
+default = ["hardware"]
+hardware = ["ohmyoled-matrix/hardware"]
 
 [lib]
 name = "oledlib"
