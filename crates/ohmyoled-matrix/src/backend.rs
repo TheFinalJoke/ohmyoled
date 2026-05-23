@@ -19,7 +19,12 @@ pub enum MatrixMode {
 }
 
 /// Core matrix operations — implemented by both backends.
-pub trait Backend: Send + Sync {
+///
+/// `Send` (not `Sync`) is sufficient: the scheduler owns the matrix and lends it
+/// to renderers as `&mut`, never shares it across tasks. Some hardware backends
+/// (e.g. `rpi-led-panel`) hold `mpsc::Receiver`s internally and are `Send` but
+/// `!Sync`.
+pub trait Backend: Send {
     /// Push an RGB image to the display.
     fn set_image(&mut self, img: &RgbImage, offset_x: i32, offset_y: i32);
     /// Clear the display to black.
