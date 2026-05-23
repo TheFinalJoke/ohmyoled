@@ -136,33 +136,67 @@ fn default_golf_tour() -> GolfTour {
 /// matches the order modules will rotate through the panel.
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
+    log::debug!(
+        "registry: parsed sections — time={} weather={} stock={} sport={}",
+        cfg.time.len(),
+        cfg.weather.len(),
+        cfg.stock.len(),
+        cfg.sport.len()
+    );
 
     for t in cfg.time.iter().filter(|t| t.run) {
         match build_time(t).await {
-            Ok(m) => modules.push(m),
+            Ok(m) => {
+                log::info!("registry: time loaded (color={:?})", t.color);
+                modules.push(m);
+            }
             Err(e) => log::error!("time: skipping module: {e}"),
         }
     }
     for w in cfg.weather.iter().filter(|w| w.run) {
         match build_weather(w).await {
-            Ok(m) => modules.push(m),
+            Ok(m) => {
+                log::info!(
+                    "registry: weather loaded (provider={}, current_location={})",
+                    w.api.get_api(),
+                    w.current_location
+                );
+                modules.push(m);
+            }
             Err(e) => log::error!("weather: skipping module: {e}"),
         }
     }
     for s in cfg.stock.iter().filter(|s| s.run) {
         match build_stock(s).await {
-            Ok(m) => modules.push(m),
+            Ok(m) => {
+                log::info!("registry: stock loaded ({} via {})", s.symbol, s.api.get_api());
+                modules.push(m);
+            }
             Err(e) => log::error!("stock: skipping module: {e}"),
         }
     }
     for s in cfg.sport.iter().filter(|s| s.run()) {
         match build_sport(s).await {
-            Ok(m) => modules.push(m),
+            Ok(m) => {
+                log::info!("registry: sport loaded ({})", describe_sport(s));
+                modules.push(m);
+            }
             Err(e) => log::error!("sport: skipping module: {e}"),
         }
     }
 
     modules
+}
+
+fn describe_sport(s: &SportSection) -> String {
+    match s {
+        SportSection::Basketball { team_logo, .. } => format!("basketball: {}", team_logo.name),
+        SportSection::Baseball { team_logo, .. } => format!("baseball: {}", team_logo.name),
+        SportSection::Football { team_logo, .. } => format!("football: {}", team_logo.name),
+        SportSection::Hockey { team_logo, .. } => format!("hockey: {}", team_logo.name),
+        SportSection::Golf { tour, .. } => format!("golf: {tour:?}"),
+        SportSection::F1 { .. } => "f1".to_string(),
+    }
 }
 
 async fn build_time(t: &TimeSection) -> Result<Box<dyn DynModule>, String> {

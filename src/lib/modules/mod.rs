@@ -63,19 +63,35 @@ where
     }
 
     async fn poll_and_render(&mut self, matrix: &mut RGBMatrix) -> Result<(), ModuleError> {
-        // Try a fresh poll. On success, replace the cached value.
-        // On failure, fall back to the last good value so the panel stays alive.
+        let id = self.collector.id();
+        let poll_started = std::time::Instant::now();
+        log::debug!("[{id}] poll begin");
         match self.collector.poll().await {
-            Ok(data) => self.last_good = Some(data),
+            Ok(data) => {
+                log::debug!(
+                    "[{id}] poll ok in {} ms",
+                    poll_started.elapsed().as_millis()
+                );
+                self.last_good = Some(data);
+            }
             Err(e) => {
-                log::warn!("[{}] poll failed: {e}; using last-good data", self.collector.id());
+                log::warn!("[{id}] poll failed: {e}; using last-good data");
             }
         }
 
         match &self.last_good {
-            Some(data) => self.renderer.render(matrix, data).await.map_err(Into::into),
+            Some(data) => {
+                let render_started = std::time::Instant::now();
+                log::debug!("[{id}] render begin");
+                let r = self.renderer.render(matrix, data).await.map_err(Into::into);
+                log::debug!(
+                    "[{id}] render done in {} ms",
+                    render_started.elapsed().as_millis()
+                );
+                r
+            }
             None => {
-                log::warn!("[{}] no data yet; skipping render", self.collector.id());
+                log::warn!("[{id}] no data yet; skipping render");
                 Ok(())
             }
         }

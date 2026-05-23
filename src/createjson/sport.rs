@@ -1,85 +1,91 @@
-use log::info;
+use crate::createjson::ui;
 use oledlib::teams;
-use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SportOptions {
-    pub run: bool,
-    pub sport: teams::SportsTypes,
-    pub team_logo: teams::Logo,
-}
-impl Default for SportOptions {
-    fn default() -> Self {
-        Self {
-            run: true,
+/// Default team-sport entry used when the user accepts defaults.
+fn default_entry() -> Value {
+    json!({
+        "run": true,
+        "sport": "baseball",
+        "team_logo": teams::Logo {
+            name: "Chicago Cubs".to_string(),
+            sportsdb_leagueid: 4424,
+            url: "https://www.thesportsdb.com/images/media/team/badge/wxbe071521892391.png".to_string(),
             sport: teams::SportsTypes::BASEBALL,
-            team_logo: teams::Logo {
-                name: "Chicago Cubs".to_string(),
-                sportsdb_leagueid: 4424,
-                url: "https://www.thesportsdb.com/images/media/team/badge/wxbe071521892391.png"
-                    .to_string(),
-                sport: teams::SportsTypes::BASEBALL,
-                shorthand: "CHC".to_string(),
-                apisportsid: 6,
-                sportsdbid: 135269,
-                sportsipyid: None,
-            },
+            shorthand: "CHC".to_string(),
+            apisportsid: 6,
+            sportsdbid: 135269,
+            sportsipyid: None,
+        },
+    })
+}
+
+fn pick_sport() -> teams::SportsTypes {
+    let slug = ui::choose(
+        "Which team sport?",
+        &[
+            ("baseball", "MLB — ESPN scoreboard"),
+            ("basketball", "NBA — ESPN scoreboard"),
+            ("football", "NFL — ESPN scoreboard"),
+            ("hockey", "NHL — ESPN scoreboard"),
+        ],
+        "baseball",
+    );
+    teams::SportsTypes::str_to_sport(slug)
+}
+
+fn pick_team(sport: &teams::SportsTypes) -> teams::Logo {
+    ui::info(&format!(
+        "Available {} teams (type the full name as listed):",
+        sport.get_sport_str()
+    ));
+    teams::print_teams(sport);
+    loop {
+        let input = ui::read_required("Team name");
+        match teams::validate(input, sport) {
+            Ok(logo) => return logo,
+            Err(e) => ui::warn(&e),
         }
     }
 }
 
-pub fn configure_sport() -> teams::SportsTypes {
-    loop {
-        teams::SportsTypes::print_apis();
-        let sport_choice = match oledlib::get_input().unwrap().to_lowercase().as_str() {
-            "baseball" => teams::SportsTypes::BASEBALL,
-            "basketball" => teams::SportsTypes::BASKETBALL,
-            "hockey" => teams::SportsTypes::HOCKEY,
-            "football" => teams::SportsTypes::FOOTBALL,
-            _ => {
-                println!("Incorrect sport");
-                continue;
-            }
-        };
-        return sport_choice;
+pub fn configure() -> Result<Value, String> {
+    ui::section("Sport — Team (MLB / NBA / NFL / NHL)");
+    if ui::read_yes_no("Use the default team (Chicago Cubs)?", false) {
+        let entry = default_entry();
+        ui::success("Sport — Chicago Cubs (MLB) added");
+        return Ok(entry);
     }
-}
-pub fn team_choice(sport: &teams::SportsTypes) -> teams::Logo {
-    loop {
-        println!("Choose your Team, -> name of team)");
-        teams::print_teams(sport);
-        let str_input = oledlib::get_input().unwrap();
-        let team: Result<teams::Logo, String> = teams::validate(str_input, sport);
-        return match team {
-            Ok(t) => t,
-            Err(e) => {
-                println!("{}", e);
-                continue;
-            }
-        };
-    }
+    let sport_kind = pick_sport();
+    let logo = pick_team(&sport_kind);
+    let entry = json!({
+        "run": true,
+        "sport": sport_kind.get_sport_str(),
+        "team_logo": logo,
+    });
+    ui::success(&format!(
+        "Sport — {} ({}) added",
+        logo_display(&entry),
+        sport_kind.get_sport_str().to_uppercase()
+    ));
+    Ok(entry)
 }
 
-pub fn configure() -> Result<SportOptions, String> {
-    info!("In Sports Configuration");
-    println!("[sport]: Do you want to use the default config?? (y/n)");
-    match oledlib::get_input() {
-        Some(input) => match &*input.to_lowercase() {
-            "y" => Ok(SportOptions::default()),
-            "n" => {
-                let sport_choice: teams::SportsTypes = configure_sport();
-                let team_choosen: teams::Logo = team_choice(&sport_choice);
-                Ok(SportOptions {
-                    run: true,
-                    sport: sport_choice,
-                    team_logo: team_choosen,
-                })
-            }
-            _ => {
-                info!("That is a wrong input");
-                Err("That is a wrong input".to_owned())
-            }
-        },
-        None => Err("Problem while figuring".to_owned()),
-    }
+fn logo_display(entry: &Value) -> String {
+    entry
+        .get("team_logo")
+        .and_then(|t| t.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or("?")
+        .to_string()
+}
+
+pub fn summary_line(entry: &Value) -> String {
+    let sport = entry
+        .get("sport")
+        .and_then(Value::as_str)
+        .unwrap_or("?")
+        .to_uppercase();
+    let team = logo_display(entry);
+    format!("sport: {} — {team}", sport.to_lowercase())
 }

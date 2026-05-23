@@ -1,9 +1,9 @@
 mod config_io;
 mod createjson;
 mod filelib;
+mod logger;
 extern crate log;
 use clap::{Arg, ArgAction, Command};
-use env_logger::Env;
 use oledlib::modules::{registry, scheduler};
 use ohmyoled_matrix::{MatrixOptions, RGBMatrix};
 
@@ -36,13 +36,6 @@ fn ensure_config_dir(path: &str) {
     if let Some(parent) = std::path::Path::new(path).parent() {
         std::fs::create_dir_all(parent).expect("Can not create config directory");
     }
-}
-
-fn init_logger() {
-    let env = Env::default()
-        .filter_or("RUST_LOG", "error")
-        .write_style_or("RUST_LOG_STYLE", "always");
-    env_logger::init_from_env(env);
 }
 
 /// Build an `RGBMatrix` from the workspace `MatrixOptions` JSON section.
@@ -87,7 +80,6 @@ struct ParsedConfig {
 
 #[tokio::main]
 async fn main() {
-    init_logger();
     let cmd = Command::new("ohmyoled").version("2.2.8");
     let args_vec = vec![
         Arg::new("create_config")
@@ -105,10 +97,23 @@ async fn main() {
             .long("dev")
             .help("creates a dev enviornment")
             .action(ArgAction::SetTrue),
+        Arg::new("verbose")
+            .short('v')
+            .long("verbose")
+            .help("Increase log verbosity: -v info, -vv debug, -vvv+ trace")
+            .action(ArgAction::Count),
+        Arg::new("log_file")
+            .long("log-file")
+            .help("Override log file path (default /var/log/ohmyoled.log)"),
     ];
 
     let cmd = cmd.args(args_vec);
     let matches = cmd.get_matches();
+
+    let verbosity = matches.get_count("verbose");
+    let log_file = matches.get_one::<String>("log_file").map(String::as_str);
+    logger::init(verbosity, log_file);
+    log::info!("ohmyoled v{} starting", env!("CARGO_PKG_VERSION"));
 
     // For -c/--dev, write to the path passed via -f if given; otherwise default JSON.
     let target_path = matches
@@ -153,9 +158,12 @@ async fn main() {
     }
 
     let configuration: serde_json::Value = if let Some(json_file) = matches.get_one::<String>("json_file") {
+        log::info!("loading config from {json_file}");
         parse_config_file(json_file)
     } else {
-        parse_config_file(&default_config_path())
+        let path = default_config_path();
+        log::info!("loading default config from {path}");
+        parse_config_file(&path)
     };
 
     let parsed: ParsedConfig = serde_json::from_value(configuration.clone()).unwrap_or_else(|e| {
@@ -170,7 +178,15 @@ async fn main() {
     let dev = std::env::var("DEV").is_ok();
 
     let matrix = build_matrix(&parsed.matrix_options, dev);
+    log::debug!(
+        "matrix configured: chain={} parallel={} brightness={} slowdown={}",
+        parsed.matrix_options.chain_length,
+        parsed.matrix_options.parallel,
+        parsed.matrix_options.brightness,
+        parsed.matrix_options.oled_slowdown
+    );
     let modules = registry::build(&registry_cfg).await;
+    log::info!("registry built: {} module(s) active", modules.len());
 
     install_sigint_handler();
     if let Err(e) = scheduler::run(matrix, modules).await {

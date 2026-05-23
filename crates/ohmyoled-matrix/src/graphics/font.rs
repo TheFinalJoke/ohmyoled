@@ -93,6 +93,20 @@ impl Font {
         }
     }
 
+    /// Advance width of `text` in pixels at the loaded size. Sums per-glyph
+    /// advance — accurate enough to size cells in a layout, unlike a flat
+    /// char-count × average-width estimate.
+    pub fn text_width(&self, text: &str) -> i32 {
+        match self {
+            Self::Bdf(b) => b
+                .inner
+                .as_ref()
+                .map(|f| text.chars().map(|c| f.glyphs.get(&(c as u32)).map(|g| g.dwidth).unwrap_or(0)).sum())
+                .unwrap_or(0),
+            Self::Ttf(t) => t.text_width(text),
+        }
+    }
+
     pub(crate) fn bdf(&self) -> Option<&BdfFont> {
         match self {
             Self::Bdf(b) => b.inner.as_ref(),

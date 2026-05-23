@@ -1,4 +1,4 @@
-use log::info;
+use crate::createjson::ui;
 use oledlib::api;
 use oledlib::serde_helpers::null_string_as_none;
 use serde::{Deserialize, Serialize};
@@ -9,12 +9,12 @@ pub enum WeatherFormat {
     Imperial,
     Metric,
 }
+
 impl WeatherFormat {
-    #[allow(dead_code)]
-    pub fn get_format(&self) -> String {
+    pub fn slug(self) -> &'static str {
         match self {
-            WeatherFormat::Imperial => "imperial".to_string(),
-            WeatherFormat::Metric => "metric".to_string(),
+            Self::Imperial => "imperial",
+            Self::Metric => "metric",
         }
     }
 }
@@ -33,6 +33,7 @@ pub struct WeatherOptions {
     #[serde(default, deserialize_with = "null_string_as_none")]
     pub current_location_api_key: Option<String>,
 }
+
 impl Default for WeatherOptions {
     fn default() -> Self {
         WeatherOptions {
@@ -47,104 +48,109 @@ impl Default for WeatherOptions {
     }
 }
 
-fn get_weather_api_key() -> String {
-    println!("You Entered a api that requires an API Key");
-    println!("Please enter Key now -> ");
-    oledlib::get_input().unwrap_or_else(|| "No Key".to_string())
-}
-fn get_weather_api() -> api::WeatherApiType {
-    loop {
-        println!("Please enter api, National Weather Service(nws),");
-        println!("OpenWeather Api (openweather) , Requires an Api -> ");
-        let api_map = match &*oledlib::get_input().unwrap().to_lowercase() {
-            "nws" => api::WeatherApiType {
-                api: api::WeatherApi::Nws,
-                api_key: None,
-            },
-            "openweather" => api::WeatherApiType {
-                api: api::WeatherApi::Openweather,
-                api_key: Some(get_weather_api_key()),
-            },
-            _ => {
-                println!("Not a Valid API, Try Again");
-                continue;
-            }
-        };
-        return api_map;
+fn pick_api() -> api::WeatherApi {
+    let slug = ui::choose(
+        "Which weather provider?",
+        &[
+            ("nws", "US National Weather Service — no key"),
+            ("openweather", "OpenWeather — key required"),
+            ("accuweather", "AccuWeather — key required"),
+            ("pirate", "Pirate Weather — key required"),
+        ],
+        "nws",
+    );
+    match slug.as_str() {
+        "nws" => api::WeatherApi::Nws,
+        "openweather" => api::WeatherApi::Openweather,
+        "accuweather" => api::WeatherApi::Accuweather,
+        "pirate" => api::WeatherApi::Pirate,
+        _ => api::WeatherApi::Nws,
     }
 }
-pub fn configure_location() -> api::WeatherLocationData {
-    println!("Do you want to use the current location??(Default) (y/n)");
-    match oledlib::get_input().unwrap().to_lowercase().as_str() {
-        "y" => {
-            println!("Enter Api key (ipinfo) ->");
-            let input: Option<String> = oledlib::get_input();
-            api::WeatherLocationData {
-                current_location: true,
-                zipcode: None,
-                city_and_state: None,
-                current_location_api_key: input,
-            }
-        }
-        "n" => {
-            println!("Enter zipcode ->");
-            let input: Option<String> = oledlib::get_input();
-            api::WeatherLocationData {
-                current_location: false,
-                zipcode: Some(input.unwrap().parse::<i32>().unwrap()),
-                city_and_state: None,
-                current_location_api_key: None,
-            }
-        }
-        _ => {
-            println!("Bad configuration Using default");
-            api::WeatherLocationData {
-                current_location: true,
-                zipcode: None,
-                city_and_state: None,
-                current_location_api_key: None,
-            }
-        }
+
+fn pick_format() -> Option<WeatherFormat> {
+    let slug = ui::choose(
+        "Units",
+        &[
+            ("imperial", "°F / mph"),
+            ("metric", "°C / m·s⁻¹"),
+        ],
+        "imperial",
+    );
+    Some(match slug.as_str() {
+        "metric" => WeatherFormat::Metric,
+        _ => WeatherFormat::Imperial,
+    })
+}
+
+fn configure_location() -> (bool, Option<String>, Option<String>) {
+    let use_current = ui::read_yes_no(
+        "Geolocate via ipinfo? (otherwise prompt for city)",
+        true,
+    );
+    if use_current {
+        ui::hint("Optional: paste an ipinfo.io token for higher rate limits (blank to skip).");
+        let token = ui::read_line_default("ipinfo token", "");
+        let token = if token.trim().is_empty() { None } else { Some(token) };
+        (true, None, token)
+    } else {
+        let city = ui::read_required("City (e.g. 'Dallas, TX')");
+        (false, Some(city), None)
     }
 }
-pub fn config_format() -> Option<WeatherFormat> {
-    loop {
-        println!("What Weather Format, Imperial or Metric? (I, M)");
-        let format = match oledlib::get_input().unwrap().to_lowercase().as_str() {
-            "i" => Some(WeatherFormat::Imperial),
-            "m" => Some(WeatherFormat::Metric),
-            _ => {
-                println!("Invalid format, Try again..");
-                continue;
-            }
-        };
-        return format;
-    }
-}
+
 pub fn configure() -> Result<WeatherOptions, String> {
-    info!("In weather configuration");
-    println!("[weather]: Do you want to use the default config?? (y/n)");
-    match oledlib::get_input() {
-        Some(input) => match &*input.to_lowercase() {
-            "y" => Ok(WeatherOptions::default()),
-            "n" => {
-                let api_decision: api::WeatherApiType = get_weather_api();
-                let location: api::WeatherLocationData = configure_location();
-                Ok(WeatherOptions {
-                    run: true,
-                    api: api_decision.api,
-                    api_key: api_decision.api_key,
-                    current_location: location.current_location,
-                    city: location.city_and_state,
-                    weather_format: config_format(),
-                    current_location_api_key: location.current_location_api_key,
-                })
-            }
-            _ => {
-                info!("That is a wrong input");
-                Err("That is a wrong input".to_owned())
-            }
-        },
-        None => Err("Problem while figuring".to_owned()),
+    ui::section("Weather");
+    ui::hint("Pick a provider, set your location, and choose units.");
+
+    if ui::read_yes_no("Use defaults (NWS, auto-locate, imperial)?", true) {
+        ui::success("Weather — NWS defaults");
+        return Ok(WeatherOptions::default());
     }
+
+    let api_choice = pick_api();
+    let needs_key = !matches!(api_choice, api::WeatherApi::Nws);
+    let api_key = if needs_key {
+        ui::hint(&format!(
+            "{} requires an API key. Get one from the provider, then paste it here.",
+            api_choice.get_api()
+        ));
+        Some(ui::read_required("API key"))
+    } else {
+        None
+    };
+
+    let (current_location, city, ipinfo_token) = configure_location();
+    let weather_format = pick_format();
+
+    ui::success(&format!(
+        "Weather — {} ({}, {})",
+        api_choice.get_api(),
+        if current_location { "auto-locate" } else { city.as_deref().unwrap_or("city") },
+        weather_format.map(WeatherFormat::slug).unwrap_or("imperial"),
+    ));
+
+    Ok(WeatherOptions {
+        run: true,
+        api: api_choice,
+        api_key,
+        current_location,
+        city,
+        weather_format,
+        current_location_api_key: ipinfo_token,
+    })
+}
+
+pub fn summary_line(opts: &WeatherOptions) -> String {
+    let where_at = if opts.current_location {
+        "auto-locate".to_string()
+    } else {
+        opts.city.clone().unwrap_or_else(|| "?".to_string())
+    };
+    format!(
+        "weather: {} — {} ({})",
+        opts.api.get_api(),
+        where_at,
+        opts.weather_format.map(WeatherFormat::slug).unwrap_or("imperial"),
+    )
 }

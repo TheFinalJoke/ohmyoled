@@ -57,4 +57,17 @@ impl TtfFont {
     pub fn height(&self) -> i32 {
         self.ascent() + self.descent()
     }
+
+    /// Pixel-space advance width of `text` at the loaded scale. Sums the
+    /// horizontal advance of each glyph — the same value `draw_text` would
+    /// use to step the pen — so this matches the actual rendered footprint
+    /// rather than a per-character average.
+    pub fn text_width(&self, text: &str) -> i32 {
+        let scaled = self.font.as_scaled(self.scale);
+        let mut w = 0.0f32;
+        for ch in text.chars() {
+            w += scaled.h_advance(scaled.glyph_id(ch));
+        }
+        w.round() as i32
+    }
 }

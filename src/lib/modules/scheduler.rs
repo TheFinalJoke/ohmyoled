@@ -17,11 +17,27 @@ pub async fn run(mut matrix: RGBMatrix, mut modules: Vec<Box<dyn DynModule>>) ->
         }
     }
 
+    let ids: Vec<&'static str> = modules.iter().map(|m| m.id()).collect();
+    log::info!(
+        "scheduler: starting with {} module(s): {}",
+        modules.len(),
+        ids.join(", ")
+    );
+
+    let mut cycle: u64 = 0;
     loop {
+        cycle = cycle.wrapping_add(1);
+        log::debug!("scheduler: cycle {cycle} begin");
+        let started = std::time::Instant::now();
         for module in modules.iter_mut() {
+            log::debug!("scheduler: cycle {cycle} -> [{}]", module.id());
             if let Err(e) = module.poll_and_render(&mut matrix).await {
                 log::error!("[{}] cycle failed: {e}", module.id());
             }
         }
+        log::debug!(
+            "scheduler: cycle {cycle} complete in {} ms",
+            started.elapsed().as_millis()
+        );
     }
 }

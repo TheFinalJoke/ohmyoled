@@ -3,6 +3,7 @@
 //! See [`renderer::Renderer`] for the contract and [`error::RenderError`] for
 //! the error type. Each submodule (e.g. [`time`]) implements one renderer.
 
+pub mod cells;
 pub mod error;
 pub mod f1;
 pub mod golf;

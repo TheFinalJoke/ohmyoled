@@ -27,10 +27,19 @@ pub async fn get_json<T: DeserializeOwned>(
     url: &str,
     headers: &[(&str, &str)],
 ) -> Result<T, ApiError> {
+    log::debug!("http GET {url}");
+    let started = std::time::Instant::now();
     let mut req = shared_client().get(url);
     for (k, v) in headers {
         req = req.header(*k, *v);
     }
     let resp = req.send().await?.error_for_status()?;
-    Ok(resp.json::<T>().await?)
+    let status = resp.status();
+    let body = resp.json::<T>().await?;
+    log::trace!(
+        "http GET {url} -> {} in {} ms",
+        status,
+        started.elapsed().as_millis()
+    );
+    Ok(body)
 }
