@@ -53,7 +53,6 @@ use crate::matrix::cells::{draw_pieces_in_box, overflow_period, Align, Piece};
 use crate::matrix::error::RenderError;
 use crate::matrix::renderer::Renderer;
 use async_trait::async_trait;
-use chrono::Local;
 use image::RgbImage;
 use ohmyoled_matrix::graphics::{draw_text, Font};
 use ohmyoled_matrix::{Color, RGBMatrix};
@@ -347,7 +346,7 @@ impl WeatherMatrix {
 
     fn render_icon(&self, img: &mut RgbImage, data: &Weather) {
         let glyph = data.current.icon.glyph.to_string();
-        let color = icon_color(data.current.icon.owm_code, &data.forecast.sunset);
+        let color = data.current.icon.color;
         let baseline = top_to_baseline(0, self.body_icon_font.ascent());
         draw_text(img, &self.body_icon_font, 50, baseline, color, &glyph);
     }
@@ -520,43 +519,15 @@ fn temp_color(temp: f32) -> Color {
     }
 }
 
-/// Icon color, keyed off the OWM condition code so each category reads at a
-/// glance from across the room: warm yellow-orange for sun, vivid blue for rain,
-/// cool grey for clouds, etc.
-fn icon_color(owm_code: u16, sunset: &chrono::DateTime<Local>) -> Color {
-    match owm_code {
-        // Thunderstorm — bright lightning yellow
-        200..=299 => Color::new(255, 215, 0),
-        // Drizzle — pale blue (lighter than full rain)
-        300..=399 => Color::new(135, 180, 220),
-        // Rain — vivid mid blue
-        500..=599 => Color::new(50, 130, 230),
-        // Snow — bright white
-        600..=699 => Color::WHITE,
-        // Haze / smoke / fog — neutral grey
-        700..=780 => Color::new(180, 180, 180),
-        // Clear sky — warm yellow-orange in the day, pale moonlight blue at night
-        800 => {
-            if *sunset > Local::now() {
-                Color::new(255, 195, 30)
-            } else {
-                Color::new(210, 215, 255)
-            }
-        }
-        // Clouds (few → broken → overcast) — cool grey with a hint of blue
-        801..=805 => Color::new(170, 175, 195),
-        // Anything outside the known ranges — fall back to white so it stays visible
-        _ => Color::WHITE,
-    }
-}
+// Icon colors live on the WeatherIcon variants themselves — see icon_table.rs.
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::api::weather::model::{
-        CurrentWeather, DayForecast, Weather, WeatherApiSource, WeatherIcon,
+        CurrentWeather, DayForecast, Weather, WeatherApiSource,
     };
-    use chrono::TimeZone;
+    use chrono::{Local, TimeZone};
     use std::path::PathBuf;
 
     fn repo_fonts() -> WeatherFonts {
@@ -584,11 +555,7 @@ mod tests {
                 precipitation_chance: 10,
                 uv: Some(5.2),
                 wind_direction_deg: Some(270.0),
-                icon: WeatherIcon {
-                    condition: "Sunny",
-                    glyph: '\u{f00d}',
-                    owm_code: 800,
-                },
+                icon: crate::api::weather::icon_table::SUNNY,
             },
             forecast: DayForecast {
                 today_high: 70.0,

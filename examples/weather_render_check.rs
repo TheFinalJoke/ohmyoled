@@ -9,7 +9,7 @@
 
 use chrono::{Duration, Local, TimeZone};
 use oledlib::api::weather::model::{
-    CurrentWeather, DayForecast, Weather, WeatherApiSource, WeatherIcon,
+    CurrentWeather, DayForecast, Weather, WeatherApiSource,
 };
 use oledlib::matrix::weather::{WeatherFonts, WeatherMatrix};
 use std::path::PathBuf;
@@ -99,7 +99,7 @@ fn sf_weather() -> Weather {
             precipitation_chance: 10,
             uv: Some(5.2),
             wind_direction_deg: Some(270.0),
-            icon: WeatherIcon { condition: "Sunny", glyph: '\u{f00d}', owm_code: 800 },
+            icon: oledlib::api::weather::icon_table::SUNNY,
         },
         forecast: DayForecast {
             today_high: 74.0,
