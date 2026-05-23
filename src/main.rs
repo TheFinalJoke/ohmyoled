@@ -47,7 +47,7 @@ fn build_matrix(cfg: &createjson::MatrixOptions, dev: bool) -> RGBMatrix {
         parallel: cfg.parallel.max(1) as u32,
         gpio_slowdown: cfg.oled_slowdown.max(0) as u32,
         brightness: cfg.brightness.max(0) as u32,
-        hardware_mapping: "adafruit-hat".to_string(),
+        hardware_mapping: "adafruit-hat-pwm".to_string(),
     };
     if dev {
         RGBMatrix::test(opts)
