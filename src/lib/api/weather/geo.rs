@@ -1,12 +1,20 @@
-//! Geolocation via the `ipinfo` crate.
+//! Geolocation via the [`ipinfo.io`](https://ipinfo.io) HTTP API.
 //!
-//! Mirrors Python's `ipinfo.getHandler(...).getDetails()` calls in
-//! `openweather/weather.py` and `weathergov/nws.py`. The result is cached for
-//! the lifetime of the collector (location doesn't change while the panel runs).
+//! Previously used the `ipinfo` crate, but it depends on `reqwest 0.13`
+//! which transitively pins `rustls 0.23` with the `aws-lc-rs` provider —
+//! that pulls `aws-lc-sys`, a C library that needs cmake/clang to
+//! cross-compile and which broke the aarch64/armv7 release build. We
+//! only consume one endpoint, so a direct call via our shared
+//! `get_json` helper is both smaller and TLS-stack-agnostic.
+//!
+//! Endpoint: `https://ipinfo.io/json[?token=...]` — returns the calling
+//! host's geolocation. With no token the request hits the rate-limited
+//! anonymous endpoint; on paid plans pass the token.
 
 use crate::api::error::ApiError;
-use ipinfo::{IpInfo, IpInfoConfig};
-use tokio::sync::{Mutex, OnceCell};
+use crate::api::http::get_json;
+use serde::Deserialize;
+use tokio::sync::OnceCell;
 
 /// What we extract from an ipinfo lookup.
 #[derive(Debug, Clone)]
@@ -16,52 +24,55 @@ pub struct GeoLocation {
     pub city: String,
 }
 
-/// Look up the *current host's* IP location.
+/// Look up the *current host's* IP location. Cached for the lifetime of
+/// the process — location doesn't change while the panel runs.
 ///
 /// `token` is required by the upstream API on most plans; pass an empty
 /// `""` to attempt the free anonymous endpoint (rate-limited).
 pub async fn lookup_ipinfo(token: &str) -> Result<GeoLocation, ApiError> {
-    static CLIENT: OnceCell<Mutex<IpInfo>> = OnceCell::const_new();
+    static CACHE: OnceCell<GeoLocation> = OnceCell::const_new();
 
-    let client_mu = CLIENT
+    CACHE
         .get_or_try_init(|| async {
-            let cfg = IpInfoConfig {
-                token: if token.is_empty() { None } else { Some(token.to_string()) },
-                ..Default::default()
+            let url = if token.is_empty() {
+                "https://ipinfo.io/json".to_string()
+            } else {
+                format!("https://ipinfo.io/json?token={token}")
             };
-            IpInfo::new(cfg)
-                .map(Mutex::new)
-                .map_err(|e| ApiError::Provider {
-                    provider: "ipinfo",
-                    msg: e.to_string(),
-                })
+            let raw: IpInfoRaw = get_json(&url, &[]).await.map_err(|e| ApiError::Provider {
+                provider: "ipinfo",
+                msg: e.to_string(),
+            })?;
+
+            let (lat, lon) = parse_loc(&raw.loc).ok_or(ApiError::Provider {
+                provider: "ipinfo",
+                msg: format!("unparseable loc: {:?}", raw.loc),
+            })?;
+
+            Ok(GeoLocation {
+                lat,
+                lon,
+                city: raw.city,
+            })
         })
-        .await?;
-
-    // `lookup("")` queries the calling host's own IP.
-    let mut guard = client_mu.lock().await;
-    let details = guard.lookup("").await.map_err(|e| ApiError::Provider {
-        provider: "ipinfo",
-        msg: e.to_string(),
-    })?;
-    drop(guard);
-
-    let (lat, lon) = parse_loc(&details.loc).ok_or(ApiError::Provider {
-        provider: "ipinfo",
-        msg: format!("unparseable loc: {:?}", details.loc),
-    })?;
-
-    Ok(GeoLocation {
-        lat,
-        lon,
-        city: details.city,
-    })
+        .await
+        .cloned()
 }
 
 /// Parse an ipinfo `loc` field — `"lat,lon"`.
 fn parse_loc(s: &str) -> Option<(f64, f64)> {
     let (lat, lon) = s.split_once(',')?;
     Some((lat.trim().parse().ok()?, lon.trim().parse().ok()?))
+}
+
+// The full ipinfo response carries ip, org, postal, timezone, etc. —
+// permissive struct ignores fields we don't consume.
+#[derive(Debug, Deserialize)]
+struct IpInfoRaw {
+    #[serde(default)]
+    loc: String,
+    #[serde(default)]
+    city: String,
 }
 
 #[cfg(test)]
