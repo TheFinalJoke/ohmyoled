@@ -109,7 +109,7 @@ async fn main() {
             .action(ArgAction::Count),
         Arg::new("log_file")
             .long("log-file")
-            .help("Override log file path (default /var/log/ohmyoled.log)"),
+            .help("Override log file path (default /var/ohmyoled/ohmyoled.log)"),
     ];
 
     let cmd = cmd.args(args_vec);

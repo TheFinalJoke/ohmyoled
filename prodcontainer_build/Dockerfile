@@ -36,7 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-noto-mono \
         ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /var/log/ohmyoled /etc/ohmyoled
+    && mkdir -p /var/ohmyoled /etc/ohmyoled
 
 COPY --from=builder /build/target/release/ohmyoled /usr/local/bin/ohmyoled
 COPY --from=builder /build/fonts/ /usr/share/fonts/

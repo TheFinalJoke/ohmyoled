@@ -65,9 +65,9 @@ docker run -d --name ohmyoled --restart unless-stopped \
 ```
 
 Logs go to stderr inside the container — `docker logs -f ohmyoled` to
-follow. The binary also writes to `/var/log/ohmyoled.log` inside the
-container; add `-v /var/log/ohmyoled:/var/log/ohmyoled` to persist it
-to the host.
+follow. The binary also writes to `/var/ohmyoled/ohmyoled.log` inside
+the container; add `-v /var/ohmyoled:/var/ohmyoled` to persist it to
+the host.
 
 ### Don't want Docker?
 
@@ -119,7 +119,7 @@ ohmyoled [--config <PATH>] [--create_config | --init-config <PATH> | --dev]
 | `--init-config <PATH>`     | Write a non-interactive starter config to `<PATH>` (time enabled, weather/stock/sport wired but `run: false` with `REPLACE_ME_*` placeholders). Format from the extension. Refuses to overwrite an existing file. |
 | `--dev`                    | Write a canned dev config instead of prompting.                                          |
 | `-v` / `-vv` / `-vvv`      | Bump log verbosity: info / debug / trace.                                                |
-| `--log-file <PATH>`        | Override the log file path (default `/var/log/ohmyoled.log`).                            |
+| `--log-file <PATH>`        | Override the log file path (default `/var/ohmyoled/ohmyoled.log`).                       |
 
 When `--config` is not passed, ohmyoled looks for the first existing file
 among `/etc/ohmyoled/ohmyoled.{json,yaml,yml,toml}`.

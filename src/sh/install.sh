@@ -43,7 +43,7 @@ fi
 ln -s /usr/lib/systemd/system/ohmyoled.service /etc/systemd/system/multi-user.target.wants/
 systemctl daemon-reload
 
-mkdir -p /etc/ohmyoled/ && mkdir -p /var/log/ohmyoled/
+mkdir -p /etc/ohmyoled/ && mkdir -p /var/ohmyoled/
 if [ 0 == $(echo $?) ]
 then
 echo "Error Occured creating ohmyoled dirs"

@@ -1,8 +1,8 @@
 //! Dual-target logger.
 //!
 //! Every record is fanned to stderr (with the env_logger formatter) and to a
-//! persistent file. `/var/log/ohmyoled.log` is the default sink so an installed
-//! systemd unit can `tail -F` it without rebuilding the binary. A
+//! persistent file. `/var/ohmyoled/ohmyoled.log` is the default sink so an
+//! installed systemd unit can `tail -F` it without rebuilding the binary. A
 //! `--log-file <path>` override is honored for dev environments where the
 //! default path isn't writable.
 //!
@@ -25,7 +25,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-const DEFAULT_LOG_FILE: &str = "/var/log/ohmyoled.log";
+const DEFAULT_LOG_FILE: &str = "/var/ohmyoled/ohmyoled.log";
 
 /// Map the `-v` repeat count to a [`LevelFilter`].
 pub fn level_for(verbosity: u8) -> LevelFilter {
