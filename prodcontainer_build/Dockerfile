@@ -1,29 +1,45 @@
-# This is meant for Running a basic container during development
-ARG VARIANT="3.9-bullseye"
-FROM python:${VARIANT} AS python_layer
+# Prod build for ohmyoled. Multi-stage: rust toolchain in the build
+# stage, slim debian for the runtime image so we don't ship cargo + rustc.
+#
+# The project is pure Rust since v3.0.0 — no Python, no rpi-rgb-led-matrix
+# C library, no pip install. reqwest uses rustls-tls so OpenSSL headers
+# aren't required either. Fonts are not tracked in git; they're fetched
+# at build time via scripts/fetch-fonts.sh from the GitHub Release.
 
-# [Choice] Node.js version: none, lts/*, 16, 14, 12, 10
-ARG NODE_VERSION="none"
-RUN if [ "${NODE_VERSION}" != "none" ]; then su vscode -c "umask 0002 && . /usr/local/share/nvm/nvm.sh && nvm install ${NODE_VERSION} 2>&1"; fi
-RUN apt update && apt install fonts-noto-mono -y && apt install vim python3-dev cython3 -y 
+ARG RUST_VERSION="1.83"
+ARG OHMYOLED_REF="dev"
 
-RUN /usr/local/bin/python3 -m pip install --upgrade pip
-RUN python3 -m pip install Cython
-RUN git clone https://github.com/hzeller/rpi-rgb-led-matrix.git
-RUN cd rpi-rgb-led-matrix && make build-python PYTHON="$(which python3)" && make install-python PYTHON="$(which python3)" && cd bindings && python3 -m pip install -e python/ -I
+FROM rust:${RUST_VERSION}-bullseye AS builder
 
-RUN export CFLAGS=-fcommon && python3 -m pip install Pyinstaller RPi.GPIO
-RUN export CFLAGS=-fcommon && python3 -m pip install ohmyoled==2.2.8
+# git for the clone, curl for fetch-fonts.sh, ca-certificates so HTTPS works.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-FROM python_layer AS rust_layer
-RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
-RUN echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
-ENV PATH="/root/.cargo/bin:${PATH}"
-FROM rust_layer
-RUN git clone https://github.com/TheFinalJoke/ohmyoled.git \
-    && mkdir -p /var/log/ohmyoled && mkdir -p /etc/ohmyoled \
-    && cp -Rv /ohmyoled/fonts/* /usr/share/fonts/
-WORKDIR /ohmyoled/
-RUN /root/.cargo/bin/cargo build --release
+WORKDIR /build
+ARG OHMYOLED_REF
+RUN git clone --branch "${OHMYOLED_REF}" --depth 1 \
+        https://github.com/TheFinalJoke/ohmyoled.git .
+
+RUN bash scripts/fetch-fonts.sh
+RUN cargo build --release
+
+# ---------------------------------------------------------------------------
+# Runtime stage — just the binary + fonts + a couple of system fonts the
+# matrix never uses but that the apt package is tiny and other tools expect.
+# ---------------------------------------------------------------------------
+FROM debian:bullseye-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        fonts-noto-mono \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/log/ohmyoled /etc/ohmyoled
+
+COPY --from=builder /build/target/release/ohmyoled /usr/local/bin/ohmyoled
+COPY --from=builder /build/fonts/ /usr/share/fonts/
+
 ENV RUST_BACKTRACE=full
-ENTRYPOINT ["target/release/ohmyoled"]
+ENTRYPOINT ["/usr/local/bin/ohmyoled"]
