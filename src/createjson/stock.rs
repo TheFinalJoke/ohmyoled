@@ -1,107 +1,52 @@
-use json;
-use log::info;
+use crate::createjson::ui;
 use oledlib::api::StockApi;
-use pyo3::types::{IntoPyDict, PyDict};
-use pyo3::Python;
+use oledlib::serde_helpers::null_string_as_none;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct StockOptions {
     pub run: bool,
     pub api: StockApi,
+    #[serde(default, deserialize_with = "null_string_as_none")]
     pub api_key: Option<String>,
     pub symbol: String,
 }
+
 impl Default for StockOptions {
     fn default() -> Self {
         StockOptions {
             run: true,
             api: StockApi::Finnhub,
-            api_key: None, // this will fail because finnhub requires a Api Key
-            symbol: "fb".to_owned(),
+            api_key: None,
+            symbol: "AAPL".to_owned(),
         }
     }
 }
-impl IntoPyDict for StockOptions {
-    fn into_py_dict(self, py: Python) -> &PyDict {
-        let result = PyDict::new(py);
-        result.set_item("run", self.run).unwrap();
-        result.set_item("api", self.api.get_api()).unwrap();
-        result
-            .set_item(
-                "api_key",
-                match self.api_key.clone().unwrap().as_str() {
-                    "null" => "null",
-                    key => key,
-                },
-            )
-            .unwrap();
-        result.set_item("symbol", self.symbol.to_string()).unwrap();
-        result.into()
-    }
+
+fn pick_api() -> StockApi {
+    ui::info("Finnhub is the only supported provider (free tier — register at finnhub.io).");
+    StockApi::Finnhub
 }
-impl StockOptions {
-    pub fn convert_to_json(&self) -> json::JsonValue {
-        json::object! {
-            "run": self.run,
-            "api": match &self.api {
-                StockApi::Finnhub => "finnhub".to_string()
-            },
-            "api_key": match &self.api_key {
-                Some(key) => key.to_string(),
-                None => json::Null.to_string()
-            },
-            "symbol": self.symbol.as_str(),
-        }
-    }
-    pub fn from_json(stock_json: &json::JsonValue) -> Self {
-        Self {
-            run: stock_json["run"].as_bool().unwrap(),
-            api: StockApi::str_to_api(stock_json["api"].to_string()),
-            api_key: match stock_json["api_key"].as_str().unwrap() {
-                "null" => None,
-                key => Some(key.to_string()),
-            },
-            symbol: stock_json["symbol"].to_string(),
-        }
-    }
+
+pub fn configure() -> Result<StockOptions, String> {
+    ui::section("Stock");
+    ui::hint("Polls a single ticker. Add this option again for multiple symbols.");
+
+    let api = pick_api();
+    let api_key = ui::read_required("Finnhub API key");
+    let symbol = ui::read_line_default("Ticker symbol (uppercased)", "AAPL")
+        .trim()
+        .to_uppercase();
+
+    ui::success(&format!("Stock — {symbol} via {}", api.get_api()));
+    Ok(StockOptions {
+        run: true,
+        api,
+        api_key: Some(api_key),
+        symbol,
+    })
 }
-fn get_stock_api_key() -> String {
-    println!("You Entered a api that requires an API Key");
-    println!("Please enter Key now -> ");
-    let api_key = match oledlib::get_input() {
-        Some(input) => input,
-        None => "No Key".to_string(),
-    };
-    api_key
-}
-fn get_stock_api() -> Result<StockApi, &'static str> {
-    info!("For now, the only api is finnhub");
-    Ok(StockApi::Finnhub)
-}
-fn get_symbol() -> Result<String, &'static str> {
-    println!("Please enter symbol for stock -> ");
-    match oledlib::get_input() {
-        Some(input) => Ok(input.to_owned()),
-        _ => Err("No input"),
-    }
-}
-pub fn configure() -> Result<StockOptions, &'static str> {
-    info!("In stock configuration");
-    println!("[stock]: Do you want to use the default config?? (y/n)");
-    match oledlib::get_input() {
-        Some(input) => match &*input.to_lowercase() {
-            "y" => Ok(StockOptions::default()),
-            "n" => Ok(StockOptions {
-                run: true,
-                api: get_stock_api()?,
-                api_key: Some(get_stock_api_key()),
-                symbol: get_symbol()?,
-            }),
-            _ => {
-                info!("That is a wrong input");
-                Err("That is a wrong input")
-            }
-        },
-        None => Err("Problem while figuring"),
-    }
+
+pub fn summary_line(opts: &StockOptions) -> String {
+    format!("stock: {} ({})", opts.symbol, opts.api.get_api())
 }

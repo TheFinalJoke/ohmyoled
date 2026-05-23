@@ -1,0 +1,41 @@
+# Release-time runtime image. The binary has already been cross-compiled
+# in the build job — we just need a minimal base, the fonts, and a sane
+# place to live. There is *no* compilation in this Dockerfile; it's
+# invoked from the release workflow with the pre-built `ohmyoled`
+# binary in the build context as `./ohmyoled`.
+#
+# For end users who want to build from source locally, use the sibling
+# `Dockerfile` instead — it git clones + cargo builds inside.
+
+FROM debian:bookworm-slim
+
+LABEL org.opencontainers.image.source="https://github.com/TheFinalJoke/ohmyoled" \
+      org.opencontainers.image.licenses="GPL-2.0" \
+      org.opencontainers.image.description="ohmyoled LED-matrix renderer"
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        fonts-noto-mono \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /var/log/ohmyoled /etc/ohmyoled
+
+# Pull fonts straight from the GitHub Release tarball — same source the
+# host install would use, so we don't need to ship scripts/fetch-fonts.sh
+# into the image just to call it once.
+ARG OHMYOLED_FONTS_URL=https://github.com/TheFinalJoke/ohmyoled/releases/download/fonts-v1/fonts.tar.gz
+ARG OHMYOLED_FONTS_SHA256=5f123ded1322ff26d506f524c54e8df82eca9e4eef7eed9acf4a8123ab71b4e1
+
+RUN curl -fsSL "$OHMYOLED_FONTS_URL" -o /tmp/fonts.tar.gz \
+    && echo "${OHMYOLED_FONTS_SHA256}  /tmp/fonts.tar.gz" | sha256sum -c - \
+    && tar -xzf /tmp/fonts.tar.gz -C /usr/share/fonts/ \
+    && rm /tmp/fonts.tar.gz
+
+COPY ohmyoled /usr/local/bin/ohmyoled
+RUN chmod +x /usr/local/bin/ohmyoled
+
+ARG OHMYOLED_VERSION=unknown
+LABEL org.opencontainers.image.version="${OHMYOLED_VERSION}"
+
+ENV RUST_BACKTRACE=full
+ENTRYPOINT ["/usr/local/bin/ohmyoled"]

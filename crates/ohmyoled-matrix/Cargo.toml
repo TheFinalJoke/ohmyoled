@@ -1,0 +1,19 @@
+[package]
+name = "ohmyoled-matrix"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "GPL-2.0"
+description = "LED matrix abstraction with terminal test mode and RPi hardware backend"
+
+[features]
+# hardware feature compiles the RPi backend stub. Disabled on non-Pi builds.
+default = ["hardware"]
+hardware = []
+
+[dependencies]
+log = "0.4"
+image = "0.25"
+ab_glyph = "0.2"
+
+[dev-dependencies]

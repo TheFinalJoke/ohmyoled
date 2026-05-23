@@ -1,5 +1,8 @@
 pub mod api;
 pub mod debug;
+pub mod matrix;
+pub mod modules;
+pub mod serde_helpers;
 pub mod teams;
 
 pub fn get_input() -> Option<String> {
@@ -8,7 +11,7 @@ pub fn get_input() -> Option<String> {
         println!("Please enter your data again");
     }
     let input = buffer.trim().to_owned();
-    if &input == "" {
+    if input.is_empty() {
         None
     } else {
         Some(input)

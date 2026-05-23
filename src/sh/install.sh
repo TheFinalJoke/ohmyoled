@@ -1,17 +1,23 @@
 #!/bin/bash
-SOURCE_DIR=$(pwd)
+# Project root, resolved from this script's location so the install works
+# regardless of the caller's working directory.
+SOURCE_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 if [[ `id -u` != 0 ]]
 then
 echo "Are you root?"
 exit 2
 fi
-apt update && apt upgrade -y && apt install -y fonts-noto-mono git
+apt update && apt upgrade -y && apt install -y fonts-noto-mono git curl
 if [ 0 == $(echo $?) ]
 then
 echo "Error Occured While installing and updatings fonts"
 exit 1
-fi 
+fi
+
+# Fonts are not tracked in git — fetch them from the release tarball if
+# they aren't already on disk. Idempotent.
+bash "$SOURCE_DIR/scripts/fetch-fonts.sh"
 
 mv -v $SOURCE_DIR/fonts/* /usr/share/fonts/
 mv -v $SOURCE_DIR/ohmyoled /usr/local/bin/
