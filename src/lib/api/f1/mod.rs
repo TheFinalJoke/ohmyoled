@@ -38,8 +38,11 @@ pub struct F1Data {
 }
 
 impl F1Data {
+    /// `true` when there's no upcoming race scheduled. Standings may still be
+    /// populated (last season's table is what jolpica returns between
+    /// seasons), so the renderer uses that to show a champion banner.
     pub fn is_offseason(&self) -> bool {
-        self.next_race.is_none() && self.standings.is_empty()
+        self.next_race.is_none()
     }
 }
 

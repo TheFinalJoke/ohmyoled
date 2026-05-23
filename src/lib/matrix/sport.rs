@@ -55,6 +55,7 @@ use crate::api::http::shared_client;
 use crate::api::sport::model::{
     GameStatus, HomeOrAway, NextGame, SportData, SportKind, TeamSide,
 };
+use crate::matrix::cells::draw_text_in_window;
 use crate::matrix::error::RenderError;
 use crate::matrix::renderer::Renderer;
 use async_trait::async_trait;
@@ -162,10 +163,9 @@ impl Renderer for SportMatrix {
         matrix.clear();
 
         if data.is_offseason() {
-            let img = self.draw_offseason(data.sport);
-            matrix.set_image(&img, 0, 0);
-            tokio::time::sleep(Duration::from_secs(30)).await;
-            matrix.clear();
+            // No upcoming game and no standings to display. We don't fetch
+            // a prior-season champion, so skip this slot entirely — the
+            // scheduler will move to the next module.
             return Ok(());
         }
 
@@ -215,22 +215,36 @@ impl SportMatrix {
         img
     }
 
-    /// Top band: scrolling home name (left half) + "VS" + scrolling away name (right half).
+    /// Top band: home name (left slot, left-aligned) + "VS" + away name
+    /// (right slot, right-aligned). Each name marquees through its slot once
+    /// then settles at its natural alignment; strict slot clipping keeps a
+    /// breathing-room buffer around VS so the names never touch it.
     fn draw_top(&self, img: &mut RgbImage, ng: &NextGame, xpos: i32) {
         let font = &self.body_font;
         let baseline = top_to_baseline(0, font.ascent());
+        let vs_text = "VS";
+        let vs_x: i32 = 28;
+        let vs_w = font.text_width(vs_text);
+        // 3-px buffer on each side of VS — names never enter this zone.
+        let vs_buffer: i32 = 3;
 
-        let home_name = &ng.home.name;
-        let away_name = &ng.away.name;
+        let home_slot_x = 0;
+        let home_slot_max = vs_x - vs_buffer;
+        let away_slot_x = vs_x + vs_w + vs_buffer;
+        let away_slot_max = PANEL_W as i32;
 
-        // Names slide left at one-pixel-per-tick. The slot is 22px wide; once a
-        // name fully scrolls off, reset by modulo so it loops.
-        let home_x = -(xpos % (home_name.chars().count() as i32 * 4 + 22).max(1));
-        let away_x = 44 - (xpos % (away_name.chars().count() as i32 * 4 + 22).max(1));
-
-        draw_text(img, font, home_x, baseline, Color::WHITE, home_name);
-        draw_text(img, font, 28, baseline, Color::WHITE, "VS");
-        draw_text(img, font, away_x, baseline, Color::WHITE, away_name);
+        // Half-speed marquee for the names — the bottom standings strip
+        // keeps the full tick rate.
+        let name_xpos = xpos / 2;
+        draw_name_once(
+            img, font, &ng.home.name, baseline,
+            home_slot_x, home_slot_max, true, name_xpos,
+        );
+        draw_name_once(
+            img, font, &ng.away.name, baseline,
+            away_slot_x, away_slot_max, true, name_xpos,
+        );
+        draw_text(img, font, vs_x, baseline, Color::WHITE, vs_text);
     }
 
     /// Middle band: home logo (16×16 at x=0), away logo (16×16 at x=48), and
@@ -249,10 +263,15 @@ impl SportMatrix {
         // Center the two-line block vertically in rows 9..25 (16px tall).
         let block_h = line_h * 2 + 1;
         let block_top = 9 + ((16 - block_h) / 2).max(0);
+        // Center each line horizontally in the gap between the logos.
+        let mid_x = LOGO_SIZE as i32;
+        let mid_x_end = PANEL_W as i32 - LOGO_SIZE as i32;
         for (i, line) in lines.iter().enumerate() {
             let y = top_to_baseline(block_top + (i as i32) * (line_h + 1), font.ascent());
             let color = middle_line_color(ng, i);
-            draw_text(img, font, 17, y, color, line);
+            let line_w = font.text_width(line);
+            let x = mid_x + (mid_x_end - mid_x - line_w) / 2;
+            draw_text(img, font, x, y, color, line);
         }
     }
 
@@ -287,6 +306,39 @@ impl SportMatrix {
 
 fn top_to_baseline(top_y: i32, ascent: i32) -> i32 {
     top_y + ascent
+}
+
+/// Draw a team name into `[slot_x, slot_max)` with strict clipping. If the
+/// name fits, it's placed at the slot's natural edge (left/right). If it
+/// overflows, it marquees through the slot exactly once — two copies during
+/// the marquee for smooth wrap — and then settles at the natural edge.
+#[allow(clippy::too_many_arguments)]
+fn draw_name_once(
+    img: &mut RgbImage,
+    font: &Font,
+    text: &str,
+    baseline: i32,
+    slot_x: i32,
+    slot_max: i32,
+    left_align: bool,
+    xpos: i32,
+) {
+    let slot_w = slot_max - slot_x;
+    let text_w = font.text_width(text);
+    let natural_x = if left_align { slot_x } else { slot_max - text_w };
+
+    if text_w <= slot_w || xpos < 0 {
+        draw_text_in_window(img, font, natural_x, baseline, Color::WHITE, text, slot_x, slot_max);
+        return;
+    }
+    let period = text_w + slot_w;
+    if xpos >= period {
+        draw_text_in_window(img, font, natural_x, baseline, Color::WHITE, text, slot_x, slot_max);
+        return;
+    }
+    let start_x = natural_x - xpos;
+    draw_text_in_window(img, font, start_x, baseline, Color::WHITE, text, slot_x, slot_max);
+    draw_text_in_window(img, font, start_x + period, baseline, Color::WHITE, text, slot_x, slot_max);
 }
 
 /// Compose `src` onto `dst` at `(x, y)`, clipping to dst bounds.
