@@ -108,15 +108,19 @@ jobs:
       # the default GITHUB_TOKEN and rejects valid tokens as "Bad
       # credentials". `gh release create` ships preinstalled on the
       # runner and authenticates straightforwardly via GH_TOKEN.
+      # --repo is required because this job has no checkout step; without
+      # it `gh` falls back to `git remote` and dies on "not a git repository".
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           test -f dist/ohmyoled-aarch64
           test -f dist/ohmyoled-armv7
           test -f dist/ohmyoled-starter.json
           gh release create "$TAG" \
+            --repo "$REPO" \
             --generate-notes \
             dist/ohmyoled-aarch64 \
             dist/ohmyoled-armv7 \
