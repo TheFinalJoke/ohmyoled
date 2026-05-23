@@ -10,10 +10,9 @@
 //!
 //! | flag    | level   |
 //! |---------|---------|
-//! | (none)  | `warn`  |
-//! | `-v`    | `info`  |
-//! | `-vv`   | `debug` |
-//! | `-vvv+` | `trace` |
+//! | (none)  | `info`  |
+//! | `-v`    | `debug` |
+//! | `-vv+`  | `trace` |
 //!
 //! `RUST_LOG` is still honored on top of the CLI level for per-module overrides
 //! (e.g. `RUST_LOG=oledlib::api::weather=trace`).
@@ -27,12 +26,12 @@ use std::sync::Mutex;
 
 const DEFAULT_LOG_FILE: &str = "/var/ohmyoled/ohmyoled.log";
 
-/// Map the `-v` repeat count to a [`LevelFilter`].
+/// Map the `-v` repeat count to a [`LevelFilter`]. Default is `Info` so the
+/// rolling log shows scheduler ticks and registry loads without needing `-v`.
 pub fn level_for(verbosity: u8) -> LevelFilter {
     match verbosity {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        2 => LevelFilter::Debug,
+        0 => LevelFilter::Info,
+        1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     }
 }

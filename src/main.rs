@@ -105,7 +105,7 @@ async fn main() {
         Arg::new("verbose")
             .short('v')
             .long("verbose")
-            .help("Increase log verbosity: -v info, -vv debug, -vvv+ trace")
+            .help("Increase log verbosity above the info default: -v debug, -vv+ trace")
             .action(ArgAction::Count),
         Arg::new("log_file")
             .long("log-file")
