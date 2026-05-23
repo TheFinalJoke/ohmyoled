@@ -437,6 +437,40 @@ The release URL and expected sha256 live in `scripts/fetch-fonts.sh`;
 override with `OHMYOLED_FONTS_URL` / `OHMYOLED_FONTS_SHA256` for testing
 a new tarball before tagging.
 
+### Publishing a new fonts tarball
+
+When you need to add a font or change one, build a fresh tarball and
+publish a new release tag:
+
+```bash
+# 1. Stage the five required fonts in a clean directory
+mkdir -p /tmp/ohmyoled-fonts-staging
+cp fonts/04B_03B_.TTF \
+   fonts/04b24.otf \
+   fonts/BMmini.TTF \
+   fonts/weathericons.ttf \
+   fonts/4x6.bdf \
+   /tmp/ohmyoled-fonts-staging/
+
+# 2. Tar+gzip and record the hash
+tar -czf fonts.tar.gz -C /tmp/ohmyoled-fonts-staging .
+sha256sum fonts.tar.gz
+
+# 3. Publish under a new release tag (e.g. fonts-v2)
+gh release create fonts-v2 fonts.tar.gz \
+   --title "Runtime fonts v2" \
+   --notes "Bumped <font> from <reason>."
+
+# 4. Update scripts/fetch-fonts.sh:
+#    - point TARBALL_URL at the new tag (.../download/fonts-v2/fonts.tar.gz)
+#    - replace TARBALL_SHA256 with the hash from step 2
+```
+
+`fonts.tar.gz` and other tarballs are gitignored via `*.tar.gz`, so the
+staging artifact won't accidentally land in git. The initial release
+that the current `scripts/fetch-fonts.sh` points at is `fonts-v1`
+(sha256 `5f123ded1322ff26d506f524c54e8df82eca9e4eef7eed9acf4a8123ab71b4e1`).
+
 ---
 
 ## Quick verification loop
