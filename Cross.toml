@@ -1,0 +1,19 @@
+# cross-rs's default Docker images for the Pi targets ship the cross C
+# compiler (`gcc-<target>`) but NOT the C++ compiler. rpi-led-matrix-sys
+# builds a C++ library via the `cc` crate; without `g++-<target>`, cc
+# silently falls back to the host g++, producing x86_64 object files that
+# fail to link into the cross-target binary ("Relocations in generic ELF
+# (EM: 62)"). Pre-install g++ for each Pi target so the C++ cross-toolchain
+# is actually present.
+
+[target.aarch64-unknown-linux-gnu]
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get install --assume-yes g++-aarch64-linux-gnu",
+]
+
+[target.armv7-unknown-linux-gnueabihf]
+pre-build = [
+    "dpkg --add-architecture $CROSS_DEB_ARCH",
+    "apt-get update && apt-get install --assume-yes g++-arm-linux-gnueabihf",
+]
