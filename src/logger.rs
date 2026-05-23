@@ -1,8 +1,8 @@
 //! Dual-target logger.
 //!
 //! Every record is fanned to stderr (with the env_logger formatter) and to a
-//! persistent file. `/var/log/ohmyoled.log` is the default sink so an installed
-//! systemd unit can `tail -F` it without rebuilding the binary. A
+//! persistent file. `/var/ohmyoled/ohmyoled.log` is the default sink so an
+//! installed systemd unit can `tail -F` it without rebuilding the binary. A
 //! `--log-file <path>` override is honored for dev environments where the
 //! default path isn't writable.
 //!
@@ -10,10 +10,9 @@
 //!
 //! | flag    | level   |
 //! |---------|---------|
-//! | (none)  | `warn`  |
-//! | `-v`    | `info`  |
-//! | `-vv`   | `debug` |
-//! | `-vvv+` | `trace` |
+//! | (none)  | `info`  |
+//! | `-v`    | `debug` |
+//! | `-vv+`  | `trace` |
 //!
 //! `RUST_LOG` is still honored on top of the CLI level for per-module overrides
 //! (e.g. `RUST_LOG=oledlib::api::weather=trace`).
@@ -25,14 +24,14 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-const DEFAULT_LOG_FILE: &str = "/var/log/ohmyoled.log";
+const DEFAULT_LOG_FILE: &str = "/var/ohmyoled/ohmyoled.log";
 
-/// Map the `-v` repeat count to a [`LevelFilter`].
+/// Map the `-v` repeat count to a [`LevelFilter`]. Default is `Info` so the
+/// rolling log shows scheduler ticks and registry loads without needing `-v`.
 pub fn level_for(verbosity: u8) -> LevelFilter {
     match verbosity {
-        0 => LevelFilter::Warn,
-        1 => LevelFilter::Info,
-        2 => LevelFilter::Debug,
+        0 => LevelFilter::Info,
+        1 => LevelFilter::Debug,
         _ => LevelFilter::Trace,
     }
 }

@@ -23,8 +23,14 @@ jobs:
         include:
           - target: aarch64-unknown-linux-gnu
             artifact: ohmyoled-aarch64
+            cc: aarch64-linux-gnu-gcc
+            cxx: aarch64-linux-gnu-g++
+            ar: aarch64-linux-gnu-ar
           - target: armv7-unknown-linux-gnueabihf
             artifact: ohmyoled-armv7
+            cc: arm-linux-gnueabihf-gcc
+            cxx: arm-linux-gnueabihf-g++
+            ar: arm-linux-gnueabihf-ar
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +45,15 @@ jobs:
           tool: cross
 
       # No font fetch needed — Font::load_ttf is a runtime concern.
+      # CC/CXX/AR are forwarded into the cross container (via the
+      # passthrough block in Cross.toml) so rpi-led-matrix-sys's
+      # vendored Makefile builds the C++ library with the cross
+      # toolchain instead of the host x86_64 one.
       - name: Build
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          AR: ${{ matrix.ar }}
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Stage binary
@@ -63,8 +77,10 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build native
-        run: cargo build --release
+      # --no-default-features skips the hardware backend (rpi-led-matrix-sys
+      # refuses to build on non-Pi targets). --init-config doesn't need it.
+      - name: Build native (no hardware feature)
+        run: cargo build --release --no-default-features
 
       - name: Generate starter
         run: ./target/release/ohmyoled --init-config ohmyoled-starter.json
@@ -87,14 +103,28 @@ jobs:
       - name: Show artifacts
         run: ls -lh dist/
 
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/ohmyoled-aarch64
-            dist/ohmyoled-armv7
+      # Use the `gh` CLI directly instead of softprops/action-gh-release:
+      # the latter's @v2 tag rolled forward to a version that mishandles
+      # the default GITHUB_TOKEN and rejects valid tokens as "Bad
+      # credentials". `gh release create` ships preinstalled on the
+      # runner and authenticates straightforwardly via GH_TOKEN.
+      # --repo is required because this job has no checkout step; without
+      # it `gh` falls back to `git remote` and dies on "not a git repository".
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          test -f dist/ohmyoled-aarch64
+          test -f dist/ohmyoled-armv7
+          test -f dist/ohmyoled-starter.json
+          gh release create "$TAG" \
+            --repo "$REPO" \
+            --generate-notes \
+            dist/ohmyoled-aarch64 \
+            dist/ohmyoled-armv7 \
             dist/ohmyoled-starter.json
-          generate_release_notes: true
-          fail_on_unmatched_files: true
 
   # Per-arch Docker images. Single-arch builds with pre-built binaries
   # are ~30x faster than multi-arch QEMU builds — no Rust compilation

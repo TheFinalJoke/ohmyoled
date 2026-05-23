@@ -53,7 +53,6 @@ use crate::matrix::cells::{draw_pieces_in_box, overflow_period, Align, Piece};
 use crate::matrix::error::RenderError;
 use crate::matrix::renderer::Renderer;
 use async_trait::async_trait;
-use chrono::Local;
 use image::RgbImage;
 use ohmyoled_matrix::graphics::{draw_text, Font};
 use ohmyoled_matrix::{Color, RGBMatrix};
@@ -72,16 +71,19 @@ const SCREEN2_DWELL: Duration = Duration::from_secs(30);
 // --- Invisible cell layout --------------------------------------------------
 // Row 1 (temp/humidity, y_top=8) lives alongside the weather icon at x≥50, so
 // the two cells share x=[0, 49) with a 1-px gutter at the midline. Row 2
-// (high/low, y_top=18) has no icon — full-width 30/31-px cells.
+// (high/low, y_top=18) has no icon, but its cells start at the SAME x as row
+// 1's so the H/L labels sit directly under the T/R labels above them. The
+// right cell on row 2 then extends further (no icon to leave room for), which
+// gives extreme values like -12F more marquee headroom.
 const ROW1_LEFT_X: i32 = 0;
 const ROW1_BOX_W: i32 = 24;
 const ROW1_RIGHT_X: i32 = 25;
 const ROW1_RIGHT_W: i32 = 24;
 
 const ROW2_LEFT_X: i32 = 0;
-const ROW2_BOX_W: i32 = 30;
-const ROW2_RIGHT_X: i32 = 32;
-const ROW2_RIGHT_W: i32 = 31;
+const ROW2_BOX_W: i32 = 24;
+const ROW2_RIGHT_X: i32 = 25;
+const ROW2_RIGHT_W: i32 = 39;
 
 /// Paths to the three fonts the renderer needs.
 ///
@@ -106,10 +108,15 @@ impl Default for WeatherFonts {
     }
 }
 
-/// Weather renderer state. Owns the three TTF fonts.
+/// Weather renderer state. Owns the four TTF fonts.
 pub struct WeatherMatrix {
     body_font: Font,
+    /// Inline weather glyph next to wind on screen 2 — kept small so it fits
+    /// in the tight vertical space between the wind text and the sunrise row.
     body_icon_font: Font,
+    /// Bigger version of the same icon font, used for the prominent
+    /// top-right corner icon on screens 1 and 2.
+    corner_icon_font: Font,
     big_icon_font: Font,
     temp_font: Font,
 }
@@ -131,8 +138,11 @@ impl WeatherMatrix {
     pub fn with_fonts(paths: WeatherFonts) -> Result<Self, String> {
         Ok(Self {
             body_font: Font::load_ttf(&paths.body, 8.0)?,
-            // 9pt for inline weather glyphs; 11pt for sunrise/sunset symbols.
+            // 9pt for the inline wind glyph (tight vertical clearance);
+            // 13pt for the prominent top-right corner icon;
+            // 11pt for the sunrise/sunset glyphs.
             body_icon_font: Font::load_ttf(&paths.icon, 9.0)?,
+            corner_icon_font: Font::load_ttf(&paths.icon, 13.0)?,
             big_icon_font: Font::load_ttf(&paths.icon, 11.0)?,
             // BMmini at 8pt — pixel font with a visible gap before the trailing
             // F. Keep the file in sync with install.sh.
@@ -344,9 +354,13 @@ impl WeatherMatrix {
 
     fn render_icon(&self, img: &mut RgbImage, data: &Weather) {
         let glyph = data.current.icon.glyph.to_string();
-        let color = icon_color(data.current.icon.owm_code, &data.forecast.sunset);
-        let baseline = top_to_baseline(0, self.body_icon_font.ascent());
-        draw_text(img, &self.body_icon_font, 50, baseline, color, &glyph);
+        let color = data.current.icon.color;
+        // Center the glyph in the right-hand strip (x=50..63, 14 px wide).
+        let font = &self.corner_icon_font;
+        let glyph_w = font.text_width(&glyph);
+        let x = 50 + ((14 - glyph_w) / 2).max(0);
+        let baseline = top_to_baseline(0, font.ascent());
+        draw_text(img, font, x, baseline, color, &glyph);
     }
 
     fn render_location(&self, img: &mut RgbImage, data: &Weather, xpos: i32) {
@@ -496,45 +510,36 @@ fn max_double_period(cells: &[(i32, i32)]) -> u32 {
     (max_period as u32).saturating_mul(2)
 }
 
-/// Temperature → color, mirroring `WeatherMatrix.get_temp_color` (weathermatrix.py:86-96).
+/// Temperature → color, six bands tuned to read intuitively at a glance.
+///
+/// Boundaries (°F):
+///   ≥95   deep red       extreme heat
+///   75–94 orange         hot
+///   60–74 yellow / gold  warm
+///   45–59 green          comfortable
+///   30–44 cyan           cool
+///   <30   blue           cold
 fn temp_color(temp: f32) -> Color {
     let t = temp.round() as i32;
     match t {
-        n if n >= 100 => Color::new(255, 12, 3),
-        70..=99 => Color::new(247, 157, 3),
-        40..=69 => Color::new(5, 223, 3),
-        20..=39 => Color::new(0, 255, 255),
-        _ => Color::new(0, 76, 255),
+        n if n >= 95 => Color::new(220, 30, 30),
+        75..=94 => Color::new(255, 130, 20),
+        60..=74 => Color::new(255, 215, 0),
+        45..=59 => Color::new(50, 220, 50),
+        30..=44 => Color::new(60, 200, 230),
+        _ => Color::new(50, 100, 240),
     }
 }
 
-/// Icon color, mirroring `WeatherMatrix.render_icon`'s cascade (weathermatrix.py:131-156).
-fn icon_color(owm_code: u16, sunset: &chrono::DateTime<Local>) -> Color {
-    match owm_code {
-        200..=299 => Color::new(254, 204, 1),   // thunderstorm
-        300..=399 => Color::new(220, 220, 220), // drizzle
-        500..=599 => Color::new(108, 204, 228), // rain
-        600..=699 => Color::WHITE,              // snow
-        700..=780 => Color::new(192, 192, 192), // haze/smoke/fog
-        800 => {
-            if *sunset > Local::now() {
-                Color::new(220, 149, 3) // sunny day
-            } else {
-                Color::WHITE // clear night
-            }
-        }
-        801..=805 => Color::new(220, 220, 220),
-        _ => Color::WHITE,
-    }
-}
+// Icon colors live on the WeatherIcon variants themselves — see icon_table.rs.
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::api::weather::model::{
-        CurrentWeather, DayForecast, Weather, WeatherApiSource, WeatherIcon,
+        CurrentWeather, DayForecast, Weather, WeatherApiSource,
     };
-    use chrono::TimeZone;
+    use chrono::{Local, TimeZone};
     use std::path::PathBuf;
 
     fn repo_fonts() -> WeatherFonts {
@@ -562,11 +567,7 @@ mod tests {
                 precipitation_chance: 10,
                 uv: Some(5.2),
                 wind_direction_deg: Some(270.0),
-                icon: WeatherIcon {
-                    condition: "Sunny",
-                    glyph: '\u{f00d}',
-                    owm_code: 800,
-                },
+                icon: crate::api::weather::icon_table::SUNNY,
             },
             forecast: DayForecast {
                 today_high: 70.0,
@@ -579,11 +580,28 @@ mod tests {
 
     #[test]
     fn temp_color_ranges() {
-        assert_eq!(temp_color(105.0), Color::new(255, 12, 3));
-        assert_eq!(temp_color(85.0), Color::new(247, 157, 3));
-        assert_eq!(temp_color(55.0), Color::new(5, 223, 3));
-        assert_eq!(temp_color(30.0), Color::new(0, 255, 255));
-        assert_eq!(temp_color(10.0), Color::new(0, 76, 255));
+        assert_eq!(temp_color(100.0), Color::new(220, 30, 30), "extreme heat");
+        assert_eq!(temp_color(85.0), Color::new(255, 130, 20), "hot");
+        assert_eq!(temp_color(68.0), Color::new(255, 215, 0), "warm");
+        assert_eq!(temp_color(55.0), Color::new(50, 220, 50), "comfortable");
+        assert_eq!(temp_color(38.0), Color::new(60, 200, 230), "cool");
+        assert_eq!(temp_color(10.0), Color::new(50, 100, 240), "cold");
+    }
+
+    #[test]
+    fn temp_color_band_boundaries() {
+        // Inclusive lower bounds — temp at the band edge should land in the
+        // *higher* band (e.g. 75 is hot, 74 is warm; 95 is extreme, 94 is hot).
+        assert_eq!(temp_color(95.0), Color::new(220, 30, 30));
+        assert_eq!(temp_color(94.0), Color::new(255, 130, 20));
+        assert_eq!(temp_color(75.0), Color::new(255, 130, 20));
+        assert_eq!(temp_color(74.0), Color::new(255, 215, 0));
+        assert_eq!(temp_color(60.0), Color::new(255, 215, 0));
+        assert_eq!(temp_color(59.0), Color::new(50, 220, 50));
+        assert_eq!(temp_color(45.0), Color::new(50, 220, 50));
+        assert_eq!(temp_color(44.0), Color::new(60, 200, 230));
+        assert_eq!(temp_color(30.0), Color::new(60, 200, 230));
+        assert_eq!(temp_color(29.0), Color::new(50, 100, 240));
     }
 
     #[test]
@@ -663,15 +681,13 @@ mod tests {
                     "row 1 gutter (24,{y}) lit at frame {frame}"
                 );
             }
-            // Row-2 gutter at x=30..32, y in H/L band.
-            for x in 30..32u32 {
-                for y in 18..26u32 {
-                    assert_eq!(
-                        img.get_pixel(x, y).0,
-                        [0, 0, 0],
-                        "row 2 gutter ({x},{y}) lit at frame {frame}"
-                    );
-                }
+            // Row-2 gutter at x=24, y in H/L band (now aligned with row 1).
+            for y in 18..26u32 {
+                assert_eq!(
+                    img.get_pixel(24, y).0,
+                    [0, 0, 0],
+                    "row 2 gutter (24,{y}) lit at frame {frame}"
+                );
             }
         }
     }

@@ -1,33 +1,94 @@
-//! OpenWeatherMap (and NWS-via-OWM-codes) weather-icon glyph table.
+//! Weather-icon table: glyph + color per condition.
 //!
-//! Direct port of `src/python/ohmyoled/lib/weather/weather_icon.py`. The
-//! Python code used integer table indices (0–48) and looked them up from
-//! provider-specific cascades; this module flattens that to a single
-//! `icon_for_owm_code` function with `is_day` flag for day/night variants.
+//! **This is the one place to edit the icon palette.** Each constant pairs
+//! a font glyph with the color it renders in. The renderer pulls both from
+//! `WeatherIcon` directly — there is no separate color-by-owm-code logic
+//! that can drift out of sync.
 
 use super::model::WeatherIcon;
+use ohmyoled_matrix::Color;
 
 // ---------------------------------------------------------------------------
-// Day-time variants (used when sunset > now in the Python code)
+// Day-time variants
 // ---------------------------------------------------------------------------
 
-pub const SUNNY: WeatherIcon = WeatherIcon { condition: "Sunny", glyph: '\u{f00d}', owm_code: 800 };
-pub const PARTLY_CLOUDY: WeatherIcon = WeatherIcon { condition: "Partly Cloudy", glyph: '\u{f002}', owm_code: 801 };
-pub const MOSTLY_CLOUDY: WeatherIcon = WeatherIcon { condition: "Mostly Cloudy", glyph: '\u{f013}', owm_code: 801 };
-pub const CLOUDY: WeatherIcon = WeatherIcon { condition: "Cloudy", glyph: '\u{f013}', owm_code: 801 };
-pub const RAIN: WeatherIcon = WeatherIcon { condition: "Rain", glyph: '\u{f019}', owm_code: 500 };
-pub const SNOW: WeatherIcon = WeatherIcon { condition: "Snow", glyph: '\u{f01b}', owm_code: 600 };
-pub const THUNDERSTORM: WeatherIcon = WeatherIcon { condition: "Thunderstorm", glyph: '\u{f01e}', owm_code: 200 };
-pub const DRIZZLE: WeatherIcon = WeatherIcon { condition: "Drizzle", glyph: '\u{f01c}', owm_code: 300 };
-pub const SMOKE: WeatherIcon = WeatherIcon { condition: "Smoke", glyph: '\u{f062}', owm_code: 711 };
-pub const HAZE: WeatherIcon = WeatherIcon { condition: "Haze", glyph: '\u{f0b6}', owm_code: 721 };
-pub const FOG: WeatherIcon = WeatherIcon { condition: "Fog", glyph: '\u{f014}', owm_code: 741 };
+pub const SUNNY: WeatherIcon = WeatherIcon {
+    condition: "Sunny",
+    glyph: '\u{f00d}',
+    owm_code: 800,
+    color: Color { r: 255, g: 195, b: 30 }, // warm yellow-orange
+};
+pub const PARTLY_CLOUDY: WeatherIcon = WeatherIcon {
+    condition: "Partly Cloudy",
+    glyph: '\u{f002}',
+    owm_code: 801,
+    color: Color { r: 180, g: 200, b: 220 }, // pale blue-grey
+};
+pub const MOSTLY_CLOUDY: WeatherIcon = WeatherIcon {
+    condition: "Mostly Cloudy",
+    glyph: '\u{f013}',
+    owm_code: 803,
+    color: Color { r: 170, g: 175, b: 195 }, // cool grey
+};
+pub const CLOUDY: WeatherIcon = WeatherIcon {
+    condition: "Cloudy",
+    glyph: '\u{f013}',
+    owm_code: 804,
+    color: Color { r: 140, g: 145, b: 160 }, // dimmer overcast grey
+};
+pub const RAIN: WeatherIcon = WeatherIcon {
+    condition: "Rain",
+    glyph: '\u{f019}',
+    owm_code: 500,
+    color: Color { r: 50, g: 130, b: 230 }, // vivid mid blue
+};
+pub const SNOW: WeatherIcon = WeatherIcon {
+    condition: "Snow",
+    glyph: '\u{f01b}',
+    owm_code: 600,
+    color: Color { r: 255, g: 255, b: 255 }, // bright white
+};
+pub const THUNDERSTORM: WeatherIcon = WeatherIcon {
+    condition: "Thunderstorm",
+    glyph: '\u{f01e}',
+    owm_code: 200,
+    color: Color { r: 255, g: 215, b: 0 }, // bright lightning yellow
+};
+pub const DRIZZLE: WeatherIcon = WeatherIcon {
+    condition: "Drizzle",
+    glyph: '\u{f01c}',
+    owm_code: 300,
+    color: Color { r: 135, g: 180, b: 220 }, // pale blue
+};
+pub const SMOKE: WeatherIcon = WeatherIcon {
+    condition: "Smoke",
+    glyph: '\u{f062}',
+    owm_code: 711,
+    color: Color { r: 170, g: 160, b: 150 }, // warm grey
+};
+pub const HAZE: WeatherIcon = WeatherIcon {
+    condition: "Haze",
+    glyph: '\u{f0b6}',
+    owm_code: 721,
+    color: Color { r: 200, g: 195, b: 170 }, // pale yellow-grey
+};
+pub const FOG: WeatherIcon = WeatherIcon {
+    condition: "Fog",
+    glyph: '\u{f014}',
+    owm_code: 741,
+    color: Color { r: 180, g: 180, b: 180 }, // neutral grey
+};
 
 // ---------------------------------------------------------------------------
 // Night-time variants
 // ---------------------------------------------------------------------------
 
-pub const CLEAR_NIGHT: WeatherIcon = WeatherIcon { condition: "Clear", glyph: '\u{f02e}', owm_code: 800 };
+pub const CLEAR_NIGHT: WeatherIcon = WeatherIcon {
+    condition: "Clear",
+    glyph: '\u{f02e}',
+    owm_code: 800,
+    color: Color { r: 210, g: 215, b: 255 }, // pale moonlight blue
+};
 
 /// Map an OpenWeatherMap weather code to a glyph.
 ///

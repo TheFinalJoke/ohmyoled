@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
     && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p /var/log/ohmyoled /etc/ohmyoled
+    && mkdir -p /var/ohmyoled /etc/ohmyoled
 
 # Pull fonts straight from the GitHub Release tarball — same source the
 # host install would use, so we don't need to ship scripts/fetch-fonts.sh

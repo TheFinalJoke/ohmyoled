@@ -1,0 +1,29 @@
+# cross-rs's default Docker images for the Pi targets are based on
+# Ubuntu 16.04 (xenial) and ship gcc 5 — too old for rpi-led-matrix-sys's
+# C++ library (newer linkers reject its objects with "File in wrong
+# format"). Pin to the `:main` tag, which is Ubuntu 24.04 with a modern
+# gcc, and pre-install the C++ cross-toolchain that those images don't
+# include by default.
+#
+# rpi-led-matrix-sys's build.rs shells out to plain `make` against the
+# vendored rpi-rgb-led-matrix Makefile, which uses default `cc`/`c++`/`ar`.
+# Inside the cross container those default to the *host* x86_64 toolchain,
+# producing x86 objects that get archived and bundled into the rlib —
+# the cross linker then rejects with "file format not recognized". The
+# fix is to forward CC/CXX/AR through to the container (set per target
+# in the release workflow) so the Makefile picks up the cross toolchain.
+
+[build.env]
+passthrough = ["CC", "CXX", "AR"]
+
+[target.aarch64-unknown-linux-gnu]
+image = "ghcr.io/cross-rs/aarch64-unknown-linux-gnu:main"
+pre-build = [
+    "apt-get update && apt-get install --assume-yes g++-aarch64-linux-gnu",
+]
+
+[target.armv7-unknown-linux-gnueabihf]
+image = "ghcr.io/cross-rs/armv7-unknown-linux-gnueabihf:main"
+pre-build = [
+    "apt-get update && apt-get install --assume-yes g++-arm-linux-gnueabihf",
+]

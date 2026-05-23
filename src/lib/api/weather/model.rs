@@ -5,6 +5,7 @@
 //! [`Weather`] value, so the renderer doesn't care which API served it.
 
 use chrono::{DateTime, Local};
+use ohmyoled_matrix::Color;
 use serde::{Deserialize, Serialize};
 
 /// Which API produced this data.
@@ -62,10 +63,12 @@ impl WindDirection {
     }
 }
 
-/// A single weather-icon glyph entry.
+/// A single weather-icon entry: a glyph plus the color to draw it in.
 ///
-/// Mirrors `WeatherIcon` in `weatherbase.py`. Drops `font` (just the Unicode
-/// codepoint of `icon`) and `url`/`time_of_day` (unused at runtime).
+/// Color lives here (rather than being re-derived from owm_code at render
+/// time) so that day/night variants of the same code — e.g. `SUNNY` and
+/// `CLEAR_NIGHT` both have owm_code 800 — get the right color without the
+/// renderer having to guess which variant was picked.
 #[derive(Debug, Clone, Copy)]
 pub struct WeatherIcon {
     pub condition: &'static str,
@@ -73,6 +76,8 @@ pub struct WeatherIcon {
     pub glyph: char,
     /// The OpenWeatherMap weather code this entry maps from.
     pub owm_code: u16,
+    /// Color to render the glyph in.
+    pub color: Color,
 }
 
 /// Snapshot of "what's happening now."

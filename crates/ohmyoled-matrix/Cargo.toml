@@ -7,13 +7,15 @@ license = "GPL-2.0"
 description = "LED matrix abstraction with terminal test mode and RPi hardware backend"
 
 [features]
-# hardware feature compiles the RPi backend stub. Disabled on non-Pi builds.
+# hardware feature pulls in the rpi-led-matrix FFI bindings to Henner Zeller's
+# rpi-rgb-led-matrix C++ library. Disabled on non-Pi builds.
 default = ["hardware"]
-hardware = []
+hardware = ["dep:rpi-led-matrix"]
 
 [dependencies]
 log = "0.4"
 image = "0.25"
 ab_glyph = "0.2"
+rpi-led-matrix = { version = "0.4", optional = true }
 
 [dev-dependencies]

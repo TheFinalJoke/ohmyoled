@@ -9,10 +9,13 @@
 //!
 //! ```text
 //!   ┌──────────────────────────────────────┐
-//!   │   MM/DD/YYYY                         │ rows 5..14
-//!   │     HH:MM:SS                         │ rows 16..28
+//!   │           MM/DD/YYYY                 │ top half — centered
+//!   │           HH:MM:SS                   │ bottom half — centered
 //!   └──────────────────────────────────────┘
 //! ```
+//!
+//! Both lines render in a 04B_03B TTF at 8 px so they read comfortably from
+//! across the room — see the `frame()` impl for the exact centering math.
 //!
 //! Frame rate: 1 fps for 30 frames = ~30s per cycle. Each frame re-samples
 //! the system clock so the seconds tick visibly even though the collector
@@ -43,9 +46,12 @@ use ohmyoled_matrix::{Color, RGBMatrix};
 use std::path::Path;
 use std::time::Duration;
 
-/// Default font shipped with this repo at `fonts/4x6.bdf` and installed to
-/// `/usr/share/fonts/4x6.bdf` by the build scripts.
-pub const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/4x6.bdf";
+/// Default font shipped with this repo at `fonts/04B_03B_.TTF` and installed
+/// to `/usr/share/fonts/04B_03B_.TTF` by the build scripts. Loaded at 8 px.
+pub const DEFAULT_FONT_PATH: &str = "/usr/share/fonts/04B_03B_.TTF";
+
+/// Pixel size used for both date and clock lines.
+const FONT_PX: f32 = 8.0;
 
 /// 12-hour vs 24-hour clock format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -129,8 +135,7 @@ impl TimeMatrix {
     /// from inside a tokio runtime so font I/O doesn't block.
     pub fn new(color: Color, font_path: Option<&Path>) -> Result<Self, String> {
         let path = font_path.unwrap_or(Path::new(DEFAULT_FONT_PATH));
-        let mut font = Font::new();
-        font.load_font(path)?;
+        let font = Font::load_ttf(path, FONT_PX)?;
         Ok(Self {
             color,
             font,
@@ -157,14 +162,30 @@ impl TimeMatrix {
     }
 
     /// Render one frame containing the supplied moment.
+    ///
+    /// Both date and clock are horizontally centered. Vertically the two lines
+    /// share the 32-row panel with equal padding above, between, and below.
     pub fn frame(&self, now: DateTime<Local>) -> RgbImage {
         let date = now.format("%m/%d/%Y").to_string();
         let clock = now.format(self.format.strftime()).to_string();
 
         let mut img = RgbImage::new(64, 32);
         let ascent = self.font.ascent();
-        draw_text(&mut img, &self.font, 3, 5 + ascent, self.color, &date);
-        draw_text(&mut img, &self.font, 8, 16 + ascent, self.color, &clock);
+        let line_h = self.font.height().max(ascent + 1);
+        let gap: i32 = 2;
+        let content = 2 * line_h + gap;
+        let top_pad = ((32 - content).max(0)) / 2;
+
+        let date_w = self.font.text_width(&date);
+        let date_x = ((64 - date_w) / 2).max(0);
+        let date_y = top_pad + ascent;
+
+        let clock_w = self.font.text_width(&clock);
+        let clock_x = ((64 - clock_w) / 2).max(0);
+        let clock_y = top_pad + line_h + gap + ascent;
+
+        draw_text(&mut img, &self.font, date_x, date_y, self.color, &date);
+        draw_text(&mut img, &self.font, clock_x, clock_y, self.color, &clock);
         img
     }
 }
@@ -205,7 +226,7 @@ mod tests {
     fn repo_font() -> PathBuf {
         let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         p.push("fonts");
-        p.push("4x6.bdf");
+        p.push("04B_03B_.TTF");
         p
     }
 
