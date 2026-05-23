@@ -501,24 +501,31 @@ end users can run it on their own machine to regenerate a template
 config without going through the interactive `-c` flow. Format is
 chosen by the extension on PATH (json / yaml / toml).
 
-The same workflow also builds and pushes per-arch Docker images to
-GHCR. Each architecture gets a single-platform image built from
+The same workflow also builds and pushes per-arch Docker images. Each
+architecture gets a single-platform image built from
 `prodcontainer_build/Dockerfile.release` (which `COPY`s in the
 already-cross-compiled binary instead of recompiling under QEMU), and
 a final `manifest` job glues them together with
-`docker buildx imagetools create`. The result:
+`docker buildx imagetools create`. Two registries:
+
+- **GHCR** — always pushed. Auth via the workflow's `GITHUB_TOKEN`
+  (no setup needed); `packages: write` per-job.
+- **Docker Hub** — pushed when the `DOCKERHUB_USERNAME` and
+  `DOCKERHUB_TOKEN` repo secrets are set. Skipped otherwise so the
+  workflow stays green on forks that don't have the secrets.
+
+The result on each registry:
 
 ```
-ghcr.io/thefinaljoke/ohmyoled:v3.0.0     # multi-arch manifest
-ghcr.io/thefinaljoke/ohmyoled:latest     # alias to the same
-ghcr.io/thefinaljoke/ohmyoled:v3.0.0-aarch64-unknown-linux-gnu
-ghcr.io/thefinaljoke/ohmyoled:v3.0.0-armv7-unknown-linux-gnueabihf
+…/ohmyoled:v3.0.1                          # multi-arch manifest
+…/ohmyoled:latest                          # alias to the same
+…/ohmyoled:v3.0.1-aarch64-unknown-linux-gnu
+…/ohmyoled:v3.0.1-armv7-unknown-linux-gnueabihf
 ```
 
-Auth uses the workflow's `GITHUB_TOKEN` (no extra secrets); the
-`packages: write` permission is granted per-job. For end users
-building from source locally, the sibling `prodcontainer_build/Dockerfile`
-still does the git clone + cargo build approach.
+For end users building from source locally, the sibling
+`prodcontainer_build/Dockerfile` still does the git clone + cargo
+build approach.
 
 ---
 

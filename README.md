@@ -32,19 +32,70 @@ backstory.
 
 ## Quickstart
 
+Get the image, generate a config, edit it, run it. Both
+`ghcr.io/thefinaljoke/ohmyoled` and `thefinaljoke/ohmyoled` on Docker
+Hub publish multi-arch (aarch64 + armv7) images on every release;
+`:latest` aliases the most recent semver tag.
+
 ```bash
-# Build
-cargo build --release
+# 1. Pull (either registry — pick one)
+docker pull ghcr.io/thefinaljoke/ohmyoled:latest
+# docker pull thefinaljoke/ohmyoled:latest
 
-# Install fonts + the binary (Pi)
-sudo ./src/sh/install.sh
+# 2. Generate a starter config on the host. Format is picked from the
+#    extension on the path you pass (.yaml / .json / .toml).
+docker run --rm -v "$PWD:/work" \
+  ghcr.io/thefinaljoke/ohmyoled:latest \
+  --init-config /work/ohmyoled.yaml
 
-# Drop a config in place (pick any format)
-sudo cp examples/configs/ohmyoled.yaml /etc/ohmyoled/ohmyoled.yaml
+# 3. Edit ./ohmyoled.yaml — replace the REPLACE_ME_* placeholders with
+#    your API keys and flip `run: false` → `run: true` on the modules
+#    you want active.
 
-# Edit it to add your API keys, then run
-ohmyoled
+# 4. Run it. The mounts are the load-bearing bit:
+#      /etc/localtime  — host clock so timestamps + sunrise math match
+#      ohmyoled.yaml   — the config you just generated
+#      --privileged    — broad GPIO access on the Pi (simplest)
+docker run -d --name ohmyoled --restart unless-stopped \
+  --privileged \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v "$PWD/ohmyoled.yaml:/etc/ohmyoled/ohmyoled.yaml:ro" \
+  ghcr.io/thefinaljoke/ohmyoled:latest \
+  --config /etc/ohmyoled/ohmyoled.yaml
 ```
+
+Logs go to stderr inside the container — `docker logs -f ohmyoled` to
+follow. The binary also writes to `/var/log/ohmyoled.log` inside the
+container; add `-v /var/log/ohmyoled:/var/log/ohmyoled` to persist it
+to the host.
+
+### Don't want Docker?
+
+The same release also ships standalone binaries. Same `--init-config`
+flow, just running directly on the host:
+
+```bash
+# Pick aarch64 for 64-bit Pi OS, armv7 for 32-bit
+sudo curl -L -o /usr/local/bin/ohmyoled \
+  https://github.com/TheFinalJoke/ohmyoled/releases/latest/download/ohmyoled-aarch64
+sudo chmod +x /usr/local/bin/ohmyoled
+
+# Fetch the fonts the binary expects in /usr/share/fonts/
+sudo bash -c '
+  curl -fsSL https://github.com/TheFinalJoke/ohmyoled/releases/download/fonts-v1/fonts.tar.gz \
+    -o /tmp/fonts.tar.gz
+  tar -xzf /tmp/fonts.tar.gz -C /usr/share/fonts/
+  rm /tmp/fonts.tar.gz
+'
+
+# Same --init-config flow as above, but writing straight to /etc/ohmyoled
+sudo mkdir -p /etc/ohmyoled
+sudo ohmyoled --init-config /etc/ohmyoled/ohmyoled.yaml
+# edit /etc/ohmyoled/ohmyoled.yaml, then:
+sudo ohmyoled --config /etc/ohmyoled/ohmyoled.yaml
+```
+
+To build from source instead, see [Development](#development).
 
 To preview without hardware (renders to ANSI in the terminal):
 
@@ -57,7 +108,7 @@ OHMYOLED_MATRIX_MODE=test cargo run -- -f examples/configs/ohmyoled.yaml
 ## CLI usage
 
 ```
-ohmyoled [--config <PATH>] [--create_config] [--dev]
+ohmyoled [--config <PATH>] [--create_config | --init-config <PATH> | --dev]
 ```
 
 | Flag                       | Description                                                                              |
@@ -65,7 +116,10 @@ ohmyoled [--config <PATH>] [--create_config] [--dev]
 | `-f`, `--config <PATH>`    | Path to config file. Format is chosen by extension (`.json`/`.yaml`/`.yml`/`.toml`).     |
 | `--json_file <PATH>`       | Deprecated alias for `--config`. Still works.                                            |
 | `-c`, `--create_config`    | Run the interactive config builder and write to `<PATH>` (or `/etc/ohmyoled/ohmyoled.json`). Format is chosen by the path's extension. Alias: `--create_json`. |
+| `--init-config <PATH>`     | Write a non-interactive starter config to `<PATH>` (time enabled, weather/stock/sport wired but `run: false` with `REPLACE_ME_*` placeholders). Format from the extension. Refuses to overwrite an existing file. |
 | `--dev`                    | Write a canned dev config instead of prompting.                                          |
+| `-v` / `-vv` / `-vvv`      | Bump log verbosity: info / debug / trace.                                                |
+| `--log-file <PATH>`        | Override the log file path (default `/var/log/ohmyoled.log`).                            |
 
 When `--config` is not passed, ohmyoled looks for the first existing file
 among `/etc/ohmyoled/ohmyoled.{json,yaml,yml,toml}`.
