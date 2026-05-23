@@ -417,9 +417,32 @@ scheduler.
 
 ---
 
+## Fonts
+
+Fonts are **not tracked in git**. The five files the renderers and tests
+need (`04B_03B_.TTF`, `04b24.otf`, `BMmini.TTF`, `weathericons.ttf`,
+`4x6.bdf`) are bundled in a GitHub Release tarball and fetched on demand.
+
+Run once after a fresh clone, before tests or `cargo run`:
+
+```bash
+bash scripts/fetch-fonts.sh
+```
+
+The script is idempotent — it skips the download if every expected font
+is already on disk. `src/sh/install.sh` calls it automatically before
+copying into `/usr/share/fonts/`.
+
+The release URL and expected sha256 live in `scripts/fetch-fonts.sh`;
+override with `OHMYOLED_FONTS_URL` / `OHMYOLED_FONTS_SHA256` for testing
+a new tarball before tagging.
+
+---
+
 ## Quick verification loop
 
 ```bash
+bash scripts/fetch-fonts.sh                          # one-time after clone
 cargo build                                          # bin + lib
 cargo test --lib                                     # unit tests (60+)
 cargo test --doc                                     # doc tests

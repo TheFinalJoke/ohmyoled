@@ -1,6 +1,10 @@
 /ohmyoled-*
 *.tar.gz
 *.eggs
+
+# Runtime fonts — fetched via scripts/fetch-fonts.sh from the GitHub
+# Release tarball, not tracked in git.
+/fonts/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
