@@ -32,67 +32,30 @@ backstory.
 
 ## Quickstart
 
-Three ways to get ohmyoled running on a Pi. Pick whichever fits your
-setup — the config file is the same across all three.
-
-### Option 1 — Download a release binary
-
-Pre-built binaries are attached to every [GitHub Release](https://github.com/TheFinalJoke/ohmyoled/releases/latest)
-for both 64-bit and 32-bit Raspberry Pi OS.
+Get the image, generate a config, edit it, run it. Both
+`ghcr.io/thefinaljoke/ohmyoled` and `thefinaljoke/ohmyoled` on Docker
+Hub publish multi-arch (aarch64 + armv7) images on every release;
+`:latest` aliases the most recent semver tag.
 
 ```bash
-# Pick the right one for your Pi:
-#   aarch64 → 64-bit Pi OS (Pi 4 / Pi 5 / Pi 400 with 64-bit Lite or Desktop)
-#   armv7   → 32-bit Pi OS
-sudo curl -L -o /usr/local/bin/ohmyoled \
-  https://github.com/TheFinalJoke/ohmyoled/releases/latest/download/ohmyoled-aarch64
-sudo chmod +x /usr/local/bin/ohmyoled
-
-# Fonts live on a separate release tag; the install script handles it for you.
-sudo bash -c '
-  curl -fsSL https://github.com/TheFinalJoke/ohmyoled/releases/download/fonts-v1/fonts.tar.gz \
-    -o /tmp/fonts.tar.gz
-  mkdir -p /usr/share/fonts
-  tar -xzf /tmp/fonts.tar.gz -C /usr/share/fonts/
-  rm /tmp/fonts.tar.gz
-'
-
-# Generate a starter config you can edit. Format is picked from the extension.
-sudo mkdir -p /etc/ohmyoled
-sudo ohmyoled --init-config /etc/ohmyoled/ohmyoled.yaml    # or .json / .toml
-
-# Open the config and replace the REPLACE_ME_* placeholders with your API
-# keys, flip `run: false` to `run: true` on the modules you want, then:
-sudo ohmyoled --config /etc/ohmyoled/ohmyoled.yaml
-```
-
-The `ohmyoled-starter.json` from the release page is a pre-baked version
-of what `--init-config` would produce — handy if you want to peek at the
-schema before running anything.
-
-### Option 2 — Run from Docker
-
-Multi-arch images are published to both GHCR and Docker Hub on every
-release, with `:latest` aliasing the most recent semver tag.
-
-```bash
-# GHCR
+# 1. Pull (either registry — pick one)
 docker pull ghcr.io/thefinaljoke/ohmyoled:latest
-# …or Docker Hub
-docker pull thefinaljoke/ohmyoled:latest
+# docker pull thefinaljoke/ohmyoled:latest
 
-# Generate a starter config on the host (writes to ./ohmyoled.json,
-# format picked from the extension on the path you pass).
+# 2. Generate a starter config on the host. Format is picked from the
+#    extension on the path you pass (.yaml / .json / .toml).
 docker run --rm -v "$PWD:/work" \
   ghcr.io/thefinaljoke/ohmyoled:latest \
   --init-config /work/ohmyoled.yaml
 
-# Edit ./ohmyoled.yaml to fill in API keys + enable modules, then run.
-# The mounts are the important bit:
-#   /etc/localtime  — so the container clock matches the host
-#   ohmyoled.yaml   — the config you just generated
-#   /dev/gpiomem    — Pi GPIO node; `--privileged` is the simpler
-#                     alternative if you don't want to enumerate devices
+# 3. Edit ./ohmyoled.yaml — replace the REPLACE_ME_* placeholders with
+#    your API keys and flip `run: false` → `run: true` on the modules
+#    you want active.
+
+# 4. Run it. The mounts are the load-bearing bit:
+#      /etc/localtime  — host clock so timestamps + sunrise math match
+#      ohmyoled.yaml   — the config you just generated
+#      --privileged    — broad GPIO access on the Pi (simplest)
 docker run -d --name ohmyoled --restart unless-stopped \
   --privileged \
   -v /etc/localtime:/etc/localtime:ro \
@@ -101,27 +64,38 @@ docker run -d --name ohmyoled --restart unless-stopped \
   --config /etc/ohmyoled/ohmyoled.yaml
 ```
 
-Logs go to stderr inside the container (`docker logs ohmyoled`) and to
-`/var/log/ohmyoled.log` inside the container's filesystem. To persist
-the file too, add `-v /var/log/ohmyoled:/var/log/ohmyoled`.
+Logs go to stderr inside the container — `docker logs -f ohmyoled` to
+follow. The binary also writes to `/var/log/ohmyoled.log` inside the
+container; add `-v /var/log/ohmyoled:/var/log/ohmyoled` to persist it
+to the host.
 
-### Option 3 — Build from source
+### Don't want Docker?
+
+The same release also ships standalone binaries. Same `--init-config`
+flow, just running directly on the host:
 
 ```bash
-# One-time after a fresh clone, fetches the runtime fonts.
-bash scripts/fetch-fonts.sh
+# Pick aarch64 for 64-bit Pi OS, armv7 for 32-bit
+sudo curl -L -o /usr/local/bin/ohmyoled \
+  https://github.com/TheFinalJoke/ohmyoled/releases/latest/download/ohmyoled-aarch64
+sudo chmod +x /usr/local/bin/ohmyoled
 
-cargo build --release
+# Fetch the fonts the binary expects in /usr/share/fonts/
+sudo bash -c '
+  curl -fsSL https://github.com/TheFinalJoke/ohmyoled/releases/download/fonts-v1/fonts.tar.gz \
+    -o /tmp/fonts.tar.gz
+  tar -xzf /tmp/fonts.tar.gz -C /usr/share/fonts/
+  rm /tmp/fonts.tar.gz
+'
 
-# Install fonts + the binary (Pi)
-sudo ./src/sh/install.sh
-
-# Drop a config in place (pick any format)
-sudo cp examples/configs/ohmyoled.yaml /etc/ohmyoled/ohmyoled.yaml
-
-# Edit it to add your API keys, then run
-ohmyoled
+# Same --init-config flow as above, but writing straight to /etc/ohmyoled
+sudo mkdir -p /etc/ohmyoled
+sudo ohmyoled --init-config /etc/ohmyoled/ohmyoled.yaml
+# edit /etc/ohmyoled/ohmyoled.yaml, then:
+sudo ohmyoled --config /etc/ohmyoled/ohmyoled.yaml
 ```
+
+To build from source instead, see [Development](#development).
 
 To preview without hardware (renders to ANSI in the terminal):
 
