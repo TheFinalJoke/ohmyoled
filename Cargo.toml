@@ -27,7 +27,6 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 async-trait = "0.1"
 ipinfo = "3.5"
 sunrise = { version = "3", features = ["std"] }
-finnhub = "0.2"
 ohmyoled-matrix = { path = "crates/ohmyoled-matrix" }
 
 [lib]
