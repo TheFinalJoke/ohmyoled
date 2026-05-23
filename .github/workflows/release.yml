@@ -95,3 +95,92 @@ jobs:
             dist/ohmyoled-starter.json
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+  # Per-arch Docker images. Single-arch builds with pre-built binaries
+  # are ~30x faster than multi-arch QEMU builds — no Rust compilation
+  # under emulation. The next job assembles a multi-arch manifest.
+  docker:
+    name: Docker (${{ matrix.target }})
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-unknown-linux-gnu
+            platform: linux/arm64
+            artifact: ohmyoled-aarch64
+          - target: armv7-unknown-linux-gnueabihf
+            platform: linux/arm/v7
+            artifact: ohmyoled-armv7
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+
+      - name: Stage binary
+        run: mv ${{ matrix.artifact }} ohmyoled && chmod +x ohmyoled
+
+      - name: Compute image name
+        id: img
+        run: |
+          echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: prodcontainer_build/Dockerfile.release
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          build-args: |
+            OHMYOLED_VERSION=${{ github.ref_name }}
+          tags: ${{ steps.img.outputs.name }}:${{ github.ref_name }}-${{ matrix.target }}
+
+  # Glue the per-arch images into a single multi-arch manifest that
+  # `docker pull ghcr.io/.../ohmyoled:v3.0.0` resolves to the right arch.
+  manifest:
+    name: Multi-arch manifest
+    needs: docker
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Compute image name
+        id: img
+        run: |
+          echo "name=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          IMG="${{ steps.img.outputs.name }}"
+          TAG="${{ github.ref_name }}"
+          docker buildx imagetools create \
+            --tag "$IMG:$TAG" \
+            --tag "$IMG:latest" \
+            "$IMG:$TAG-aarch64-unknown-linux-gnu" \
+            "$IMG:$TAG-armv7-unknown-linux-gnueabihf"

@@ -501,6 +501,25 @@ end users can run it on their own machine to regenerate a template
 config without going through the interactive `-c` flow. Format is
 chosen by the extension on PATH (json / yaml / toml).
 
+The same workflow also builds and pushes per-arch Docker images to
+GHCR. Each architecture gets a single-platform image built from
+`prodcontainer_build/Dockerfile.release` (which `COPY`s in the
+already-cross-compiled binary instead of recompiling under QEMU), and
+a final `manifest` job glues them together with
+`docker buildx imagetools create`. The result:
+
+```
+ghcr.io/thefinaljoke/ohmyoled:v3.0.0     # multi-arch manifest
+ghcr.io/thefinaljoke/ohmyoled:latest     # alias to the same
+ghcr.io/thefinaljoke/ohmyoled:v3.0.0-aarch64-unknown-linux-gnu
+ghcr.io/thefinaljoke/ohmyoled:v3.0.0-armv7-unknown-linux-gnueabihf
+```
+
+Auth uses the workflow's `GITHUB_TOKEN` (no extra secrets); the
+`packages: write` permission is granted per-job. For end users
+building from source locally, the sibling `prodcontainer_build/Dockerfile`
+still does the git clone + cargo build approach.
+
 ---
 
 ## Quick verification loop
