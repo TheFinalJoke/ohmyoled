@@ -33,7 +33,11 @@ impl HardwareBackend {
             return Err("GPIO unavailable — not running on Raspberry Pi hardware".to_string());
         }
 
+        // rpi-led-panel's FromStr only accepts PascalCase ("AdafruitHat"); fall
+        // back to a normalized form so the kebab/snake variants our configs
+        // have always used keep working.
         let hardware_mapping = HardwareMapping::from_str(&options.hardware_mapping)
+            .or_else(|_| HardwareMapping::from_str(&pascal_case(&options.hardware_mapping)))
             .map_err(|e| format!("unknown hardware_mapping `{}`: {e}", options.hardware_mapping))?;
 
         let config = RGBMatrixConfig {
@@ -98,4 +102,46 @@ fn is_rpi() -> bool {
     std::fs::read_to_string("/proc/cpuinfo")
         .map(|s| s.contains("BCM") || s.contains("Raspberry"))
         .unwrap_or(false)
+}
+
+/// Convert kebab- or snake-cased text (`adafruit-hat`, `adafruit_hat`, `regular`)
+/// into PascalCase (`AdafruitHat`, `Regular`). Used to translate our config's
+/// hardware-mapping names into the form `rpi_led_panel::HardwareMapping`'s
+/// `FromStr` impl expects.
+fn pascal_case(s: &str) -> String {
+    s.split(|c: char| c == '-' || c == '_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_ascii_uppercase().to_string() + &chars.as_str().to_ascii_lowercase()
+                }
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pascal_case;
+
+    #[test]
+    fn kebab_case_becomes_pascal() {
+        assert_eq!(pascal_case("adafruit-hat"), "AdafruitHat");
+        assert_eq!(pascal_case("adafruit-hat-pwm"), "AdafruitHatPwm");
+        assert_eq!(pascal_case("regular-pi1"), "RegularPi1");
+    }
+
+    #[test]
+    fn snake_case_becomes_pascal() {
+        assert_eq!(pascal_case("adafruit_hat"), "AdafruitHat");
+        assert_eq!(pascal_case("classic_pi1"), "ClassicPi1");
+    }
+
+    #[test]
+    fn single_lowercase_word_is_capitalized() {
+        assert_eq!(pascal_case("regular"), "Regular");
+    }
 }
