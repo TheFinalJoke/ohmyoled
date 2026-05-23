@@ -23,8 +23,14 @@ jobs:
         include:
           - target: aarch64-unknown-linux-gnu
             artifact: ohmyoled-aarch64
+            cc: aarch64-linux-gnu-gcc
+            cxx: aarch64-linux-gnu-g++
+            ar: aarch64-linux-gnu-ar
           - target: armv7-unknown-linux-gnueabihf
             artifact: ohmyoled-armv7
+            cc: arm-linux-gnueabihf-gcc
+            cxx: arm-linux-gnueabihf-g++
+            ar: arm-linux-gnueabihf-ar
     steps:
       - uses: actions/checkout@v4
 
@@ -39,7 +45,15 @@ jobs:
           tool: cross
 
       # No font fetch needed — Font::load_ttf is a runtime concern.
+      # CC/CXX/AR are forwarded into the cross container (via the
+      # passthrough block in Cross.toml) so rpi-led-matrix-sys's
+      # vendored Makefile builds the C++ library with the cross
+      # toolchain instead of the host x86_64 one.
       - name: Build
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+          AR: ${{ matrix.ar }}
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Stage binary
