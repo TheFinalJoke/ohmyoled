@@ -67,17 +67,26 @@ const ANIM_TICK: Duration = Duration::from_millis(83);
 /// cells pulsing in lockstep.
 const BAR_PHASE_STEP: f32 = 0.07;
 
-// Top-right curtain area — a small rectangle where vertical "aurora
-// strands" wobble horizontally. Kept clear of the "Kp" label
-// (x≈1..8), the centered big digit (x≈26..38), and the bar (rows
-// 22..=24), so the curtains coexist with everything else.
-const CURTAIN_X_MIN: i32 = 50;
-const CURTAIN_X_MAX: i32 = 62;
+// Top-right curtain area — a rectangle where multiple "aurora strands"
+// drape and wobble. Kept clear of the "Kp" label (x≈1..8), the
+// centered big digit (x≈26..38), and the bar (rows 22..=24).
+// Strands draw a center pixel plus a 1-px halo on each side, so the
+// effective horizontal extent is `base_x ± (amp + 1)`. Box is sized
+// to swallow that for the largest Kp (amp = 4.0).
+const CURTAIN_X_MIN: i32 = 46;
+const CURTAIN_X_MAX: i32 = 63;
 const CURTAIN_Y_MIN: i32 = 0;
-const CURTAIN_Y_MAX: i32 = 13;
-const CURTAIN_N: usize = 2;
-/// X positions of each curtain strand's resting (un-wobbled) center.
-const CURTAIN_BASE_XS: [i32; CURTAIN_N] = [53, 60];
+const CURTAIN_Y_MAX: i32 = 15;
+
+/// Three curtain strands at different depths. The mid strand reads as
+/// the "front" of the curtain; the outer two are softer back-strands.
+/// `(base_x, depth_brightness)` — depth_brightness < 1 keeps the back
+/// strands subdued so the eye picks out the mid one as primary.
+const CURTAIN_STRANDS: [(i32, f32); 3] = [
+    (50, 0.55), // back
+    (55, 1.00), // mid
+    (60, 0.65), // front
+];
 
 #[derive(Debug, Clone)]
 pub struct AuroraFonts {
@@ -263,16 +272,21 @@ fn scale_color(c: Color, factor: f32) -> Color {
 
 /// Curtain wobble parameters per Kp:
 ///   `amp_px`    — peak horizontal displacement of a strand (pixels)
-///   `vert_px`   — vertical wavelength (pixels per full sine cycle)
+///   `vert_px`   — vertical wavelength (pixels per full sine cycle —
+///                 larger = wider, more "draping" curtains)
 ///   `scroll`    — frames per full scroll cycle (smaller = faster)
+///
+/// Wavelengths intentionally on the long side (12–24 px) so the
+/// curtains *drape* down the rectangle rather than zigzag pixel-by-
+/// pixel — real sky aurora rolls slowly across wide arcs.
 fn curtain_params(kp: u8) -> (f32, f32, u32) {
     match kp {
         0 => (0.0, 1.0, 1),
-        1..=2 => (1.0, 12.0, 72),
-        3 => (1.5, 10.0, 54),
-        4 => (2.0, 8.0, 42),
-        5..=6 => (2.5, 7.0, 28),
-        _ => (3.5, 5.0, 18),
+        1..=2 => (1.5, 24.0, 96),
+        3 => (2.0, 20.0, 72),
+        4 => (2.5, 18.0, 54),
+        5..=6 => (3.0, 14.0, 36),
+        _ => (4.0, 12.0, 24),
     }
 }
 
@@ -290,13 +304,23 @@ fn curtain_max_brightness(kp: u8) -> f32 {
     }
 }
 
-/// Draw the top-right aurora-curtain wobble. Each strand is a vertical
-/// sinusoid traced pixel-by-pixel; per-strand phase offsets make
-/// neighboring strands sway independently. Pixel brightness peaks at
-/// the wave crests and tapers toward the top/bottom of the curtain
-/// rectangle so the strands look like glowing arcs rather than solid
-/// bars. Bounded strictly to the curtain rectangle — anything outside
-/// is dropped to avoid bleeding into the label/digit/bar.
+/// Draw the top-right aurora-curtain layer. Three strands at different
+/// depths drape vertically through the rectangle, each one a long-
+/// wavelength sinusoid. Per-row rendering:
+///
+/// - **Center pixel** at the wave position, full strand brightness.
+/// - **Halo pixels** (1 px to each side) at ~40% brightness, with a
+///   sub-pixel bias so the halo on the leading side of the wave is
+///   slightly brighter — softens the edge and gives motion direction.
+/// - **Vertical fade**: brightness scales with how far down the strand
+///   the row is (top = dark, bottom = full). Aurora curtains hang from
+///   ionised oxygen 100 km up and brighten toward the visible base,
+///   so "bright bottom, fade up" reads as sky-correct.
+///
+/// Strand pixels are blended **additively** — where two strands cross,
+/// the overlap saturates toward white, mimicking the soft glow of
+/// overlapping aurora bands. Strictly bounded to the curtain
+/// rectangle; anything outside is dropped.
 fn draw_curtains(img: &mut RgbImage, kp: u8, tick: u32) {
     if kp == 0 {
         return;
@@ -306,34 +330,61 @@ fn draw_curtains(img: &mut RgbImage, kp: u8, tick: u32) {
     let base_color = kp_color(kp);
     let scroll_phase = tick as f32 / scroll_frames as f32;
     let curtain_h = (CURTAIN_Y_MAX - CURTAIN_Y_MIN) as f32;
-    let curtain_mid = (CURTAIN_Y_MIN + CURTAIN_Y_MAX) as f32 / 2.0;
 
-    for (idx, &base_x) in CURTAIN_BASE_XS.iter().enumerate() {
-        let strand_phase = idx as f32 * 0.5;
+    for (idx, (base_x, depth)) in CURTAIN_STRANDS.iter().enumerate() {
+        let strand_phase = idx as f32 * 0.33;
         for y in CURTAIN_Y_MIN..=CURTAIN_Y_MAX {
             let angle = (y as f32 / vert_px + scroll_phase + strand_phase)
                 * std::f32::consts::TAU;
-            let osc = angle.sin(); // -1..1
-            let px = base_x + (osc * amp).round() as i32;
-            if !(CURTAIN_X_MIN..=CURTAIN_X_MAX).contains(&px) {
+            let osc = angle.sin();
+            // Sub-pixel position for anti-aliased core + asymmetric halo.
+            let dx_f = osc * amp;
+            let core_x = base_x + dx_f.round() as i32;
+            let sub_pixel = dx_f - dx_f.round(); // -0.5..=0.5
+
+            // Vertical fade: bright at the bottom of the curtain, dark
+            // at the top. Exponent < 1 makes the lit zone occupy more of
+            // the strand than a linear fade would — the dark "fade
+            // upward" feels gentle rather than abrupt.
+            let y_t = (y - CURTAIN_Y_MIN) as f32 / curtain_h;
+            let vert_fade = y_t.powf(0.6);
+
+            let strand_b = max_b * depth * vert_fade;
+            if strand_b < 0.05 {
                 continue;
             }
 
-            // Crest-bright, taper top/bottom: |sin| peaks at crests; a
-            // linear cosine taper attenuates the strand endpoints so the
-            // strand fades into the surrounding darkness rather than
-            // ending abruptly.
-            let crest = 0.5 + 0.5 * osc.abs();
-            let dist_from_mid = (y as f32 - curtain_mid).abs() / (curtain_h / 2.0);
-            let taper = (1.0 - dist_from_mid * 0.7).clamp(0.0, 1.0);
-            let brightness = max_b * crest * taper;
-            if brightness < 0.05 {
-                continue;
+            // Center pixel at full strand brightness.
+            add_pixel(img, core_x, y, scale_color(base_color, strand_b));
+            // Side halos at ~40% brightness, asymmetric per sub-pixel so
+            // the leading edge is slightly brighter than the trailing.
+            let halo_left = (strand_b * (0.40 - sub_pixel * 0.20)).max(0.0);
+            let halo_right = (strand_b * (0.40 + sub_pixel * 0.20)).max(0.0);
+            if halo_left > 0.03 {
+                add_pixel(img, core_x - 1, y, scale_color(base_color, halo_left));
             }
-            let color = scale_color(base_color, brightness);
-            img.put_pixel(px as u32, y as u32, Rgb([color.r, color.g, color.b]));
+            if halo_right > 0.03 {
+                add_pixel(img, core_x + 1, y, scale_color(base_color, halo_right));
+            }
         }
     }
+}
+
+/// Additively blend `color` into `(x, y)` if the pixel is inside the
+/// curtain rectangle. Each channel is summed and clamped to 255 — used
+/// to make overlapping strands "glow brighter" the way real aurora
+/// bands do where they cross.
+fn add_pixel(img: &mut RgbImage, x: i32, y: i32, color: Color) {
+    if !(CURTAIN_X_MIN..=CURTAIN_X_MAX).contains(&x)
+        || !(CURTAIN_Y_MIN..=CURTAIN_Y_MAX).contains(&y)
+    {
+        return;
+    }
+    let existing = *img.get_pixel(x as u32, y as u32);
+    let r = (existing[0] as u16 + color.r as u16).min(255) as u8;
+    let g = (existing[1] as u16 + color.g as u16).min(255) as u8;
+    let b = (existing[2] as u16 + color.b as u16).min(255) as u8;
+    img.put_pixel(x as u32, y as u32, Rgb([r, g, b]));
 }
 
 /// Draw the 9-block Kp gauge at `top_y`. The bar is 3 rows tall and
