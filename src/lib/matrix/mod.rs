@@ -3,6 +3,7 @@
 //! See [`renderer::Renderer`] for the contract and [`error::RenderError`] for
 //! the error type. Each submodule (e.g. [`time`]) implements one renderer.
 
+pub mod aurora;
 pub mod cells;
 pub mod error;
 pub mod f1;
@@ -15,6 +16,7 @@ pub mod stock;
 pub mod time;
 pub mod weather;
 
+pub use aurora::AuroraMatrix;
 pub use error::RenderError;
 pub use f1::F1Matrix;
 pub use golf::GolfMatrix;

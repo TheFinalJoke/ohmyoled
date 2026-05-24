@@ -2,8 +2,9 @@
 
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
-leaderboards, Formula 1 standings, a live ISS tracker, and recent
-earthquakes — pulling from free or freemium public APIs.
+leaderboards, Formula 1 standings, a live ISS tracker, recent
+earthquakes, and aurora forecasts — pulling from free or freemium
+public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -25,6 +26,7 @@ backstory.
   - [`sport`](#sport)
   - [`iss`](#iss)
   - [`quake`](#quake)
+  - [`aurora`](#aurora)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -410,8 +412,33 @@ quake:
 
 Refresh: 5 min. Data source:
 <https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/> (public,
-no auth). Place names that don't fit the panel word-wrap to two lines
-and truncate with `…`.
+no auth). Place names that don't fit the panel word-wrap to two lines;
+the second line marquees when the full text overflows.
+
+---
+
+### `aurora`
+
+NOAA's planetary K-index as a single big digit (0–9) color-coded by
+storm intensity, with a 9-block scale bar showing the gradient. An
+`AURORA LIKELY` cyan banner appears whenever Kp meets the configured
+alert threshold.
+
+```yaml
+aurora:
+  run: true
+  alert_threshold: 5    # 1–9; defaults to 5 (NOAA G1 minor storm)
+```
+
+| Field             | Type | Required | Notes                                                                                |
+| ----------------- | ---- | -------- | ------------------------------------------------------------------------------------ |
+| `run`             | bool | yes      |                                                                                      |
+| `alert_threshold` | int  | no       | Defaults to 5. Lower (3, 4) catches high-latitude viewers; higher (6+) for far-south.|
+
+Color bands match NOAA's G-scale: green Kp 0–3, amber 4, violet 5–6,
+red 7–9. Refresh: 5 min. Data source:
+<https://services.swpc.noaa.gov/json/planetary_k_index_1m.json> (public,
+no auth).
 
 ---
 
@@ -435,8 +462,8 @@ and truncate with `…`.
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake` (body text + iss big number) |
-| `04b24.otf`         | `sport` (big score numerals)             |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora` (body text + iss big number) |
+| `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit) |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |
 

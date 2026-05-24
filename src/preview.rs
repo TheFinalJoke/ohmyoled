@@ -26,6 +26,7 @@ use ohmyoled_matrix::{Color, RGBMatrix};
 
 use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
 use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
+use oledlib::api::aurora::AuroraReading;
 use oledlib::api::iss::IssState;
 use oledlib::api::quake::{QuakeEvent, QuakeStatus};
 use oledlib::api::sport::model::{
@@ -39,6 +40,7 @@ use oledlib::api::weather::model::{
 };
 use oledlib::matrix::f1::{F1Fonts, F1Matrix};
 use oledlib::matrix::golf::{GolfFonts, GolfMatrix};
+use oledlib::matrix::aurora::{AuroraFonts, AuroraMatrix};
 use oledlib::matrix::iss::{IssFonts, IssMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
@@ -47,7 +49,7 @@ use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
-pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss", "quake"];
+pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss", "quake", "aurora"];
 
 /// Resolve a directory that contains the project font files.
 fn font_dir() -> PathBuf {
@@ -78,6 +80,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "f1" => preview_f1(&mut matrix, &fonts).await,
         "iss" => preview_iss(&mut matrix, &fonts).await,
         "quake" => preview_quake(&mut matrix, &fonts).await,
+        "aurora" => preview_aurora(&mut matrix, &fonts).await,
         other => Err(format!(
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
@@ -274,6 +277,36 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
     });
     let quiet = QuakeStatus::Quiet;
     let cycle = [big, medium, small, quiet];
+    let mut i = 0usize;
+    loop {
+        let data = &cycle[i % cycle.len()];
+        i = i.wrapping_add(1);
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_aurora(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = AuroraMatrix::with_fonts_async(AuroraFonts {
+        label: fonts.join("04B_03B_.TTF"),
+        big: fonts.join("04b24.otf"),
+    })
+    .await?;
+    // Cycle through quiet → unsettled → minor storm → severe so each
+    // color band and the alert banner all get airtime.
+    let now = chrono::Utc::now();
+    let make = |kp: u8, alert: bool| AuroraReading {
+        kp,
+        kp_index: kp as f32,
+        kp_text: format!("{kp}Z"),
+        alert,
+        sampled_at: now,
+    };
+    let cycle = [
+        make(2, false), // quiet
+        make(4, false), // unsettled
+        make(6, true),  // minor/moderate storm — alert
+        make(8, true),  // severe — alert
+    ];
     let mut i = 0usize;
     loop {
         let data = &cycle[i % cycle.len()];

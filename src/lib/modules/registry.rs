@@ -22,6 +22,8 @@
 
 use crate::api::f1::F1Collector;
 use crate::api::golf::{GolfCollector, GolfTour};
+use crate::api::aurora::swpc::SwpcConfig;
+use crate::api::aurora::AuroraCollector;
 use crate::api::iss::wheretheiss::WhereTheIssConfig;
 use crate::api::iss::IssCollector;
 use crate::api::quake::model::QuakeFeed;
@@ -41,6 +43,7 @@ use crate::api::weather::WeatherCollector;
 use crate::api::{StockApi, WeatherApi};
 use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
+use crate::matrix::aurora::AuroraMatrix;
 use crate::matrix::iss::IssMatrix;
 use crate::matrix::quake::QuakeMatrix;
 use crate::matrix::sport::SportMatrix;
@@ -71,6 +74,8 @@ pub struct RegistryConfig {
     pub iss: Vec<IssSection>,
     #[serde(default, deserialize_with = "one_or_many")]
     pub quake: Vec<QuakeSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub aurora: Vec<AuroraSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +118,20 @@ pub struct QuakeSection {
     pub run: bool,
     #[serde(default)]
     pub feed: QuakeFeed,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuroraSection {
+    pub run: bool,
+    /// Kp value at which the "AURORA LIKELY" banner appears. Defaults to
+    /// 5 — NOAA's G1 minor-storm threshold and the value above which
+    /// mid-latitude observers can typically see aurora.
+    #[serde(default = "default_aurora_threshold")]
+    pub alert_threshold: u8,
+}
+
+fn default_aurora_threshold() -> u8 {
+    5
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,13 +184,14 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
         cfg.sport.len(),
         cfg.iss.len(),
-        cfg.quake.len()
+        cfg.quake.len(),
+        cfg.aurora.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -230,6 +250,15 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("quake: skipping module: {e}"),
+        }
+    }
+    for s in cfg.aurora.iter().filter(|s| s.run) {
+        match build_aurora(s).await {
+            Ok(m) => {
+                log::info!("registry: aurora loaded (threshold={})", s.alert_threshold);
+                modules.push(m);
+            }
+            Err(e) => log::error!("aurora: skipping module: {e}"),
         }
     }
 
@@ -373,6 +402,17 @@ async fn build_quake(s: &QuakeSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = QuakeMatrix::new_async()
         .await
         .map_err(|e| format!("quake fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_aurora(s: &AuroraSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = AuroraCollector::from_swpc(SwpcConfig {
+        alert_threshold: s.alert_threshold,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = AuroraMatrix::new_async()
+        .await
+        .map_err(|e| format!("aurora fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }
 

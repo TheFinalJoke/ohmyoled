@@ -3,6 +3,7 @@
 //! See [`collector::Collector`] for the contract, [`http::get_json`] for the
 //! shared HTTP helper, and [`error::ApiError`] for the error type.
 
+pub mod aurora;
 pub mod collector;
 pub mod error;
 pub mod f1;

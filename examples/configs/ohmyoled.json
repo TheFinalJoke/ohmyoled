@@ -39,6 +39,10 @@
     "run": true,
     "feed": "significant_day"
   },
+  "aurora": {
+    "run": true,
+    "alert_threshold": 5
+  },
   "sport": [
     {
       "run": true,
