@@ -51,6 +51,14 @@ api = "coingecko"
 api_key = "null"
 symbol = "ethereum"
 
+# Top-magnitude earthquake from the USGS feed in the last 24h, or a
+# "QUIET / no events 24h" tile when the feed is empty. `feed` picks the
+# window: significant_day (default — alert-worthy only), m45_day,
+# m25_day, or all_day (very chatty).
+[quake]
+run = true
+feed = "significant_day"
+
 # Live distance from your location to the International Space Station.
 # Switches to an OVERHEAD banner when the ISS is inside your visibility
 # footprint. `lat`/`lon` are decimal degrees. Both required — no IP

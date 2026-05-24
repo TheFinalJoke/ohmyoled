@@ -27,22 +27,27 @@ use ohmyoled_matrix::{Color, RGBMatrix};
 use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
 use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
 use oledlib::api::iss::IssState;
+use oledlib::api::quake::{QuakeEvent, QuakeStatus};
 use oledlib::api::sport::model::{
     GameStatus, HomeOrAway, NextGame, SportApiSource, SportData, SportKind, StandingsEntry,
     TeamSide,
 };
 use oledlib::api::stock::model::{StockApiSource, StockQuote};
-use oledlib::api::weather::model::{CurrentWeather, DayForecast, Weather, WeatherApiSource};
+use chrono::NaiveDate;
+use oledlib::api::weather::model::{
+    CurrentWeather, DailyForecast, DayForecast, HourlyForecast, Weather, WeatherApiSource,
+};
 use oledlib::matrix::f1::{F1Fonts, F1Matrix};
 use oledlib::matrix::golf::{GolfFonts, GolfMatrix};
 use oledlib::matrix::iss::{IssFonts, IssMatrix};
+use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
 use oledlib::matrix::stock::{StockFonts, StockMatrix};
 use oledlib::matrix::time::TimeSnapshot;
-use oledlib::matrix::weather::{WeatherFonts, WeatherMatrix};
+use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
-pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss"];
+pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss", "quake"];
 
 /// Resolve a directory that contains the project font files.
 fn font_dir() -> PathBuf {
@@ -72,6 +77,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "golf" => preview_golf(&mut matrix, &fonts).await,
         "f1" => preview_f1(&mut matrix, &fonts).await,
         "iss" => preview_iss(&mut matrix, &fonts).await,
+        "quake" => preview_quake(&mut matrix, &fonts).await,
         other => Err(format!(
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
@@ -89,11 +95,15 @@ async fn preview_time(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String
 }
 
 async fn preview_weather(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
-    let mut r = WeatherMatrix::with_fonts_async(WeatherFonts {
-        body: fonts.join("04B_03B_.TTF"),
-        icon: fonts.join("weathericons.ttf"),
-        temp: fonts.join("BMmini.TTF"),
-    })
+    let mut r = WeatherMatrix::with_fonts_and_animation_async(
+        WeatherFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            icon: fonts.join("weathericons.ttf"),
+            temp: fonts.join("BMmini.TTF"),
+            small: fonts.join("4x6.bdf"),
+        },
+        WeatherAnimationMode::default(),
+    )
     .await?;
     let data = fake_weather();
     loop {
@@ -233,6 +243,42 @@ async fn preview_iss(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String>
     }
 }
 
+async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = QuakeMatrix::with_fonts_async(QuakeFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    // Cycle through magnitude bands + a long region + quiet, so each visual
+    // mode and color band gets airtime.
+    let now = chrono::Utc::now() - ChDuration::minutes(14);
+    let big = QuakeStatus::Event(QuakeEvent {
+        magnitude: 6.2,
+        place: "OFF EAST COAST OF HONSHU JAPAN".into(),
+        origin: now,
+        depth_km: 24.0,
+    });
+    let medium = QuakeStatus::Event(QuakeEvent {
+        magnitude: 4.7,
+        place: "120km SW of San Francisco, CA".into(),
+        origin: now,
+        depth_km: 8.0,
+    });
+    let small = QuakeStatus::Event(QuakeEvent {
+        magnitude: 3.1,
+        place: "Iceland".into(),
+        origin: now,
+        depth_km: 5.0,
+    });
+    let quiet = QuakeStatus::Quiet;
+    let cycle = [big, medium, small, quiet];
+    let mut i = 0usize;
+    loop {
+        let data = &cycle[i % cycle.len()];
+        i = i.wrapping_add(1);
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
 fn fake_weather() -> Weather {
     let now = Local.with_ymd_and_hms(2024, 6, 15, 12, 0, 0).unwrap();
     Weather {
@@ -257,5 +303,42 @@ fn fake_weather() -> Weather {
             sunrise: now - ChDuration::hours(6),
             sunset: now + ChDuration::hours(8),
         },
+        hourly: (0..12)
+            .map(|i| HourlyForecast {
+                time: now + ChDuration::hours(i),
+                temp: 68.0 + (i as f32 / 2.0),
+                precipitation_chance: match i {
+                    0 => 0,
+                    1 => 15,
+                    2 => 35,
+                    3 => 60,
+                    4 => 80,
+                    5 => 65,
+                    6 => 40,
+                    7 => 20,
+                    8 => 10,
+                    _ => 0,
+                },
+            })
+            .collect(),
+        daily: (1..=5)
+            .map(|i| DailyForecast {
+                date: NaiveDate::from_ymd_opt(2024, 6, 15 + i).unwrap(),
+                high: 74.0 - i as f32,
+                low: 56.0 - (i as f32 / 2.0),
+                icon: if i == 3 {
+                    oledlib::api::weather::icon_table::RAIN
+                } else if i % 2 == 0 {
+                    oledlib::api::weather::icon_table::PARTLY_CLOUDY
+                } else {
+                    oledlib::api::weather::icon_table::SUNNY
+                },
+                precipitation_chance: match i {
+                    3 => 70,
+                    4 => 50,
+                    _ => 10,
+                },
+            })
+            .collect(),
     }
 }

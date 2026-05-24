@@ -35,6 +35,10 @@
     "lat": 40.7128,
     "lon": -74.0060
   },
+  "quake": {
+    "run": true,
+    "feed": "significant_day"
+  },
   "sport": [
     {
       "run": true,

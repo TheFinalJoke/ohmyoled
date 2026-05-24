@@ -2,8 +2,8 @@
 
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
-leaderboards, Formula 1 standings, and a live ISS tracker — pulling
-from free or freemium public APIs.
+leaderboards, Formula 1 standings, a live ISS tracker, and recent
+earthquakes — pulling from free or freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -24,6 +24,7 @@ backstory.
   - [`stock`](#stock)
   - [`sport`](#sport)
   - [`iss`](#iss)
+  - [`quake`](#quake)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -390,6 +391,30 @@ overhead check — no hand-rolled elevation math.
 
 ---
 
+### `quake`
+
+Top-magnitude earthquake from the last 24h of the USGS feed, or a
+`QUIET / no events 24h` tile when the feed is empty. Magnitude is
+color-coded — green under 4, amber 4–6, red 6 and up.
+
+```yaml
+quake:
+  run: true
+  feed: significant_day   # significant_day | m45_day | m25_day | all_day
+```
+
+| Field  | Type | Required | Notes                                                                                  |
+| ------ | ---- | -------- | -------------------------------------------------------------------------------------- |
+| `run`  | bool | yes      |                                                                                        |
+| `feed` | enum | no       | Defaults to `significant_day` (quietest). The others raise event volume substantially. |
+
+Refresh: 5 min. Data source:
+<https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/> (public,
+no auth). Place names that don't fit the panel word-wrap to two lines
+and truncate with `…`.
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -410,7 +435,7 @@ overhead check — no hand-rolled elevation math.
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss` (body text + iss big number) |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake` (body text + iss big number) |
 | `04b24.otf`         | `sport` (big score numerals)             |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |

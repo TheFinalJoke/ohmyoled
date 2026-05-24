@@ -9,6 +9,7 @@ pub mod f1;
 pub mod golf;
 pub mod http;
 pub mod iss;
+pub mod quake;
 pub mod sport;
 pub mod stock;
 pub mod weather;
