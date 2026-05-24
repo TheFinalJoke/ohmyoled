@@ -4,7 +4,7 @@
 //! providers (OpenWeather and NWS) each map their raw responses into a
 //! [`Weather`] value, so the renderer doesn't care which API served it.
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveDate};
 use ohmyoled_matrix::Color;
 use serde::{Deserialize, Serialize};
 
@@ -105,6 +105,27 @@ pub struct DayForecast {
     pub sunset: DateTime<Local>,
 }
 
+/// One hour of the upcoming forecast — feeds the precip-bar screen and (in
+/// future) any hourly-temp visuals. Providers populate up to 24 entries;
+/// renderers consume the first 12.
+#[derive(Debug, Clone)]
+pub struct HourlyForecast {
+    pub time: DateTime<Local>,
+    pub temp: f32,
+    pub precipitation_chance: u32,
+}
+
+/// One upcoming day for the 5-day-strip renderer. Today lives separately in
+/// [`DayForecast`] so the renderer never has to ask "is index 0 today?".
+#[derive(Debug, Clone)]
+pub struct DailyForecast {
+    pub date: NaiveDate,
+    pub high: f32,
+    pub low: f32,
+    pub icon: WeatherIcon,
+    pub precipitation_chance: u32,
+}
+
 /// Normalized weather payload — what the collector hands to the renderer.
 #[derive(Debug, Clone)]
 pub struct Weather {
@@ -114,6 +135,13 @@ pub struct Weather {
     pub location_name: String,
     pub current: CurrentWeather,
     pub forecast: DayForecast,
+    /// Next ~12–24 hours. Empty when the provider doesn't expose hourly data
+    /// (or the user's tier doesn't include it) — the precip-bar screen skips
+    /// itself in that case.
+    pub hourly: Vec<HourlyForecast>,
+    /// Up to the next 5 days (excluding today). Empty when unavailable; the
+    /// 5-day-strip screen skips itself.
+    pub daily: Vec<DailyForecast>,
 }
 
 #[cfg(test)]

@@ -15,7 +15,9 @@
 
 use super::geo::{lookup_ipinfo, GeoLocation};
 use super::icon_table::icon_for_accuweather_code;
-use super::model::{CurrentWeather, DayForecast, Weather, WeatherApiSource};
+use super::model::{
+    CurrentWeather, DailyForecast, DayForecast, HourlyForecast, Weather, WeatherApiSource,
+};
 use crate::api::error::ApiError;
 use crate::api::http::get_json;
 use chrono::{DateTime, Local, TimeZone};
@@ -83,7 +85,9 @@ impl AccuWeatherClient {
         let loc = self.resolve_location().await?;
         let key = self.resolve_location_key(&loc).await?;
 
-        // Fan out: current conditions + 1-day forecast.
+        // Fan out: current conditions + 5-day forecast + 12-hour forecast.
+        // 12hour is a paid tier; if the request fails we leave hourly empty
+        // and the precip-bar screen skips itself rather than the entire poll.
         let conditions_url = reqwest::Url::parse_with_params(
             &format!("https://dataservice.accuweather.com/currentconditions/v1/{key}"),
             &[("apikey", self.cfg.api_key.as_str()), ("details", "true")],
@@ -91,7 +95,7 @@ impl AccuWeatherClient {
         .map_err(|e| ApiError::Config(format!("accuweather conditions url: {e}")))?;
         let metric = matches!(self.cfg.units.as_str(), "metric");
         let daily_url = reqwest::Url::parse_with_params(
-            &format!("https://dataservice.accuweather.com/forecasts/v1/daily/1day/{key}"),
+            &format!("https://dataservice.accuweather.com/forecasts/v1/daily/5day/{key}"),
             &[
                 ("apikey", self.cfg.api_key.as_str()),
                 ("details", "true"),
@@ -99,10 +103,20 @@ impl AccuWeatherClient {
             ],
         )
         .map_err(|e| ApiError::Config(format!("accuweather daily url: {e}")))?;
+        let hourly_url = reqwest::Url::parse_with_params(
+            &format!("https://dataservice.accuweather.com/forecasts/v1/hourly/12hour/{key}"),
+            &[
+                ("apikey", self.cfg.api_key.as_str()),
+                ("details", "true"),
+                ("metric", if metric { "true" } else { "false" }),
+            ],
+        )
+        .map_err(|e| ApiError::Config(format!("accuweather hourly url: {e}")))?;
 
-        let (conditions_res, daily_res) = tokio::join!(
+        let (conditions_res, daily_res, hourly_res) = tokio::join!(
             get_json::<Vec<CurrentConditionRaw>>(conditions_url.as_str(), &[]),
             get_json::<DailyResponse>(daily_url.as_str(), &[]),
+            get_json::<Vec<HourlyRaw>>(hourly_url.as_str(), &[]),
         );
 
         let conditions = conditions_res?
@@ -113,16 +127,15 @@ impl AccuWeatherClient {
                 msg: "empty current conditions".into(),
             })?;
         let daily = daily_res?;
-        let today = daily
-            .daily_forecasts
-            .into_iter()
-            .next()
-            .ok_or(ApiError::Provider {
+        if daily.daily_forecasts.is_empty() {
+            return Err(ApiError::Provider {
                 provider: "accuweather",
                 msg: "empty daily forecast".into(),
-            })?;
+            });
+        }
+        let hourly = hourly_res.unwrap_or_default();
 
-        Ok(normalize(&loc, conditions, today, metric))
+        Ok(normalize(&loc, conditions, daily.daily_forecasts, hourly, metric))
     }
 }
 
@@ -190,6 +203,7 @@ struct DailyResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
 struct DailyForecastRaw {
+    epoch_date: i64,
     sun: SunRaw,
     temperature: TempRange,
     day: DayPart,
@@ -220,6 +234,26 @@ struct TempValue {
 struct DayPart {
     #[serde(rename = "PrecipitationProbability", default)]
     precipitation_probability: u32,
+    #[serde(rename = "Icon", default)]
+    icon: u8,
+}
+
+/// 12-hour endpoint payload. Each item is one hour.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct HourlyRaw {
+    epoch_date_time: i64,
+    temperature: HourlyTemp,
+    #[serde(default)]
+    precipitation_probability: u32,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct HourlyTemp {
+    value: f32,
+    #[allow(dead_code)]
+    unit: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +263,8 @@ struct DayPart {
 fn normalize(
     loc: &GeoLocation,
     conditions: CurrentConditionRaw,
-    today: DailyForecastRaw,
+    daily_raw: Vec<DailyForecastRaw>,
+    hourly_raw: Vec<HourlyRaw>,
     metric: bool,
 ) -> Weather {
     let (temp, feels_like, wind_speed) = if metric {
@@ -248,6 +283,30 @@ fn normalize(
 
     let icon = icon_for_accuweather_code(conditions.weather_icon, conditions.is_day_time);
     let _now = epoch_to_local(conditions.epoch_time);
+
+    let today = &daily_raw[0]; // caller guarantees non-empty
+    let daily = daily_raw
+        .iter()
+        .skip(1)
+        .take(5)
+        .map(|d| DailyForecast {
+            date: epoch_to_local(d.epoch_date).date_naive(),
+            high: d.temperature.maximum.value,
+            low: d.temperature.minimum.value,
+            icon: icon_for_accuweather_code(d.day.icon, true),
+            precipitation_chance: d.day.precipitation_probability,
+        })
+        .collect();
+
+    let hourly = hourly_raw
+        .iter()
+        .take(12)
+        .map(|h| HourlyForecast {
+            time: epoch_to_local(h.epoch_date_time),
+            temp: h.temperature.value,
+            precipitation_chance: h.precipitation_probability,
+        })
+        .collect();
 
     Weather {
         api: WeatherApiSource::AccuWeather,
@@ -271,6 +330,8 @@ fn normalize(
             sunrise: epoch_to_local(today.sun.epoch_rise),
             sunset: epoch_to_local(today.sun.epoch_set),
         },
+        hourly,
+        daily,
     }
 }
 
@@ -311,26 +372,51 @@ mod tests {
 
     const DAILY_FIXTURE: &str = r#"
     {
-      "DailyForecasts": [{
-        "Sun": {"EpochRise": 1699970000, "EpochSet": 1700010000, "Rise": "x", "Set": "y"},
-        "Temperature": {
-          "Minimum": {"Value": 55.0, "Unit": "F", "UnitType": 18},
-          "Maximum": {"Value": 70.0, "Unit": "F", "UnitType": 18}
-        },
-        "Day": {"PrecipitationProbability": 10}
-      }]
+      "DailyForecasts": [
+        {"EpochDate": 1700000000,
+         "Sun": {"EpochRise": 1699970000, "EpochSet": 1700010000, "Rise": "x", "Set": "y"},
+         "Temperature": {
+           "Minimum": {"Value": 55.0, "Unit": "F", "UnitType": 18},
+           "Maximum": {"Value": 70.0, "Unit": "F", "UnitType": 18}
+         },
+         "Day": {"PrecipitationProbability": 10, "Icon": 1}},
+        {"EpochDate": 1700086400,
+         "Sun": {"EpochRise": 1700056400, "EpochSet": 1700096400, "Rise": "x", "Set": "y"},
+         "Temperature": {
+           "Minimum": {"Value": 54.0, "Unit": "F", "UnitType": 18},
+           "Maximum": {"Value": 71.0, "Unit": "F", "UnitType": 18}
+         },
+         "Day": {"PrecipitationProbability": 20, "Icon": 3}},
+        {"EpochDate": 1700172800,
+         "Sun": {"EpochRise": 1700142800, "EpochSet": 1700182800, "Rise": "x", "Set": "y"},
+         "Temperature": {
+           "Minimum": {"Value": 53.0, "Unit": "F", "UnitType": 18},
+           "Maximum": {"Value": 68.0, "Unit": "F", "UnitType": 18}
+         },
+         "Day": {"PrecipitationProbability": 70, "Icon": 12}}
+      ]
     }
+    "#;
+
+    const HOURLY_FIXTURE: &str = r#"
+    [
+      {"EpochDateTime": 1700000000, "Temperature": {"Value": 65.0, "Unit": "F", "UnitType": 18}, "PrecipitationProbability": 0},
+      {"EpochDateTime": 1700003600, "Temperature": {"Value": 66.0, "Unit": "F", "UnitType": 18}, "PrecipitationProbability": 10},
+      {"EpochDateTime": 1700007200, "Temperature": {"Value": 67.0, "Unit": "F", "UnitType": 18}, "PrecipitationProbability": 30}
+    ]
     "#;
 
     #[test]
     fn normalizes_combined_response() {
         let conditions: Vec<CurrentConditionRaw> = serde_json::from_str(CONDITIONS_FIXTURE).unwrap();
         let daily: DailyResponse = serde_json::from_str(DAILY_FIXTURE).unwrap();
+        let hourly: Vec<HourlyRaw> = serde_json::from_str(HOURLY_FIXTURE).unwrap();
         let loc = GeoLocation { lat: 37.7749, lon: -122.4194, city: "San Francisco".into() };
         let w = normalize(
             &loc,
             conditions.into_iter().next().unwrap(),
-            daily.daily_forecasts.into_iter().next().unwrap(),
+            daily.daily_forecasts,
+            hourly,
             false, // imperial
         );
         assert_eq!(w.api, WeatherApiSource::AccuWeather);
@@ -342,17 +428,24 @@ mod tests {
         assert_eq!(w.forecast.today_high, 70.0);
         assert_eq!(w.forecast.today_low, 55.0);
         assert_eq!(w.current.icon.condition, "Sunny");
+        // Daily skips today, takes next 2 (fixture has 3 days total).
+        assert_eq!(w.daily.len(), 2);
+        assert_eq!(w.daily[0].high, 71.0);
+        assert_eq!(w.hourly.len(), 3);
+        assert_eq!(w.hourly[2].precipitation_chance, 30);
     }
 
     #[test]
     fn metric_path() {
         let conditions: Vec<CurrentConditionRaw> = serde_json::from_str(CONDITIONS_FIXTURE).unwrap();
         let daily: DailyResponse = serde_json::from_str(DAILY_FIXTURE).unwrap();
+        let hourly: Vec<HourlyRaw> = serde_json::from_str(HOURLY_FIXTURE).unwrap();
         let loc = GeoLocation { lat: 0.0, lon: 0.0, city: "X".into() };
         let w = normalize(
             &loc,
             conditions.into_iter().next().unwrap(),
-            daily.daily_forecasts.into_iter().next().unwrap(),
+            daily.daily_forecasts,
+            hourly,
             true, // metric
         );
         assert_eq!(w.current.temp, 18.3);

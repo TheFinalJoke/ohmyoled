@@ -26,7 +26,10 @@ pub mod graphics;
 pub mod options;
 pub mod terminal;
 
-#[cfg(feature = "hardware")]
+// The Pi backend only exists when the `hardware` feature is on AND we're
+// compiling for an ARM target — `rpi-led-matrix` is a target-conditional
+// dep in Cargo.toml, so referencing it on x86_64 would not compile.
+#[cfg(all(feature = "hardware", any(target_arch = "arm", target_arch = "aarch64")))]
 pub mod hardware;
 
 pub use backend::{Backend, MatrixMode};
@@ -88,7 +91,7 @@ impl RGBMatrix {
                 (Box::new(terminal::TerminalBackend::new()), MatrixMode::Test)
             }
             MatrixMode::Hardware => {
-                #[cfg(feature = "hardware")]
+                #[cfg(all(feature = "hardware", any(target_arch = "arm", target_arch = "aarch64")))]
                 {
                     match hardware::HardwareBackend::init(options.clone()) {
                         Ok(hw) => (Box::new(hw), MatrixMode::Hardware),
@@ -98,14 +101,14 @@ impl RGBMatrix {
                         }
                     }
                 }
-                #[cfg(not(feature = "hardware"))]
+                #[cfg(not(all(feature = "hardware", any(target_arch = "arm", target_arch = "aarch64"))))]
                 {
-                    log::warn!("hardware feature is disabled, using terminal mode");
+                    log::warn!("hardware backend unavailable on this target, using terminal mode");
                     (Box::new(terminal::TerminalBackend::new()), MatrixMode::Test)
                 }
             }
             MatrixMode::Auto => {
-                #[cfg(feature = "hardware")]
+                #[cfg(all(feature = "hardware", any(target_arch = "arm", target_arch = "aarch64")))]
                 {
                     match hardware::HardwareBackend::init(options.clone()) {
                         Ok(hw) => (Box::new(hw), MatrixMode::Hardware),
@@ -115,7 +118,7 @@ impl RGBMatrix {
                         }
                     }
                 }
-                #[cfg(not(feature = "hardware"))]
+                #[cfg(not(all(feature = "hardware", any(target_arch = "arm", target_arch = "aarch64"))))]
                 {
                     (Box::new(terminal::TerminalBackend::new()), MatrixMode::Test)
                 }

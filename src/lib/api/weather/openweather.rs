@@ -5,7 +5,9 @@
 
 use super::geo::{lookup_ipinfo, GeoLocation};
 use super::icon_table::icon_for_owm_code;
-use super::model::{CurrentWeather, DayForecast, Weather, WeatherApiSource};
+use super::model::{
+    CurrentWeather, DailyForecast, DayForecast, HourlyForecast, Weather, WeatherApiSource,
+};
 use crate::api::error::ApiError;
 use crate::api::http::get_json;
 use chrono::{DateTime, Local, TimeZone};
@@ -117,6 +119,8 @@ struct OneCallResponse {
     lon: f64,
     current: CurrentRaw,
     daily: Vec<DailyRaw>,
+    #[serde(default)]
+    hourly: Vec<HourlyRaw>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -141,17 +145,28 @@ struct WeatherEntry {
 
 #[derive(Debug, Deserialize)]
 struct DailyRaw {
+    dt: i64,
     temp: DailyTemp,
     #[serde(default)]
     pop: f32,
     #[serde(default)]
     uvi: f32,
+    #[serde(default)]
+    weather: Vec<WeatherEntry>,
 }
 
 #[derive(Debug, Deserialize)]
 struct DailyTemp {
     min: f32,
     max: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct HourlyRaw {
+    dt: i64,
+    temp: f32,
+    #[serde(default)]
+    pop: f32,
 }
 
 fn normalize(raw: OneCallResponse, loc: &GeoLocation) -> Result<Weather, ApiError> {
@@ -170,6 +185,39 @@ fn normalize(raw: OneCallResponse, loc: &GeoLocation) -> Result<Weather, ApiErro
     let is_day = now < sunset;
 
     let icon = icon_for_owm_code(weather_entry.id, is_day);
+
+    // Skip index 0 (today is already captured in `forecast.today_*`), take next 5.
+    let daily = raw
+        .daily
+        .iter()
+        .skip(1)
+        .take(5)
+        .map(|d| {
+            let day_icon = d
+                .weather
+                .first()
+                .map(|w| icon_for_owm_code(w.id, true))
+                .unwrap_or(icon);
+            DailyForecast {
+                date: ts_to_local(d.dt).date_naive(),
+                high: d.temp.max,
+                low: d.temp.min,
+                icon: day_icon,
+                precipitation_chance: (d.pop * 100.0).round() as u32,
+            }
+        })
+        .collect();
+
+    let hourly = raw
+        .hourly
+        .iter()
+        .take(12)
+        .map(|h| HourlyForecast {
+            time: ts_to_local(h.dt),
+            temp: h.temp,
+            precipitation_chance: (h.pop * 100.0).round() as u32,
+        })
+        .collect();
 
     Ok(Weather {
         api: WeatherApiSource::OpenWeather,
@@ -193,6 +241,8 @@ fn normalize(raw: OneCallResponse, loc: &GeoLocation) -> Result<Weather, ApiErro
             sunrise,
             sunset,
         },
+        hourly,
+        daily,
     })
 }
 
@@ -221,11 +271,26 @@ mod tests {
         "weather": [{"id": 800, "main": "Clear"}]
       },
       "daily": [
-        {
-          "temp": {"min": 55.0, "max": 70.0},
-          "pop": 0.1,
-          "uvi": 5.2
-        }
+        {"dt": 1700000000, "temp": {"min": 55.0, "max": 70.0}, "pop": 0.1, "uvi": 5.2,
+         "weather": [{"id": 800, "main": "Clear"}]},
+        {"dt": 1700086400, "temp": {"min": 54.0, "max": 71.0}, "pop": 0.2, "uvi": 5.5,
+         "weather": [{"id": 801, "main": "Clouds"}]},
+        {"dt": 1700172800, "temp": {"min": 53.0, "max": 69.0}, "pop": 0.4, "uvi": 4.8,
+         "weather": [{"id": 500, "main": "Rain"}]},
+        {"dt": 1700259200, "temp": {"min": 52.0, "max": 67.0}, "pop": 0.6, "uvi": 4.5,
+         "weather": [{"id": 500, "main": "Rain"}]},
+        {"dt": 1700345600, "temp": {"min": 55.0, "max": 70.0}, "pop": 0.1, "uvi": 5.0,
+         "weather": [{"id": 800, "main": "Clear"}]},
+        {"dt": 1700432000, "temp": {"min": 56.0, "max": 72.0}, "pop": 0.0, "uvi": 5.2,
+         "weather": [{"id": 800, "main": "Clear"}]}
+      ],
+      "hourly": [
+        {"dt": 1700000000, "temp": 65.0, "pop": 0.0},
+        {"dt": 1700003600, "temp": 66.0, "pop": 0.0},
+        {"dt": 1700007200, "temp": 67.0, "pop": 0.1},
+        {"dt": 1700010800, "temp": 66.0, "pop": 0.2},
+        {"dt": 1700014400, "temp": 65.0, "pop": 0.4},
+        {"dt": 1700018000, "temp": 64.0, "pop": 0.5}
       ]
     }
     "#;
@@ -246,5 +311,13 @@ mod tests {
         assert_eq!(w.current.conditions, "Clear");
         // Day-time code 800 picks the SUNNY icon entry.
         assert_eq!(w.current.icon.condition, "Sunny");
+        // Daily skips index 0 (today is in `forecast.today_*`), takes next 5.
+        assert_eq!(w.daily.len(), 5);
+        assert_eq!(w.daily[0].high, 71.0);
+        assert_eq!(w.daily[0].precipitation_chance, 20);
+        // Hourly takes the first 12 entries (or all if fewer).
+        assert_eq!(w.hourly.len(), 6);
+        assert_eq!(w.hourly[2].temp, 67.0);
+        assert_eq!(w.hourly[2].precipitation_chance, 10);
     }
 }

@@ -365,6 +365,14 @@ scheduler.
 - **Pi devcontainer linker OOM.** `cargo test` builds the bin-test
   binary, which fails to link in the devcontainer. Use `cargo test --lib`
   or `cargo test --doc` instead. The full build succeeds on the Pi.
+- **Cross-target build.** `rpi-led-matrix` is declared under
+  `[target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))'.dependencies]`
+  in `crates/ohmyoled-matrix/Cargo.toml`, so `cargo build` on x86_64
+  with the default `hardware` feature still works — the dep just isn't
+  pulled and the runtime falls back to terminal mode. Code that uses
+  `rpi_led_matrix` is gated by
+  `#[cfg(all(feature = "hardware", any(target_arch = "arm", target_arch = "aarch64")))]`.
+  ARM cross-builds (via `cross`) keep the hardware backend unchanged.
 - **Forgetting `pub mod subway;` in `src/lib/api/mod.rs` or
   `src/lib/matrix/mod.rs`** is the #1 mistake when adding a module.
   Cargo will complain about an unresolved import in `registry.rs` — that

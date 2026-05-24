@@ -7,7 +7,9 @@
 
 use super::geo::{lookup_ipinfo, GeoLocation};
 use super::icon_table::icon_for_nws_condition;
-use super::model::{CurrentWeather, DayForecast, Weather, WeatherApiSource};
+use super::model::{
+    CurrentWeather, DailyForecast, DayForecast, HourlyForecast, Weather, WeatherApiSource,
+};
 use crate::api::error::ApiError;
 use crate::api::http::get_json;
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
@@ -59,20 +61,24 @@ impl NwsClient {
             points.properties.radar_station
         );
 
-        // Parallel fan-out: hourly (for periods + conditions) + observation (for sensor data).
+        // Parallel fan-out: hourly (current + precip bars) + daily forecast
+        // (5-day strip) + observation (sensor data).
         let headers: &[(&str, &str)] = &[
             ("User-Agent", "ohmyoled/2.2.8"),
             ("Accept", "application/geo+json"),
         ];
-        let (hourly_res, obs_res) = tokio::join!(
+        let (hourly_res, daily_res, obs_res) = tokio::join!(
             get_json::<ForecastResponse>(&points.properties.forecast_hourly, headers),
+            get_json::<ForecastResponse>(&points.properties.forecast, headers),
             get_json::<ObservationResponse>(&observation_url, headers),
         );
 
         let hourly = hourly_res?;
+        // Daily is best-effort — if it 500s, the 5-day screen just skips.
+        let daily = daily_res.ok();
         let obs = obs_res?;
 
-        normalize(&loc, &points, &hourly, &obs)
+        normalize(&loc, &points, &hourly, daily.as_ref(), &obs)
     }
 }
 
@@ -88,6 +94,8 @@ struct PointsResponse {
 
 #[derive(Debug, Deserialize)]
 struct PointsProperties {
+    #[serde(rename = "forecast")]
+    forecast: String,
     #[serde(rename = "forecastHourly")]
     forecast_hourly: String,
     #[serde(rename = "radarStation")]
@@ -130,6 +138,20 @@ struct ForecastPeriod {
     start_time: Option<String>,
     #[serde(rename = "shortForecast", default)]
     short_forecast: String,
+    /// Day vs night marker on the daily endpoint. Hourly periods set this too
+    /// but it isn't meaningful there.
+    #[serde(rename = "isDaytime", default)]
+    is_daytime: bool,
+    /// `probabilityOfPrecipitation` is `{value: int|null, unitCode: "wmoUnit:percent"}`.
+    /// `default` lets the field be absent (older endpoints) without erroring.
+    #[serde(rename = "probabilityOfPrecipitation", default)]
+    pop: ProbabilityOfPrecip,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ProbabilityOfPrecip {
+    #[serde(default)]
+    value: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -164,6 +186,7 @@ fn normalize(
     loc: &GeoLocation,
     points: &PointsResponse,
     hourly: &ForecastResponse,
+    daily: Option<&ForecastResponse>,
     obs: &ObservationResponse,
 ) -> Result<Weather, ApiError> {
     // Coords come back as [lon, lat] per GeoJSON.
@@ -229,6 +252,27 @@ fn normalize(
     let is_day = now_local < sunset;
     let icon = icon_for_nws_condition(&current_period.short_forecast, is_day);
 
+    // Hourly precip bars: parse next 12 entries.
+    let hourly_forecast = hourly
+        .properties
+        .periods
+        .iter()
+        .take(12)
+        .filter_map(|p| {
+            let start = p.start_time.as_deref()?;
+            let parsed = chrono::DateTime::parse_from_rfc3339(start).ok()?;
+            Some(HourlyForecast {
+                time: parsed.with_timezone(&Local),
+                temp: p.temperature.unwrap_or(0) as f32,
+                precipitation_chance: p.pop.value.unwrap_or(0),
+            })
+        })
+        .collect();
+
+    // Daily 5-day strip: pair each "day" period with its matching "night"
+    // period on the same date so we get a high (day) + low (night).
+    let daily_forecast = daily.map(|d| collect_daily(&d.properties.periods)).unwrap_or_default();
+
     Ok(Weather {
         api: WeatherApiSource::Nws,
         lat,
@@ -251,7 +295,53 @@ fn normalize(
             sunrise,
             sunset,
         },
+        hourly: hourly_forecast,
+        daily: daily_forecast,
     })
+}
+
+/// NWS daily endpoint returns alternating day/night periods. We pair them
+/// by date, take the day's temperature as the high and the night's as the
+/// low, and skip "today" so the strip shows upcoming days only.
+fn collect_daily(periods: &[ForecastPeriod]) -> Vec<DailyForecast> {
+    use std::collections::BTreeMap;
+    let today = Local::now().date_naive();
+    let mut by_date: BTreeMap<NaiveDate, (Option<&ForecastPeriod>, Option<&ForecastPeriod>)> =
+        BTreeMap::new();
+
+    for p in periods {
+        let Some(start) = p.start_time.as_deref() else { continue };
+        let Ok(parsed) = chrono::DateTime::parse_from_rfc3339(start) else { continue };
+        let date = parsed.with_timezone(&Local).date_naive();
+        let entry = by_date.entry(date).or_default();
+        if p.is_daytime {
+            entry.0 = Some(p);
+        } else {
+            entry.1 = Some(p);
+        }
+    }
+
+    by_date
+        .into_iter()
+        .filter(|(date, _)| *date > today)
+        .take(5)
+        .map(|(date, (day, night))| {
+            let high = day.and_then(|p| p.temperature).unwrap_or(0) as f32;
+            let low = night.and_then(|p| p.temperature).unwrap_or(0) as f32;
+            let conditions = day.map(|p| p.short_forecast.as_str()).unwrap_or("");
+            let pop = day
+                .and_then(|p| p.pop.value)
+                .or_else(|| night.and_then(|p| p.pop.value))
+                .unwrap_or(0);
+            DailyForecast {
+                date,
+                high,
+                low,
+                icon: icon_for_nws_condition(conditions, true),
+                precipitation_chance: pop,
+            }
+        })
+        .collect()
 }
 
 fn sunrise_sunset_local(

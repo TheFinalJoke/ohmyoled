@@ -85,6 +85,8 @@ pub struct WeatherSection {
     pub weather_format: Option<String>,
     #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
     pub current_location_api_key: Option<String>,
+    #[serde(default)]
+    pub animation: crate::matrix::weather::WeatherAnimationMode,
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,7 +246,7 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
         })
         .map_err(|e| e.to_string())?,
     };
-    let renderer = WeatherMatrix::new_async()
+    let renderer = WeatherMatrix::new_with_animation_async(w.animation)
         .await
         .map_err(|e| format!("weather fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))

@@ -7,8 +7,12 @@ license = "GPL-2.0"
 description = "LED matrix abstraction with terminal test mode and RPi hardware backend"
 
 [features]
-# hardware feature pulls in the rpi-led-matrix FFI bindings to Henner Zeller's
-# rpi-rgb-led-matrix C++ library. Disabled on non-Pi builds.
+# `hardware` is the user-facing toggle for the Pi backend, but the actual
+# `rpi-led-matrix` dep is target-conditional below: only pulled on arm /
+# aarch64. On x86_64 the feature is effectively a no-op — the matrix falls
+# back to terminal mode at runtime. This means `cargo build` works on the
+# devcontainer without `--no-default-features`, and ARM cross-builds keep
+# the hardware backend without any workflow changes.
 default = ["hardware"]
 hardware = ["dep:rpi-led-matrix"]
 
@@ -16,6 +20,11 @@ hardware = ["dep:rpi-led-matrix"]
 log = "0.4"
 image = "0.25"
 ab_glyph = "0.2"
+
+# rpi-led-matrix is only declared for ARM targets so that x86_64 builds
+# never pull in rpi-led-matrix-sys (whose build script refuses to compile
+# off-Pi).
+[target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))'.dependencies]
 rpi-led-matrix = { version = "0.4", optional = true }
 
 [dev-dependencies]

@@ -133,7 +133,7 @@ pub fn default_config() -> Value {
     let json = r#"{
         "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
         "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
-        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial"},
+        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle"},
         "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL"},
         "sport": []
     }"#;
@@ -147,7 +147,7 @@ pub fn create_json(dev_mode: bool) -> Value {
         let dev_json = r#"{
             "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
             "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
-            "weather": {"run":true,"api":"nws","current_location":true,"current_location_api_key":"null","weather_format":"imperial"},
+            "weather": {"run":true,"api":"nws","current_location":true,"current_location_api_key":"null","weather_format":"imperial","animation":"subtle"},
             "stock": {"run":true,"api":"finnhub","api_key":"null","symbol":"AAPL"},
             "sport": [
                 {"run":true,"sport":"basketball","team_logo":{"name":"Dallas Mavericks","sportsdb_leagueid":4387,"url":"https://www.thesportsdb.com/images/media/team/badge/yqrxrs1420568796.png","sport":"basketball","shorthand":"DAL","apisportsid":138,"sportsdbid":134875,"sportsipyid":0}},

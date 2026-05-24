@@ -1,86 +1,37 @@
-//! ASCII-preview the two weather screens with synthetic data.
+//! ASCII-preview every weather screen with synthetic data.
 //!
 //! Run: `cargo run --example weather_render_check`
 //!
-//! Covers the normal SF case plus an extreme-temperature scenario (100°F /
-//! -12°F / 100% humidity) so the marquee and invisible-cell barriers can be
-//! inspected. Also prints which columns are gutters and verifies they stay
-//! dark across several scroll frames.
+//! Previews each of the six screens (hero stat-strip, horizon, comfort, UV,
+//! 5-day strip, precip bars) with normal SF data, exercises the entry-frame
+//! animations on a few screens, and shows the conditional-skip behaviour
+//! when provider data is missing.
 
-use chrono::{Duration, Local, TimeZone};
+use chrono::{Duration, Local, NaiveDate, TimeZone};
 use oledlib::api::weather::model::{
-    CurrentWeather, DayForecast, Weather, WeatherApiSource,
+    CurrentWeather, DailyForecast, DayForecast, HourlyForecast, Weather, WeatherApiSource,
 };
-use oledlib::matrix::weather::{WeatherFonts, WeatherMatrix};
+use oledlib::matrix::weather::{
+    build_screens, Screen, WeatherAnimationMode, WeatherFonts, WeatherMatrix,
+};
 use std::path::PathBuf;
-
-const ROW1_GUTTER_X: u32 = 24;
-const ROW2_GUTTER_X: [u32; 2] = [30, 31];
 
 fn ascii_preview(img: &image::RgbImage, label: &str) {
     println!("\n{label}");
     let lit: usize = img.pixels().filter(|p| p.0 != [0, 0, 0]).count();
     println!("lit pixels: {lit}");
-    // Header showing the gutter columns.
-    print!("        ");
-    for x in 0..img.width() {
-        if x == ROW1_GUTTER_X || ROW2_GUTTER_X.contains(&x) {
-            print!("|");
-        } else if x % 10 == 0 {
-            print!("{}", (x / 10) % 10);
-        } else {
-            print!(" ");
-        }
-    }
-    println!();
+    // ANSI 24-bit truecolor background per pixel, two characters wide so
+    // each "pixel" looks roughly square in a normal terminal font. Reset
+    // at the end of every row so the right margin doesn't bleed.
     for y in 0..img.height() {
-        let band = match y {
-            8..=15 => "row1   ",
-            18..=25 => "row2   ",
-            _ => "       ",
-        };
         let mut row = String::new();
         for x in 0..img.width() {
-            let p = img.get_pixel(x, y);
-            row.push(if p.0 == [0, 0, 0] { '.' } else { '#' });
+            let p = img.get_pixel(x, y).0;
+            row.push_str(&format!("\x1b[48;2;{};{};{}m  ", p[0], p[1], p[2]));
         }
-        println!("{band:>7} {row}");
+        row.push_str("\x1b[0m");
+        println!("  {row}");
     }
-}
-
-fn check_gutters(m: &WeatherMatrix, data: &Weather, screen: u8) -> bool {
-    let mut ok = true;
-    for frame in [0i32, 5, 13, 27, 40, 80, 160] {
-        let img = match screen {
-            1 => m.draw_screen_one(data, frame),
-            _ => m.draw_screen_two(data, frame),
-        };
-        // Row-1 gutter (single column) on temp-row band.
-        for y in 8..16 {
-            let p = img.get_pixel(ROW1_GUTTER_X, y).0;
-            if p != [0, 0, 0] {
-                eprintln!(
-                    "  ✗ screen {screen} frame {frame}: row1 gutter (x={ROW1_GUTTER_X},y={y}) lit {p:?}"
-                );
-                ok = false;
-            }
-        }
-        // Row-2 gutter (two columns) on H/L band — only screen 1.
-        if screen == 1 {
-            for &x in &ROW2_GUTTER_X {
-                for y in 18..26 {
-                    let p = img.get_pixel(x, y).0;
-                    if p != [0, 0, 0] {
-                        eprintln!(
-                            "  ✗ screen {screen} frame {frame}: row2 gutter (x={x},y={y}) lit {p:?}"
-                        );
-                        ok = false;
-                    }
-                }
-            }
-        }
-    }
-    ok
 }
 
 fn sf_weather() -> Weather {
@@ -107,47 +58,104 @@ fn sf_weather() -> Weather {
             sunrise: now - Duration::hours(6),
             sunset: now + Duration::hours(8),
         },
+        hourly: (0..12)
+            .map(|i| HourlyForecast {
+                time: now + Duration::hours(i),
+                temp: 68.0 + (i as f32 / 2.0),
+                // Build a wave: 0, 15, 35, 60, 80, 65, 40, 20, 10, 0, 0, 0
+                precipitation_chance: match i {
+                    0 => 0,
+                    1 => 15,
+                    2 => 35,
+                    3 => 60,
+                    4 => 80,
+                    5 => 65,
+                    6 => 40,
+                    7 => 20,
+                    8 => 10,
+                    _ => 0,
+                },
+            })
+            .collect(),
+        daily: (1..=5)
+            .map(|i| DailyForecast {
+                date: NaiveDate::from_ymd_opt(2024, 6, 15 + i).unwrap(),
+                high: 74.0 - i as f32,
+                low: 56.0 - (i as f32 / 2.0),
+                icon: if i == 3 {
+                    oledlib::api::weather::icon_table::RAIN
+                } else if i % 2 == 0 {
+                    oledlib::api::weather::icon_table::PARTLY_CLOUDY
+                } else {
+                    oledlib::api::weather::icon_table::SUNNY
+                },
+                precipitation_chance: match i {
+                    3 => 70,
+                    4 => 50,
+                    _ => 10,
+                },
+            })
+            .collect(),
     }
 }
 
-fn main() {
+fn build(mode: WeatherAnimationMode) -> WeatherMatrix {
     let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts");
     let fonts = WeatherFonts {
         body: repo.join("04B_03B_.TTF"),
         icon: repo.join("weathericons.ttf"),
         temp: repo.join("BMmini.TTF"),
+        small: repo.join("4x6.bdf"),
     };
-    let m = WeatherMatrix::with_fonts(fonts).expect("font load");
+    WeatherMatrix::with_fonts_and_animation(fonts, mode).expect("font load")
+}
 
-    // 1. Normal SF day.
+fn main() {
+    let m = build(WeatherAnimationMode::Subtle);
     let normal = sf_weather();
-    println!("\nscreen1 scroll frames (normal): {}", m.screen_one_scroll_frames(&normal));
-    println!("screen2 scroll frames (normal): {}", m.screen_two_scroll_frames(&normal));
-    ascii_preview(&m.draw_screen_one(&normal, 0), "=== Screen 1 — normal SF (frame 0) ===");
-    ascii_preview(&m.draw_screen_two(&normal, 0), "=== Screen 2 — normal SF (frame 0) ===");
 
-    // 2. Extreme temps — 100°F current, -12°F low, 100% humidity & precip.
-    let mut extreme = sf_weather();
-    extreme.current.temp = 100.0;
-    extreme.current.feels_like = 105.0;
-    extreme.forecast.today_high = 110.0;
-    extreme.forecast.today_low = -12.0;
-    extreme.current.humidity = 100;
-    extreme.current.precipitation_chance = 100;
-    println!("\nscreen1 scroll frames (extreme): {}", m.screen_one_scroll_frames(&extreme));
-    println!("screen2 scroll frames (extreme): {}", m.screen_two_scroll_frames(&extreme));
-    ascii_preview(&m.draw_screen_one(&extreme, 0), "=== Screen 1 — extreme (frame 0, settled) ===");
-    ascii_preview(&m.draw_screen_one(&extreme, 8), "=== Screen 1 — extreme (frame 8, mid-marquee) ===");
-    ascii_preview(&m.draw_screen_two(&extreme, 0), "=== Screen 2 — extreme (frame 0, settled) ===");
-    ascii_preview(&m.draw_screen_two(&extreme, 8), "=== Screen 2 — extreme (frame 8, mid-marquee) ===");
+    // ---- All six screens, sample frames ----
+    ascii_preview(&m.frame_hero_stats(&normal, 0), "=== 1. Hero stat-strip — clear day, frame 0 ===");
+    ascii_preview(&m.frame_horizon(&normal, 0), "=== 2. Horizon day-length bar ===");
+    ascii_preview(&m.frame_comfort(&normal, 30), "=== 3. Comfort — bars filled ===");
+    ascii_preview(&m.frame_uv(&normal, 0), "=== 4. UV gauge ===");
+    ascii_preview(&m.frame_forecast_strip(&normal, 30), "=== 5. 3-day forecast strip ===");
+    ascii_preview(&m.frame_precip_bars(&normal, 30), "=== 6. Precip-chance bars ===");
 
-    // 3. Programmatic gutter audit.
-    println!("\n--- gutter audit ---");
-    let s1_ok = check_gutters(&m, &extreme, 1);
-    let s2_ok = check_gutters(&m, &extreme, 2);
-    if s1_ok && s2_ok {
-        println!("  ✓ all gutter columns dark across frames 0/5/13/27/40/80/160 on both screens");
-    } else {
-        std::process::exit(1);
+    // ---- Entry-frame animations ----
+    ascii_preview(&m.frame_comfort(&normal, 0), "=== Comfort — entry frame 0 (bars empty) ===");
+    ascii_preview(&m.frame_forecast_strip(&normal, 0), "=== Forecast — frame 0 (first cell only) ===");
+    ascii_preview(&m.frame_precip_bars(&normal, 0), "=== Precip — frame 0 (bars hidden) ===");
+
+    // ---- Hero across conditions to exercise animated icons ----
+    let mut rainy = sf_weather();
+    rainy.current.icon = oledlib::api::weather::icon_table::RAIN;
+    rainy.current.conditions = "Light rain".into();
+    ascii_preview(&m.frame_hero_stats(&rainy, 5), "=== Hero — rain SUBTLE frame 5 ===");
+
+    let prominent = build(WeatherAnimationMode::Prominent);
+    let mut storm = sf_weather();
+    storm.current.icon = oledlib::api::weather::icon_table::THUNDERSTORM;
+    storm.current.conditions = "Thunderstorm".into();
+    ascii_preview(&prominent.frame_hero_stats(&storm, 0), "=== Hero — storm PROMINENT (lightning) ===");
+
+    let mut snowy = sf_weather();
+    snowy.current.icon = oledlib::api::weather::icon_table::SNOW;
+    snowy.current.conditions = "Snow".into();
+    ascii_preview(&m.frame_hero_stats(&snowy, 8), "=== Hero — snow SUBTLE frame 8 ===");
+
+    // ---- Conditional skip ----
+    let mut nws_like = sf_weather();
+    nws_like.current.uv = None;
+    nws_like.daily.clear();
+    nws_like.hourly.clear();
+    println!("\n=== NWS-like skip (no UV / no daily / no hourly) ===");
+    for s in build_screens(&nws_like) {
+        println!("  - {s:?}");
     }
+    assert_eq!(
+        build_screens(&nws_like),
+        vec![Screen::Hero, Screen::Horizon, Screen::Comfort]
+    );
+    println!("  (expected: [Hero, Horizon, Comfort])");
 }

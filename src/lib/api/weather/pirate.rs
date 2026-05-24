@@ -10,7 +10,9 @@
 
 use super::geo::{lookup_ipinfo, GeoLocation};
 use super::icon_table::icon_for_pirate_icon;
-use super::model::{CurrentWeather, DayForecast, Weather, WeatherApiSource};
+use super::model::{
+    CurrentWeather, DailyForecast, DayForecast, HourlyForecast, Weather, WeatherApiSource,
+};
 use crate::api::error::ApiError;
 use crate::api::http::get_json;
 use chrono::{DateTime, Local, TimeZone};
@@ -77,6 +79,8 @@ struct ForecastResponse {
     longitude: f64,
     currently: Currently,
     daily: Daily,
+    #[serde(default)]
+    hourly: Option<Hourly>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -106,6 +110,10 @@ struct Daily {
 
 #[derive(Debug, Deserialize)]
 struct DailyDay {
+    #[serde(default)]
+    time: i64,
+    #[serde(default)]
+    icon: Option<String>,
     #[serde(rename = "temperatureMax", default)]
     temperature_max: f32,
     #[serde(rename = "temperatureMin", default)]
@@ -114,6 +122,22 @@ struct DailyDay {
     sunrise_time: i64,
     #[serde(rename = "sunsetTime", default)]
     sunset_time: i64,
+    #[serde(rename = "precipProbability", default)]
+    precip_probability: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct Hourly {
+    data: Vec<HourlyHour>,
+}
+
+#[derive(Debug, Deserialize)]
+struct HourlyHour {
+    time: i64,
+    #[serde(default)]
+    temperature: f32,
+    #[serde(rename = "precipProbability", default)]
+    precip_probability: f32,
 }
 
 fn normalize(raw: ForecastResponse, loc: &GeoLocation) -> Weather {
@@ -129,6 +153,44 @@ fn normalize(raw: ForecastResponse, loc: &GeoLocation) -> Weather {
 
     let icon_str = raw.currently.icon.as_deref().unwrap_or("clear-day");
     let icon = icon_for_pirate_icon(icon_str, is_day);
+
+    let daily = raw
+        .daily
+        .data
+        .iter()
+        .skip(1)
+        .take(5)
+        .map(|d| {
+            let day_icon = d
+                .icon
+                .as_deref()
+                .map(|s| icon_for_pirate_icon(s, true))
+                .unwrap_or(icon);
+            DailyForecast {
+                date: epoch_to_local(d.time).date_naive(),
+                high: d.temperature_max,
+                low: d.temperature_min,
+                icon: day_icon,
+                precipitation_chance: (d.precip_probability * 100.0).round() as u32,
+            }
+        })
+        .collect();
+
+    let hourly = raw
+        .hourly
+        .as_ref()
+        .map(|h| {
+            h.data
+                .iter()
+                .take(12)
+                .map(|h| HourlyForecast {
+                    time: epoch_to_local(h.time),
+                    temp: h.temperature,
+                    precipitation_chance: (h.precip_probability * 100.0).round() as u32,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     Weather {
         api: WeatherApiSource::PirateWeather,
@@ -158,6 +220,8 @@ fn normalize(raw: ForecastResponse, loc: &GeoLocation) -> Weather {
             sunrise,
             sunset,
         },
+        hourly,
+        daily,
     }
 }
 
@@ -187,12 +251,27 @@ mod tests {
         "precipProbability": 0.1
       },
       "daily": {
-        "data": [{
-          "temperatureMax": 70.0,
-          "temperatureMin": 55.0,
-          "sunriseTime": 1699970000,
-          "sunsetTime": 1700010000
-        }]
+        "data": [
+          {"time": 1700000000, "icon": "clear-day",
+           "temperatureMax": 70.0, "temperatureMin": 55.0,
+           "sunriseTime": 1699970000, "sunsetTime": 1700010000,
+           "precipProbability": 0.1},
+          {"time": 1700086400, "icon": "partly-cloudy-day",
+           "temperatureMax": 71.0, "temperatureMin": 54.0,
+           "sunriseTime": 1700056400, "sunsetTime": 1700096400,
+           "precipProbability": 0.3},
+          {"time": 1700172800, "icon": "rain",
+           "temperatureMax": 68.0, "temperatureMin": 53.0,
+           "sunriseTime": 1700142800, "sunsetTime": 1700182800,
+           "precipProbability": 0.7}
+        ]
+      },
+      "hourly": {
+        "data": [
+          {"time": 1700000000, "temperature": 65.0, "precipProbability": 0.0},
+          {"time": 1700003600, "temperature": 66.0, "precipProbability": 0.0},
+          {"time": 1700007200, "temperature": 67.0, "precipProbability": 0.2}
+        ]
       }
     }
     "#;
@@ -210,6 +289,12 @@ mod tests {
         assert_eq!(w.current.icon.condition, "Sunny");
         assert_eq!(w.forecast.today_high, 70.0);
         assert_eq!(w.forecast.today_low, 55.0);
+        // Skip today, take next 5 (only 2 left in fixture).
+        assert_eq!(w.daily.len(), 2);
+        assert_eq!(w.daily[0].high, 71.0);
+        assert_eq!(w.daily[0].precipitation_chance, 30);
+        assert_eq!(w.hourly.len(), 3);
+        assert_eq!(w.hourly[2].precipitation_chance, 20);
     }
 
     #[test]

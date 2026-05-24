@@ -22,6 +22,7 @@ api_key = "YOUR_OPENWEATHER_KEY"
 current_location = true
 current_location_api_key = "YOUR_IPINFO_TOKEN"
 weather_format = "imperial"   # imperial | metric
+animation = "subtle"          # off | subtle | prominent
 
 [[stock]]
 run = true
