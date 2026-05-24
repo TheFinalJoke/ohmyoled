@@ -67,6 +67,18 @@ const ANIM_TICK: Duration = Duration::from_millis(83);
 /// cells pulsing in lockstep.
 const BAR_PHASE_STEP: f32 = 0.07;
 
+// Top-right curtain area — a small rectangle where vertical "aurora
+// strands" wobble horizontally. Kept clear of the "Kp" label
+// (x≈1..8), the centered big digit (x≈26..38), and the bar (rows
+// 22..=24), so the curtains coexist with everything else.
+const CURTAIN_X_MIN: i32 = 50;
+const CURTAIN_X_MAX: i32 = 62;
+const CURTAIN_Y_MIN: i32 = 0;
+const CURTAIN_Y_MAX: i32 = 13;
+const CURTAIN_N: usize = 2;
+/// X positions of each curtain strand's resting (un-wobbled) center.
+const CURTAIN_BASE_XS: [i32; CURTAIN_N] = [53, 60];
+
 #[derive(Debug, Clone)]
 pub struct AuroraFonts {
     pub label: PathBuf,
@@ -120,6 +132,12 @@ impl AuroraMatrix {
     /// shape the digit's brightness pulse and the bar's shimmer wave.
     pub fn draw_frame(&self, data: &AuroraReading, tick: u32) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
+
+        // Background layer: aurora-curtain wobble in the top-right corner.
+        // Drawn first so any other element drawn later (label / digit /
+        // bar / banner) overlays cleanly without leaving curtain pixels
+        // showing through letterforms.
+        draw_curtains(&mut img, data.kp, tick);
 
         // "Kp" label, top-left — never animated, anchors the eye.
         let label = "Kp";
@@ -240,6 +258,81 @@ fn scale_color(c: Color, factor: f32) -> Color {
         r: (c.r as f32 * f).round() as u8,
         g: (c.g as f32 * f).round() as u8,
         b: (c.b as f32 * f).round() as u8,
+    }
+}
+
+/// Curtain wobble parameters per Kp:
+///   `amp_px`    — peak horizontal displacement of a strand (pixels)
+///   `vert_px`   — vertical wavelength (pixels per full sine cycle)
+///   `scroll`    — frames per full scroll cycle (smaller = faster)
+fn curtain_params(kp: u8) -> (f32, f32, u32) {
+    match kp {
+        0 => (0.0, 1.0, 1),
+        1..=2 => (1.0, 12.0, 72),
+        3 => (1.5, 10.0, 54),
+        4 => (2.0, 8.0, 42),
+        5..=6 => (2.5, 7.0, 28),
+        _ => (3.5, 5.0, 18),
+    }
+}
+
+/// Maximum brightness multiplier for the curtain layer at a given Kp.
+/// Kept distinctly below 1.0 for low Kp so the curtains read as a faint
+/// background glow rather than fighting the digit for attention.
+fn curtain_max_brightness(kp: u8) -> f32 {
+    match kp {
+        0 => 0.0,
+        1..=2 => 0.35,
+        3 => 0.50,
+        4 => 0.70,
+        5..=6 => 0.85,
+        _ => 1.00,
+    }
+}
+
+/// Draw the top-right aurora-curtain wobble. Each strand is a vertical
+/// sinusoid traced pixel-by-pixel; per-strand phase offsets make
+/// neighboring strands sway independently. Pixel brightness peaks at
+/// the wave crests and tapers toward the top/bottom of the curtain
+/// rectangle so the strands look like glowing arcs rather than solid
+/// bars. Bounded strictly to the curtain rectangle — anything outside
+/// is dropped to avoid bleeding into the label/digit/bar.
+fn draw_curtains(img: &mut RgbImage, kp: u8, tick: u32) {
+    if kp == 0 {
+        return;
+    }
+    let (amp, vert_px, scroll_frames) = curtain_params(kp);
+    let max_b = curtain_max_brightness(kp);
+    let base_color = kp_color(kp);
+    let scroll_phase = tick as f32 / scroll_frames as f32;
+    let curtain_h = (CURTAIN_Y_MAX - CURTAIN_Y_MIN) as f32;
+    let curtain_mid = (CURTAIN_Y_MIN + CURTAIN_Y_MAX) as f32 / 2.0;
+
+    for (idx, &base_x) in CURTAIN_BASE_XS.iter().enumerate() {
+        let strand_phase = idx as f32 * 0.5;
+        for y in CURTAIN_Y_MIN..=CURTAIN_Y_MAX {
+            let angle = (y as f32 / vert_px + scroll_phase + strand_phase)
+                * std::f32::consts::TAU;
+            let osc = angle.sin(); // -1..1
+            let px = base_x + (osc * amp).round() as i32;
+            if !(CURTAIN_X_MIN..=CURTAIN_X_MAX).contains(&px) {
+                continue;
+            }
+
+            // Crest-bright, taper top/bottom: |sin| peaks at crests; a
+            // linear cosine taper attenuates the strand endpoints so the
+            // strand fades into the surrounding darkness rather than
+            // ending abruptly.
+            let crest = 0.5 + 0.5 * osc.abs();
+            let dist_from_mid = (y as f32 - curtain_mid).abs() / (curtain_h / 2.0);
+            let taper = (1.0 - dist_from_mid * 0.7).clamp(0.0, 1.0);
+            let brightness = max_b * crest * taper;
+            if brightness < 0.05 {
+                continue;
+            }
+            let color = scale_color(base_color, brightness);
+            img.put_pixel(px as u32, y as u32, Rgb([color.r, color.g, color.b]));
+        }
     }
 }
 
@@ -432,6 +525,104 @@ mod tests {
                     f >= floor - 1e-6 && f <= 1.0 + 1e-6,
                     "kp={kp} tick={tick}: factor {f} outside [{floor}, 1.0]"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn curtains_dark_at_kp_zero() {
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let img = m.draw_frame(&sample(0, false), 0);
+        for y in CURTAIN_Y_MIN as u32..=CURTAIN_Y_MAX as u32 {
+            for x in CURTAIN_X_MIN as u32..=CURTAIN_X_MAX as u32 {
+                assert_eq!(
+                    img.get_pixel(x, y).0,
+                    [0, 0, 0],
+                    "curtain area must be dark at Kp=0 — found light at ({x},{y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn curtains_light_pixels_at_nonzero_kp() {
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        for kp in 1..=9u8 {
+            // Sample across several ticks so we don't accidentally land on a
+            // frame where every strand pixel happens to be sub-threshold.
+            let lit_total: usize = (0u32..16)
+                .map(|t| {
+                    let img = m.draw_frame(&sample(kp, kp >= 5), t);
+                    (CURTAIN_Y_MIN as u32..=CURTAIN_Y_MAX as u32)
+                        .flat_map(|y| {
+                            (CURTAIN_X_MIN as u32..=CURTAIN_X_MAX as u32)
+                                .map(move |x| (x, y))
+                        })
+                        .filter(|&(x, y)| img.get_pixel(x, y).0 != [0, 0, 0])
+                        .count()
+                })
+                .sum();
+            assert!(
+                lit_total > 0,
+                "kp={kp}: curtain area should light up across the animation"
+            );
+        }
+    }
+
+    #[test]
+    fn curtains_move_horizontally_across_frames() {
+        // Pick a Kp where the wobble amplitude is at least 2 px and snap
+        // two frames a quarter-period apart. The two frames must differ
+        // somewhere in the curtain rectangle — i.e. the strands moved.
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let s = sample(8, true);
+        let (_amp, _vert, scroll) = curtain_params(8);
+        let f0 = m.draw_frame(&s, 0);
+        let f_q = m.draw_frame(&s, scroll / 4);
+        let mut diffs = 0usize;
+        for y in CURTAIN_Y_MIN as u32..=CURTAIN_Y_MAX as u32 {
+            for x in CURTAIN_X_MIN as u32..=CURTAIN_X_MAX as u32 {
+                if f0.get_pixel(x, y) != f_q.get_pixel(x, y) {
+                    diffs += 1;
+                }
+            }
+        }
+        assert!(diffs > 1, "curtains should move across frames at Kp=8, got {diffs}");
+    }
+
+    #[test]
+    fn curtains_stay_inside_their_bounding_box() {
+        // Vital: curtains must never paint into the label / digit / bar.
+        // Subtract a frame with curtains from a frame without (Kp=0) and
+        // assert all the differences land strictly inside the rectangle.
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let baseline = m.draw_frame(&sample(0, false), 0);
+        let s = sample(8, true);
+        for t in 0..32 {
+            let img = m.draw_frame(&s, t);
+            for y in 0..PANEL_H {
+                for x in 0..PANEL_W {
+                    if img.get_pixel(x, y) != baseline.get_pixel(x, y) {
+                        // Either the change is inside the curtain rect, OR
+                        // it belongs to one of the other animated layers
+                        // (digit baseline ~5..=20, bar rows 22..=24, alert
+                        // banner row 31). Curtain pixels must always be
+                        // inside the rect.
+                        let in_curtain = (CURTAIN_X_MIN as u32..=CURTAIN_X_MAX as u32).contains(&x)
+                            && (CURTAIN_Y_MIN as u32..=CURTAIN_Y_MAX as u32).contains(&y);
+                        // Digit glyphs (04b24 18pt, baseline y=20) span the
+                        // full ascent above their baseline. Bar at rows
+                        // 22..=24. Banner glyphs (label font 8pt, baseline
+                        // y=31) span ~rows 24..=31.
+                        let in_digit_row_band = (4..=22).contains(&y);
+                        let in_bar_rows = (22..=24).contains(&y);
+                        let in_banner_rows = (24..PANEL_H).contains(&y);
+                        assert!(
+                            in_curtain || in_digit_row_band || in_bar_rows || in_banner_rows,
+                            "unexpected animated pixel at ({x},{y}) outside known layers"
+                        );
+                    }
+                }
             }
         }
     }
