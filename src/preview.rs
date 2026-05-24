@@ -246,6 +246,7 @@ async fn preview_iss(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String>
 async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
     let mut r = QuakeMatrix::with_fonts_async(QuakeFonts {
         body: fonts.join("04B_03B_.TTF"),
+        small: fonts.join("4x6.bdf"),
     })
     .await?;
     // Cycle through magnitude bands + a long region + quiet, so each visual

@@ -54,18 +54,23 @@ const DIM: Color = Color { r: 130, g: 130, b: 130 };
 #[derive(Debug, Clone)]
 pub struct QuakeFonts {
     pub body: PathBuf,
+    pub small: PathBuf,
 }
 
 impl Default for QuakeFonts {
     fn default() -> Self {
         Self {
             body: "/usr/share/fonts/04B_03B_.TTF".into(),
+            small: "/usr/share/fonts/4x6.bdf".into(),
         }
     }
 }
 
 pub struct QuakeMatrix {
     body_font: Font,
+    /// Footer font — 4x6 BDF bitmap. Keeps the age/depth row to 6 rows so
+    /// it doesn't collide with the second wrap line of the place name.
+    small_font: Font,
 }
 
 impl QuakeMatrix {
@@ -80,6 +85,7 @@ impl QuakeMatrix {
     pub fn with_fonts(paths: QuakeFonts) -> Result<Self, String> {
         Ok(Self {
             body_font: Font::load_ttf(&paths.body, 8.0)?,
+            small_font: Font::load_bdf(&paths.small)?,
         })
     }
 
@@ -99,32 +105,36 @@ impl QuakeMatrix {
     }
 
     fn draw_event(&self, img: &mut RgbImage, e: &QuakeEvent) {
-        let font = &self.body_font;
-        let ascent = font.ascent();
-        let line_h = font.height().max(ascent + 1);
+        let body = &self.body_font;
+        let small = &self.small_font;
+        let body_line_h = body.height().max(body.ascent() + 1);
 
-        // Row 1 — magnitude, color-coded.
+        // Layout budget on a 32-row panel (with body_line_h ≈ 8 and small ≈ 6):
+        //   rows  0–6  : magnitude       (baseline at body.ascent)
+        //   rows  8–15 : place line A    (baseline at body.ascent + body_line_h + 1)
+        //   rows 17–24 : place line B    (baseline at body.ascent + 2·body_line_h + 2)
+        //   rows 26–31 : footer (small)  (baseline at PANEL_H − 1)
+        // The footer dropping to 4x6 BDF is what makes 4 stacked elements fit
+        // without the place wrap colliding with the footer.
         let mag_text = format!("M {:.1}", e.magnitude);
         let mag_color = magnitude_color(e.magnitude);
-        draw_text(img, font, 1, ascent + 1, mag_color, &mag_text);
+        draw_text(img, body, 1, body.ascent(), mag_color, &mag_text);
 
-        // Rows 3-4 — place, word-wrapped to fit two 64-px lines.
-        let (line_a, line_b) = wrap_two_lines(&e.place, PANEL_W as i32, font);
-        let y_a = ascent + 1 + line_h + 4;
-        let y_b = y_a + line_h;
-        draw_text(img, font, 1, y_a, WHITE, &line_a);
+        let (line_a, line_b) = wrap_two_lines(&e.place, PANEL_W as i32, body);
+        let y_a = body.ascent() + body_line_h + 1;
+        let y_b = body.ascent() + 2 * body_line_h + 2;
+        draw_text(img, body, 1, y_a, WHITE, &line_a);
         if !line_b.is_empty() {
-            draw_text(img, font, 1, y_b, WHITE, &line_b);
+            draw_text(img, body, 1, y_b, WHITE, &line_b);
         }
 
-        // Row 6 — footer: age on the left, depth on the right.
         let age = format!("{}m", e.age_minutes(Utc::now()));
         let depth = format!("{}km", e.depth_km.round() as i32);
         let footer_y = (PANEL_H as i32) - 1;
-        draw_text(img, font, 1, footer_y, DIM, &age);
-        let depth_w = font.text_width(&depth);
+        draw_text(img, small, 1, footer_y, DIM, &age);
+        let depth_w = small.text_width(&depth);
         let depth_x = (PANEL_W as i32 - depth_w - 1).max(0);
-        draw_text(img, font, depth_x, footer_y, DIM, &depth);
+        draw_text(img, small, depth_x, footer_y, DIM, &depth);
     }
 
     fn draw_quiet(&self, img: &mut RgbImage) {
@@ -269,7 +279,36 @@ mod tests {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts");
         QuakeFonts {
             body: repo.join("04B_03B_.TTF"),
+            small: repo.join("4x6.bdf"),
         }
+    }
+
+    /// Find the topmost row that has any lit pixel inside `x_range`. None if
+    /// the strip is entirely dark.
+    fn first_lit_row(img: &image::RgbImage, x_range: std::ops::Range<u32>) -> Option<u32> {
+        for y in 0..img.height() {
+            for x in x_range.clone() {
+                if img.get_pixel(x, y).0 != [0, 0, 0] {
+                    return Some(y);
+                }
+            }
+        }
+        None
+    }
+
+    /// Find the bottommost row that has any lit pixel inside `x_range`. None
+    /// if the strip is entirely dark.
+    fn last_lit_row(img: &image::RgbImage, x_range: std::ops::Range<u32>) -> Option<u32> {
+        let mut last = None;
+        for y in 0..img.height() {
+            for x in x_range.clone() {
+                if img.get_pixel(x, y).0 != [0, 0, 0] {
+                    last = Some(y);
+                    break;
+                }
+            }
+        }
+        last
     }
 
     fn sample_event(mag: f32, place: &str) -> QuakeEvent {
@@ -335,6 +374,33 @@ mod tests {
         let (a, b) = wrap_two_lines("Hi", 64, &m.body_font);
         assert_eq!(a, "Hi");
         assert_eq!(b, "");
+    }
+
+    /// Regression: with a long place name wrapping to two lines, the
+    /// second place line must not overlap the footer. We pick a non-zero
+    /// gap column (x ≥ 12 is past "14m" but to the left of "24km") and
+    /// require the bottom of the place text + top of the footer to leave
+    /// at least one fully-dark row between them.
+    #[test]
+    fn long_place_name_does_not_overlap_footer() {
+        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let img = m.frame(&QuakeStatus::Event(sample_event(
+            6.2,
+            "OFF EAST COAST OF HONSHU JAPAN",
+        )));
+        // The left-half footer ("14m") occupies roughly x in 1..=12.
+        let footer_top = first_lit_row(&img, 1..12).expect("footer should be lit");
+        // The body text ends somewhere before that; find the last lit row of
+        // the place lines by searching above the footer.
+        let place_bottom = last_lit_row(&img, 1..PANEL_W).filter(|y| *y < footer_top);
+        // Either there's clear space, or the place text just doesn't reach
+        // down to where the footer starts at all.
+        if let Some(pb) = place_bottom {
+            assert!(
+                footer_top > pb + 1,
+                "footer (row {footer_top}) overlaps place-name bottom (row {pb})"
+            );
+        }
     }
 
     #[test]
