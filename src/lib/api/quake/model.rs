@@ -45,13 +45,21 @@ pub enum QuakeStatus {
 
 #[derive(Debug, Clone)]
 pub struct QuakeEvent {
+    /// Numeric magnitude — kept around purely for color-band selection in
+    /// the renderer. The textual `"M 6.2"` form is already inside `title`.
     pub magnitude: f32,
-    /// USGS "place" string, e.g. `"73km SSE of Yelizovo, Russia"`.
-    pub place: String,
+    /// USGS-curated title, e.g. `"M 6.2 - OFF EAST COAST OF HONSHU, JAPAN"`.
+    /// Prefer this over assembling `M {mag} - {place}` ourselves; USGS
+    /// occasionally tweaks formatting per event.
+    pub title: String,
     /// Origin time of the event.
     pub origin: DateTime<Utc>,
     /// Depth below the surface, km.
     pub depth_km: f32,
+    /// Number of "Did You Feel It?" community reports submitted for this
+    /// event. `None` when USGS has no reports yet (common for offshore /
+    /// remote / small events).
+    pub felt: Option<u32>,
 }
 
 impl QuakeEvent {

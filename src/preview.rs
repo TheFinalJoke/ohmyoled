@@ -254,21 +254,24 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
     let now = chrono::Utc::now() - ChDuration::minutes(14);
     let big = QuakeStatus::Event(QuakeEvent {
         magnitude: 6.2,
-        place: "OFF EAST COAST OF HONSHU JAPAN".into(),
+        title: "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN".into(),
         origin: now,
         depth_km: 24.0,
+        felt: Some(482),
     });
     let medium = QuakeStatus::Event(QuakeEvent {
         magnitude: 4.7,
-        place: "120km SW of San Francisco, CA".into(),
+        title: "M 4.7 - 120km SW of San Francisco, CA".into(),
         origin: now,
         depth_km: 8.0,
+        felt: Some(37),
     });
     let small = QuakeStatus::Event(QuakeEvent {
         magnitude: 3.1,
-        place: "Iceland".into(),
+        title: "M 3.1 - 14 km NE of Reykjavík, Iceland".into(),
         origin: now,
         depth_km: 5.0,
+        felt: None,
     });
     let quiet = QuakeStatus::Quiet;
     let cycle = [big, medium, small, quiet];

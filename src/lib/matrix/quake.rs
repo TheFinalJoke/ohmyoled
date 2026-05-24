@@ -48,7 +48,6 @@ const PANEL_H: u32 = 32;
 const GREEN: Color = Color { r: 0, g: 220, b: 60 };
 const AMBER: Color = Color { r: 255, g: 170, b: 0 };
 const RED: Color = Color { r: 255, g: 30, b: 30 };
-const WHITE: Color = Color { r: 255, g: 255, b: 255 };
 const DIM: Color = Color { r: 130, g: 130, b: 130 };
 
 #[derive(Debug, Clone)]
@@ -109,29 +108,30 @@ impl QuakeMatrix {
         let small = &self.small_font;
         let body_line_h = body.height().max(body.ascent() + 1);
 
-        // Layout budget on a 32-row panel (with body_line_h ≈ 8 and small ≈ 6):
-        //   rows  0–6  : magnitude       (baseline at body.ascent)
-        //   rows  8–15 : place line A    (baseline at body.ascent + body_line_h + 1)
-        //   rows 17–24 : place line B    (baseline at body.ascent + 2·body_line_h + 2)
-        //   rows 26–31 : footer (small)  (baseline at PANEL_H − 1)
-        // The footer dropping to 4x6 BDF is what makes 4 stacked elements fit
-        // without the place wrap colliding with the footer.
-        let mag_text = format!("M {:.1}", e.magnitude);
+        // Layout budget on a 32-row panel (body_line_h ≈ 8, small ≈ 6):
+        //   rows  0–6  : title line 1                (baseline at body.ascent)
+        //   rows  8–15 : title line 2                (baseline at body.ascent + body_line_h + 1)
+        //   rows 17–24 : title line 3                (baseline at body.ascent + 2·body_line_h + 2)
+        //   rows 26–31 : footer (small font)         (baseline at PANEL_H − 1)
+        // The whole title is color-coded by magnitude — the "M X.X -" prefix
+        // is already embedded in the USGS-curated title string, so we don't
+        // render it twice.
         let mag_color = magnitude_color(e.magnitude);
-        draw_text(img, body, 1, body.ascent(), mag_color, &mag_text);
-
-        let (line_a, line_b) = wrap_two_lines(&e.place, PANEL_W as i32, body);
-        let y_a = body.ascent() + body_line_h + 1;
-        let y_b = body.ascent() + 2 * body_line_h + 2;
-        draw_text(img, body, 1, y_a, WHITE, &line_a);
-        if !line_b.is_empty() {
-            draw_text(img, body, 1, y_b, WHITE, &line_b);
+        let lines = wrap_into_lines(&e.title, PANEL_W as i32, body, 3);
+        for (i, line) in lines.iter().enumerate() {
+            let y = body.ascent() + i as i32 * (body_line_h + 1);
+            draw_text(img, body, 1, y, mag_color, line);
         }
 
-        let age = format!("{}m", e.age_minutes(Utc::now()));
+        // Footer: "felt N" when populated (more interesting than age),
+        // otherwise just the origin-age. Depth always on the right.
+        let left = match e.felt {
+            Some(n) => format!("felt {n}"),
+            None => format!("{}m ago", e.age_minutes(Utc::now())),
+        };
         let depth = format!("{}km", e.depth_km.round() as i32);
         let footer_y = (PANEL_H as i32) - 1;
-        draw_text(img, small, 1, footer_y, DIM, &age);
+        draw_text(img, small, 1, footer_y, DIM, &left);
         let depth_w = small.text_width(&depth);
         let depth_x = (PANEL_W as i32 - depth_w - 1).max(0);
         draw_text(img, small, depth_x, footer_y, DIM, &depth);
@@ -195,64 +195,54 @@ fn magnitude_color(mag: f32) -> Color {
     }
 }
 
-/// Word-wrap `text` into at most two lines fitting `max_px` each. Long single
-/// words are character-truncated with a trailing `…`. Returns `(line1, line2)`
-/// where `line2` may be empty if the entire text fits on one line.
-fn wrap_two_lines(text: &str, max_px: i32, font: &Font) -> (String, String) {
+/// Word-wrap `text` into at most `max_lines` lines, each fitting `max_px`.
+/// Long single words are character-truncated. Anything left over after the
+/// last line gets an ellipsis tacked onto the final line to signal
+/// truncation. Returns at most `max_lines` non-empty lines.
+fn wrap_into_lines(text: &str, max_px: i32, font: &Font, max_lines: usize) -> Vec<String> {
     let text = text.trim();
-    if text.is_empty() {
-        return (String::new(), String::new());
-    }
-
-    if font.text_width(text) <= max_px {
-        return (text.to_string(), String::new());
+    if text.is_empty() || max_lines == 0 {
+        return Vec::new();
     }
 
     let words: Vec<&str> = text.split_whitespace().collect();
-    let mut line_a = String::new();
+    let mut lines: Vec<String> = Vec::with_capacity(max_lines);
+    let mut current = String::new();
     let mut i = 0;
-    while i < words.len() {
-        let candidate = if line_a.is_empty() {
+
+    while i < words.len() && lines.len() < max_lines {
+        let candidate = if current.is_empty() {
             words[i].to_string()
         } else {
-            format!("{} {}", line_a, words[i])
+            format!("{} {}", current, words[i])
         };
         if font.text_width(&candidate) <= max_px {
-            line_a = candidate;
+            current = candidate;
+            i += 1;
+        } else if current.is_empty() {
+            // Single word too wide — hard-truncate.
+            let truncated = truncate_with_ellipsis(words[i], max_px, font);
+            lines.push(truncated);
             i += 1;
         } else {
-            break;
+            lines.push(std::mem::take(&mut current));
         }
     }
 
-    // If even the first word didn't fit, hard-truncate character-by-character.
-    if line_a.is_empty() {
-        line_a = truncate_with_ellipsis(words[0], max_px, font);
-        i = 1;
+    if !current.is_empty() && lines.len() < max_lines {
+        lines.push(current);
     }
 
-    let mut line_b = String::new();
-    while i < words.len() {
-        let candidate = if line_b.is_empty() {
-            words[i].to_string()
-        } else {
-            format!("{} {}", line_b, words[i])
-        };
-        if font.text_width(&candidate) <= max_px {
-            line_b = candidate;
-            i += 1;
-        } else {
-            break;
-        }
-    }
-
-    // Anything left after two lines — append `…` to line_b to signal truncation.
+    // Words remaining after the last line — tag the last visible line with `…`.
     if i < words.len() {
-        line_b = truncate_with_ellipsis(&line_b, max_px - font.text_width("…"), font);
-        line_b.push('…');
+        if let Some(last) = lines.last_mut() {
+            let max_for_ellipsis = max_px - font.text_width("…");
+            *last = truncate_with_ellipsis(last, max_for_ellipsis, font);
+            last.push('…');
+        }
     }
 
-    (line_a, line_b)
+    lines
 }
 
 fn truncate_with_ellipsis(s: &str, max_px: i32, font: &Font) -> String {
@@ -314,9 +304,10 @@ mod tests {
     fn sample_event(mag: f32, place: &str) -> QuakeEvent {
         QuakeEvent {
             magnitude: mag,
-            place: place.into(),
+            title: format!("M {:.1} - {}", mag, place),
             origin: Utc::now() - ChDuration::minutes(14),
             depth_km: 24.0,
+            felt: None,
         }
     }
 
@@ -371,9 +362,8 @@ mod tests {
     #[test]
     fn wrap_short_text_fits_one_line() {
         let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
-        let (a, b) = wrap_two_lines("Hi", 64, &m.body_font);
-        assert_eq!(a, "Hi");
-        assert_eq!(b, "");
+        let lines = wrap_into_lines("Hi", 64, &m.body_font, 3);
+        assert_eq!(lines, vec!["Hi".to_string()]);
     }
 
     /// Regression: with a long place name wrapping to two lines, the
@@ -406,12 +396,61 @@ mod tests {
     #[test]
     fn wrap_long_text_breaks_at_word_boundary() {
         let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
-        let (a, b) = wrap_two_lines("OFF EAST COAST OF HONSHU JAPAN", 64, &m.body_font);
-        assert!(!a.is_empty(), "line A should have content");
-        assert!(!b.is_empty(), "line B should have content for a long region");
-        // No word should be split across the boundary — both fragments end on
-        // word boundaries (i.e. no trailing partial word).
-        assert!(!a.ends_with(' '));
-        assert!(!b.ends_with(' '));
+        let lines = wrap_into_lines(
+            "M 6.2 - OFF EAST COAST OF HONSHU JAPAN",
+            64,
+            &m.body_font,
+            3,
+        );
+        assert!(lines.len() >= 2, "long title should wrap to multiple lines");
+        assert!(lines.len() <= 3, "wrap must respect max_lines");
+        for line in &lines {
+            assert!(!line.ends_with(' '), "no trailing space on wrapped lines");
+        }
+    }
+
+    #[test]
+    fn wrap_truncates_with_ellipsis_when_overflowing_max_lines() {
+        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
+        // Force a very wide string into a 2-line budget — last line gets `…`.
+        let lines = wrap_into_lines(
+            "Words and more words and even more words and yet more words again",
+            64,
+            &m.body_font,
+            2,
+        );
+        assert_eq!(lines.len(), 2);
+        assert!(
+            lines.last().unwrap().ends_with('…'),
+            "expected trailing ellipsis on truncated last line, got {:?}",
+            lines.last()
+        );
+    }
+
+    #[test]
+    fn felt_count_renders_in_footer_when_present() {
+        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let mut e = sample_event(5.0, "near somewhere");
+        e.felt = Some(482);
+        let img_with = m.frame(&QuakeStatus::Event(e.clone()));
+        e.felt = None;
+        let img_without = m.frame(&QuakeStatus::Event(e));
+        // Different footer text → different pixel buffers.
+        assert_ne!(
+            img_with.as_raw(),
+            img_without.as_raw(),
+            "footer should differ when felt count is present vs absent"
+        );
+        // And the footer rows (last 6 rows of the panel) should have lit
+        // pixels — the "felt N" string is drawn there.
+        let mut lit_footer = 0usize;
+        for y in (PANEL_H - 6)..PANEL_H {
+            for x in 0..PANEL_W {
+                if img_with.get_pixel(x, y).0 != [0, 0, 0] {
+                    lit_footer += 1;
+                }
+            }
+        }
+        assert!(lit_footer > 5, "felt-mode footer should be drawn");
     }
 }
