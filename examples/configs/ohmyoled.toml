@@ -51,6 +51,16 @@ api = "coingecko"
 api_key = "null"
 symbol = "ethereum"
 
+# Aircraft within a configurable radius via OpenSky Network. Shows count
+# of nearby planes plus the closest one's callsign, altitude (FLnnn),
+# distance, and bearing. `lat`/`lon` decimal degrees; `radius_km` 1..500
+# — larger = larger bbox = more credits per request.
+[flights]
+run = true
+lat = 40.7128
+lon = -74.0060
+radius_km = 80
+
 # NOAA planetary K-index — a single big digit (0–9) color-coded green
 # (quiet) through red (severe storm), with a 9-block scale bar. An
 # "AURORA LIKELY" banner appears when Kp meets/exceeds alert_threshold

@@ -7,6 +7,7 @@ pub mod aurora;
 pub mod collector;
 pub mod error;
 pub mod f1;
+pub mod flights;
 pub mod golf;
 pub mod http;
 pub mod iss;

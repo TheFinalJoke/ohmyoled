@@ -3,8 +3,8 @@
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
 leaderboards, Formula 1 standings, a live ISS tracker, recent
-earthquakes, and aurora forecasts — pulling from free or freemium
-public APIs.
+earthquakes, aurora forecasts, and nearby flights — pulling from
+free or freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -27,6 +27,7 @@ backstory.
   - [`iss`](#iss)
   - [`quake`](#quake)
   - [`aurora`](#aurora)
+  - [`flights`](#flights)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -442,6 +443,40 @@ no auth).
 
 ---
 
+### `flights`
+
+Live count of aircraft within a configurable radius, plus a detail row
+for the closest one: cyan callsign (or ICAO24 hex when no callsign is
+broadcast), flight level (`FLnnn` for altitude in hundreds of feet, or
+`GND` when the aircraft is on the ground), distance in km, and
+8-octant bearing (`N`, `NE`, `E`, …). Long callsigns marquee.
+
+```yaml
+flights:
+  run: true
+  lat: 40.7128
+  lon: -74.0060
+  radius_km: 80
+```
+
+| Field       | Type  | Required | Notes                                                            |
+| ----------- | ----- | -------- | ---------------------------------------------------------------- |
+| `run`       | bool  | yes      |                                                                  |
+| `lat`       | float | yes      | Decimal degrees, `-90..90`.                                      |
+| `lon`       | float | yes      | Decimal degrees, `-180..180`.                                    |
+| `radius_km` | float | no       | Defaults to 80; allowed range 1..500.                            |
+
+Refresh: 60 s. Data source: <https://opensky-network.org> (anonymous
+bbox endpoint, no auth). The bbox is computed locally and the result
+is post-filtered by Haversine distance to enforce the circle; only
+aircraft with a usable lat/lon are counted. OpenSky's anonymous tier
+is credit-limited (~400 req/day) — a single flights tile at 60 s
+will exceed that nominal budget, but small bbox queries tend to be
+tolerated past the soft cap. Use a smaller `radius_km` if you start
+seeing 429s.
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -462,7 +497,7 @@ no auth).
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora` (body text + iss big number) |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights` (body text + iss big number) |
 | `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit) |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |

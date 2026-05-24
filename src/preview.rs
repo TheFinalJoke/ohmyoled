@@ -27,6 +27,7 @@ use ohmyoled_matrix::{Color, RGBMatrix};
 use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
 use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
 use oledlib::api::aurora::AuroraReading;
+use oledlib::api::flights::{FlightInfo, FlightSnapshot};
 use oledlib::api::iss::IssState;
 use oledlib::api::quake::{QuakeEvent, QuakeStatus};
 use oledlib::api::sport::model::{
@@ -41,6 +42,7 @@ use oledlib::api::weather::model::{
 use oledlib::matrix::f1::{F1Fonts, F1Matrix};
 use oledlib::matrix::golf::{GolfFonts, GolfMatrix};
 use oledlib::matrix::aurora::{AuroraFonts, AuroraMatrix};
+use oledlib::matrix::flights::{FlightsFonts, FlightsMatrix};
 use oledlib::matrix::iss::{IssFonts, IssMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
@@ -49,7 +51,7 @@ use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
-pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss", "quake", "aurora"];
+pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss", "quake", "aurora", "flights"];
 
 /// Resolve a directory that contains the project font files.
 fn font_dir() -> PathBuf {
@@ -81,6 +83,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "iss" => preview_iss(&mut matrix, &fonts).await,
         "quake" => preview_quake(&mut matrix, &fonts).await,
         "aurora" => preview_aurora(&mut matrix, &fonts).await,
+        "flights" => preview_flights(&mut matrix, &fonts).await,
         other => Err(format!(
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
@@ -306,6 +309,39 @@ async fn preview_aurora(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Stri
         make(4, false), // unsettled
         make(6, true),  // minor/moderate storm — alert
         make(8, true),  // severe — alert
+    ];
+    let mut i = 0usize;
+    loop {
+        let data = &cycle[i % cycle.len()];
+        i = i.wrapping_add(1);
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_flights(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = FlightsMatrix::with_fonts_async(FlightsFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    let flight = |callsign: &str, alt: u32, dist: f32, bearing: f32, on_ground: bool| FlightInfo {
+        callsign: callsign.into(),
+        icao24: "abc123".into(),
+        altitude_ft: alt,
+        on_ground,
+        distance_km: dist,
+        bearing_deg: bearing,
+        ground_speed_kt: Some(440),
+        country: "United States".into(),
+    };
+    let snap = |count: usize, closest: Option<FlightInfo>| FlightSnapshot { count, closest };
+    // Cycle through: typical airliner, on-ground taxiing flight, long
+    // callsign (triggers the marquee), and an empty-airspace tile so the
+    // QUIET SKIES path gets airtime too.
+    let cycle = [
+        snap(7, Some(flight("DAL2451", 32_000, 12.4, 225.0, false))),
+        snap(3, Some(flight("UAL899", 0, 1.2, 90.0, true))),
+        snap(12, Some(flight("LUFTHANSA404", 38_000, 47.0, 315.0, false))),
+        snap(0, None),
     ];
     let mut i = 0usize;
     loop {

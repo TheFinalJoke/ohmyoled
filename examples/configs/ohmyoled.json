@@ -43,6 +43,12 @@
     "run": true,
     "alert_threshold": 5
   },
+  "flights": {
+    "run": true,
+    "lat": 40.7128,
+    "lon": -74.0060,
+    "radius_km": 80
+  },
   "sport": [
     {
       "run": true,

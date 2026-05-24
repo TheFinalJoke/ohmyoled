@@ -24,6 +24,8 @@ use crate::api::f1::F1Collector;
 use crate::api::golf::{GolfCollector, GolfTour};
 use crate::api::aurora::swpc::SwpcConfig;
 use crate::api::aurora::AuroraCollector;
+use crate::api::flights::opensky::OpenSkyConfig;
+use crate::api::flights::FlightsCollector;
 use crate::api::iss::wheretheiss::WhereTheIssConfig;
 use crate::api::iss::IssCollector;
 use crate::api::quake::model::QuakeFeed;
@@ -44,6 +46,7 @@ use crate::api::{StockApi, WeatherApi};
 use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
 use crate::matrix::aurora::AuroraMatrix;
+use crate::matrix::flights::FlightsMatrix;
 use crate::matrix::iss::IssMatrix;
 use crate::matrix::quake::QuakeMatrix;
 use crate::matrix::sport::SportMatrix;
@@ -76,6 +79,8 @@ pub struct RegistryConfig {
     pub quake: Vec<QuakeSection>,
     #[serde(default, deserialize_with = "one_or_many")]
     pub aurora: Vec<AuroraSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub flights: Vec<FlightsSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -135,6 +140,21 @@ fn default_aurora_threshold() -> u8 {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct FlightsSection {
+    pub run: bool,
+    pub lat: f64,
+    pub lon: f64,
+    /// Search radius from `(lat, lon)`, in km. Larger radius = larger
+    /// bbox query = more credits/req against OpenSky's anonymous tier.
+    #[serde(default = "default_flights_radius_km")]
+    pub radius_km: f32,
+}
+
+fn default_flights_radius_km() -> f32 {
+    80.0
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StockSection {
     pub run: bool,
     pub api: StockApi,
@@ -184,14 +204,15 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
         cfg.sport.len(),
         cfg.iss.len(),
         cfg.quake.len(),
-        cfg.aurora.len()
+        cfg.aurora.len(),
+        cfg.flights.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -259,6 +280,18 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("aurora: skipping module: {e}"),
+        }
+    }
+    for s in cfg.flights.iter().filter(|s| s.run) {
+        match build_flights(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: flights loaded (lat={}, lon={}, radius_km={})",
+                    s.lat, s.lon, s.radius_km
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("flights: skipping module: {e}"),
         }
     }
 
@@ -413,6 +446,19 @@ async fn build_aurora(s: &AuroraSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = AuroraMatrix::new_async()
         .await
         .map_err(|e| format!("aurora fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = FlightsCollector::from_opensky(OpenSkyConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+        radius_km: s.radius_km,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = FlightsMatrix::new_async()
+        .await
+        .map_err(|e| format!("flights fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }
 
