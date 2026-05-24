@@ -30,6 +30,11 @@
     { "run": true, "api": "coingecko", "api_key": null,               "symbol": "bitcoin" },
     { "run": true, "api": "coingecko", "api_key": null,               "symbol": "ethereum" }
   ],
+  "iss": {
+    "run": true,
+    "lat": 40.7128,
+    "lon": -74.0060
+  },
   "sport": [
     {
       "run": true,

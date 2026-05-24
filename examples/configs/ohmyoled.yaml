@@ -46,6 +46,15 @@ stock:
     api_key: null
     symbol: ethereum
 
+# Live distance from your location to the International Space Station.
+# Switches to an OVERHEAD banner when the ISS is inside your visibility
+# footprint. `lat`/`lon` are decimal degrees (e.g. New York 40.7128,
+# -74.0060). Both are required — no IP-based lookup for this module.
+iss:
+  run: true
+  lat: 40.7128
+  lon: -74.0060
+
 # Team sports + golf + F1 all live under `sport`. Each entry is
 # discriminated by its `sport:` field. Team sports require `team_logo`;
 # golf takes an optional `tour`; F1 takes nothing extra.

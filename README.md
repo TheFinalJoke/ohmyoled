@@ -2,8 +2,8 @@
 
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
-leaderboards, and Formula 1 standings — pulling from free or freemium
-public APIs.
+leaderboards, Formula 1 standings, and a live ISS tracker — pulling
+from free or freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -23,6 +23,7 @@ backstory.
   - [`weather`](#weather)
   - [`stock`](#stock)
   - [`sport`](#sport)
+  - [`iss`](#iss)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -364,6 +365,31 @@ requests per refresh: `current/next.json` + `current/driverStandings.json`.
 
 ---
 
+### `iss`
+
+Live great-circle distance from your location to the International Space
+Station. Flips to a magenta `OVERHEAD` banner when the ISS is inside
+your visibility footprint (i.e. above your local horizon right now).
+
+```yaml
+iss:
+  run: true
+  lat: 40.7128       # your latitude, decimal degrees
+  lon: -74.0060      # your longitude, decimal degrees
+```
+
+| Field | Type  | Required | Notes                                                                 |
+| ----- | ----- | -------- | --------------------------------------------------------------------- |
+| `run` | bool  | yes      |                                                                       |
+| `lat` | float | yes      | Decimal degrees, `-90..90`. No IP-based fallback for this module.     |
+| `lon` | float | yes      | Decimal degrees, `-180..180`.                                         |
+
+Refresh: 30 s. Data source: <https://api.wheretheiss.at/v1/satellites/25544>
+(public, no auth). The `footprint` field from the API drives the
+overhead check — no hand-rolled elevation math.
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -384,15 +410,15 @@ requests per refresh: `current/next.json` + `current/driverStandings.json`.
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1` (body text) |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss` (body text + iss big number) |
 | `04b24.otf`         | `sport` (big score numerals)             |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |
 
 If any of these are missing the module will fail to construct and skip
 itself at startup with a `font: ...` error in the log. Custom paths can
-be wired via the `*Fonts` builders (`WeatherFonts`, `StockFonts`, etc.)
-but there's no on-disk config knob for that yet.
+be wired via the `*Fonts` builders (`WeatherFonts`, `StockFonts`,
+`IssFonts`, etc.) but there's no on-disk config knob for that yet.
 
 ---
 

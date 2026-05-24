@@ -22,6 +22,8 @@
 
 use crate::api::f1::F1Collector;
 use crate::api::golf::{GolfCollector, GolfTour};
+use crate::api::iss::wheretheiss::WhereTheIssConfig;
+use crate::api::iss::IssCollector;
 use crate::api::sport::espn::EspnConfig;
 use crate::api::sport::model::SportKind;
 use crate::api::sport::SportCollector;
@@ -36,6 +38,7 @@ use crate::api::weather::WeatherCollector;
 use crate::api::{StockApi, WeatherApi};
 use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
+use crate::matrix::iss::IssMatrix;
 use crate::matrix::sport::SportMatrix;
 use crate::matrix::stock::StockMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
@@ -60,6 +63,8 @@ pub struct RegistryConfig {
     /// field of each entry.
     #[serde(default, deserialize_with = "one_or_many")]
     pub sport: Vec<SportSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub iss: Vec<IssSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +93,13 @@ pub struct WeatherSection {
     pub current_location_api_key: Option<String>,
     #[serde(default)]
     pub animation: crate::matrix::weather::WeatherAnimationMode,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IssSection {
+    pub run: bool,
+    pub lat: f64,
+    pub lon: f64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,11 +152,12 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
-        cfg.sport.len()
+        cfg.sport.len(),
+        cfg.iss.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -185,6 +198,15 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("sport: skipping module: {e}"),
+        }
+    }
+    for s in cfg.iss.iter().filter(|s| s.run) {
+        match build_iss(s).await {
+            Ok(m) => {
+                log::info!("registry: iss loaded (lat={}, lon={})", s.lat, s.lon);
+                modules.push(m);
+            }
+            Err(e) => log::error!("iss: skipping module: {e}"),
         }
     }
 
@@ -308,6 +330,18 @@ async fn build_sport(s: &SportSection) -> Result<Box<dyn DynModule>, String> {
             Ok(Box::new(Module::new(collector, renderer)))
         }
     }
+}
+
+async fn build_iss(s: &IssSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = IssCollector::from_wheretheiss(WhereTheIssConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = IssMatrix::new_async()
+        .await
+        .map_err(|e| format!("iss fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
 }
 
 async fn build_team_sport(
