@@ -50,6 +50,18 @@ const AMBER: Color = Color { r: 255, g: 170, b: 0 };
 const RED: Color = Color { r: 255, g: 30, b: 30 };
 const DIM: Color = Color { r: 130, g: 130, b: 130 };
 
+const SCROLL_TICK: Duration = Duration::from_millis(50);
+const SETTLE_DWELL: Duration = Duration::from_secs(2);
+/// Trailing dwell after a marquee pass so the text settles back at the
+/// start before the next cycle takes the panel.
+const FINAL_DWELL: Duration = Duration::from_secs(3);
+/// Steady-state hold when nothing needs to scroll.
+const STATIC_DWELL: Duration = Duration::from_secs(15);
+/// Pixel padding past the right edge before the marquee starts wrapping.
+/// The line slides offscreen by this many pixels so the trailing
+/// characters aren't visibly clipped before the reset.
+const MARQUEE_OVERSCROLL: i32 = 8;
+
 #[derive(Debug, Clone)]
 pub struct QuakeFonts {
     pub body: PathBuf,
@@ -89,32 +101,41 @@ impl QuakeMatrix {
     }
 
     pub fn frame(&self, data: &QuakeStatus) -> RgbImage {
+        self.draw_frame(data, 0)
+    }
+
+    /// Render one frame at the given scroll position. `scroll_px` is the
+    /// number of pixels to shift the marqueed line leftward (0 = settled
+    /// at the left margin). Static elements (line 1, footer) are unaffected.
+    pub fn draw_frame(&self, data: &QuakeStatus, scroll_px: i32) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
         match data {
-            QuakeStatus::Event(e) => self.draw_event(&mut img, e),
+            QuakeStatus::Event(e) => self.draw_event(&mut img, e, scroll_px),
             QuakeStatus::Quiet => self.draw_quiet(&mut img),
         }
         img
     }
 
-    fn draw_event(&self, img: &mut RgbImage, e: &QuakeEvent) {
+    fn draw_event(&self, img: &mut RgbImage, e: &QuakeEvent, scroll_px: i32) {
         let body = &self.body_font;
         let line_h = body.height().max(body.ascent() + 1);
 
         // Layout budget on a 32-row panel (line_h ≈ 8):
-        //   rows  0–6  : title line 1   (baseline at body.ascent)
-        //   rows  9–15 : title line 2   (baseline at body.ascent + line_h + 1, only if wrapped)
-        //   rows 24–30 : footer         (baseline at PANEL_H − 1)
-        // Footer uses the same body font so it stays readable — at the cost
-        // of capping the title at 2 wrap lines instead of 3. Long titles
-        // get an ellipsis on the second line, which is the right tradeoff
-        // because the magnitude prefix is what people actually read at a
-        // glance, and that always lives at the start of line 1.
+        //   rows  0–6  : title line 1                (baseline at body.ascent)
+        //   rows  9–15 : title line 2 (or marquee)   (baseline at body.ascent + line_h + 1)
+        //   rows 24–30 : footer                      (baseline at PANEL_H − 1)
+        // Footer uses the same body font so it stays readable. When the
+        // wrapped second line would overflow, we marquee the full remainder
+        // through line 2's pixel rect instead of truncating with `…` —
+        // line 1 (which always carries the "M X.X -" prefix) stays static.
         let mag_color = magnitude_color(e.magnitude);
-        let lines = wrap_into_lines(&e.title, PANEL_W as i32, body, 2);
-        for (i, line) in lines.iter().enumerate() {
-            let y = body.ascent() + i as i32 * (line_h + 1);
-            draw_text(img, body, 1, y, mag_color, line);
+        let (line_1, line_2_full) = split_title(&e.title, PANEL_W as i32, body);
+        let line_2_y = body.ascent() + line_h + 1;
+
+        draw_text(img, body, 1, body.ascent(), mag_color, &line_1);
+        if !line_2_full.is_empty() {
+            let l2_x = 1 - scroll_px;
+            draw_text(img, body, l2_x, line_2_y, mag_color, &line_2_full);
         }
 
         // Footer: "felt N" when populated (more interesting than age),
@@ -129,6 +150,21 @@ impl QuakeMatrix {
         let depth_w = body.text_width(&depth);
         let depth_x = (PANEL_W as i32 - depth_w - 1).max(0);
         draw_text(img, body, depth_x, footer_y, DIM, &depth);
+    }
+
+    /// Distance line 2 has to travel for one full marquee pass — `0` when
+    /// the second line fits without scrolling.
+    fn line_2_scroll_distance(&self, e: &QuakeEvent) -> i32 {
+        let (_l1, l2) = split_title(&e.title, PANEL_W as i32, &self.body_font);
+        let l2_w = self.body_font.text_width(&l2);
+        if l2_w <= PANEL_W as i32 - 2 {
+            0
+        } else {
+            // From settled (text at x=1) to fully offscreen-left, plus a
+            // little overscroll so the trailing edge clears the right margin
+            // before the reset snap.
+            l2_w + MARQUEE_OVERSCROLL
+        }
     }
 
     fn draw_quiet(&self, img: &mut RgbImage) {
@@ -166,14 +202,38 @@ impl Renderer for QuakeMatrix {
     }
 
     fn cycle_duration(&self) -> Duration {
-        Duration::from_secs(15)
+        // Steady state without overflow: 15s. With overflow, the marquee
+        // adds (line_2_width + overscroll) × 50ms — typically 8–14s extra
+        // for long region strings. The scheduler treats this as an upper
+        // bound; render() respects it precisely.
+        STATIC_DWELL
     }
 
     async fn render(&mut self, matrix: &mut RGBMatrix, data: &QuakeStatus) -> Result<(), RenderError> {
         matrix.clear();
-        let img = self.frame(data);
-        matrix.set_image(&img, 0, 0);
-        tokio::time::sleep(Duration::from_secs(15)).await;
+
+        let scroll_distance = match data {
+            QuakeStatus::Event(e) => self.line_2_scroll_distance(e),
+            QuakeStatus::Quiet => 0,
+        };
+
+        // Settle on frame 0 first so non-overflowing tiles appear immediately.
+        matrix.set_image(&self.draw_frame(data, 0), 0, 0);
+        tokio::time::sleep(SETTLE_DWELL).await;
+
+        if scroll_distance > 0 {
+            for offset in 1..=scroll_distance {
+                matrix.set_image(&self.draw_frame(data, offset), 0, 0);
+                tokio::time::sleep(SCROLL_TICK).await;
+            }
+            // Snap back to the start so the trailing dwell shows the
+            // beginning of the line rather than a blank frame.
+            matrix.set_image(&self.draw_frame(data, 0), 0, 0);
+            tokio::time::sleep(FINAL_DWELL).await;
+        } else {
+            tokio::time::sleep(STATIC_DWELL - SETTLE_DWELL).await;
+        }
+
         matrix.clear();
         Ok(())
     }
@@ -189,54 +249,43 @@ fn magnitude_color(mag: f32) -> Color {
     }
 }
 
-/// Word-wrap `text` into at most `max_lines` lines, each fitting `max_px`.
-/// Long single words are character-truncated. Anything left over after the
-/// last line gets an ellipsis tacked onto the final line to signal
-/// truncation. Returns at most `max_lines` non-empty lines.
-fn wrap_into_lines(text: &str, max_px: i32, font: &Font, max_lines: usize) -> Vec<String> {
+/// Split `text` into a greedy line-1 (fits within `max_px`) and a line-2
+/// "remainder" containing every word that didn't fit on line 1. The
+/// remainder is returned verbatim — no ellipsis, no truncation — so the
+/// caller can marquee it if it overflows the panel width.
+///
+/// Returns `(line_1, line_2_remainder)`. If the entire text fits on one
+/// line, `line_2_remainder` is empty.
+fn split_title(text: &str, max_px: i32, font: &Font) -> (String, String) {
     let text = text.trim();
-    if text.is_empty() || max_lines == 0 {
-        return Vec::new();
+    if text.is_empty() {
+        return (String::new(), String::new());
     }
-
+    if font.text_width(text) <= max_px {
+        return (text.to_string(), String::new());
+    }
     let words: Vec<&str> = text.split_whitespace().collect();
-    let mut lines: Vec<String> = Vec::with_capacity(max_lines);
-    let mut current = String::new();
+    let mut line_1 = String::new();
     let mut i = 0;
-
-    while i < words.len() && lines.len() < max_lines {
-        let candidate = if current.is_empty() {
+    while i < words.len() {
+        let candidate = if line_1.is_empty() {
             words[i].to_string()
         } else {
-            format!("{} {}", current, words[i])
+            format!("{} {}", line_1, words[i])
         };
         if font.text_width(&candidate) <= max_px {
-            current = candidate;
-            i += 1;
-        } else if current.is_empty() {
-            // Single word too wide — hard-truncate.
-            let truncated = truncate_with_ellipsis(words[i], max_px, font);
-            lines.push(truncated);
+            line_1 = candidate;
             i += 1;
         } else {
-            lines.push(std::mem::take(&mut current));
+            break;
         }
     }
-
-    if !current.is_empty() && lines.len() < max_lines {
-        lines.push(current);
+    // First word didn't fit — hard-truncate it so line 1 is non-empty.
+    if line_1.is_empty() {
+        line_1 = truncate_with_ellipsis(words[0], max_px, font);
+        i = 1;
     }
-
-    // Words remaining after the last line — tag the last visible line with `…`.
-    if i < words.len() {
-        if let Some(last) = lines.last_mut() {
-            let max_for_ellipsis = max_px - font.text_width("…");
-            *last = truncate_with_ellipsis(last, max_for_ellipsis, font);
-            last.push('…');
-        }
-    }
-
-    lines
+    (line_1, words[i..].join(" "))
 }
 
 fn truncate_with_ellipsis(s: &str, max_px: i32, font: &Font) -> String {
@@ -352,13 +401,6 @@ mod tests {
         assert!(red_pixels > 0, "expected red magnitude pixels at M7.1");
     }
 
-    #[test]
-    fn wrap_short_text_fits_one_line() {
-        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
-        let lines = wrap_into_lines("Hi", 64, &m.body_font, 3);
-        assert_eq!(lines, vec!["Hi".to_string()]);
-    }
-
     /// Regression: with a long place name wrapping to two lines, the
     /// second place line must not overlap the footer. We pick a non-zero
     /// gap column (x ≥ 12 is past "14m" but to the left of "24km") and
@@ -387,37 +429,66 @@ mod tests {
     }
 
     #[test]
-    fn wrap_long_text_breaks_at_word_boundary() {
+    fn split_title_short_fits_on_one_line() {
         let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
-        let lines = wrap_into_lines(
-            "M 6.2 - OFF EAST COAST OF HONSHU JAPAN",
-            64,
-            &m.body_font,
-            3,
-        );
-        assert!(lines.len() >= 2, "long title should wrap to multiple lines");
-        assert!(lines.len() <= 3, "wrap must respect max_lines");
-        for line in &lines {
-            assert!(!line.ends_with(' '), "no trailing space on wrapped lines");
-        }
+        let (l1, l2) = split_title("M 3.1 - Reno", 64, &m.body_font);
+        assert_eq!(l1, "M 3.1 - Reno");
+        assert_eq!(l2, "");
     }
 
     #[test]
-    fn wrap_truncates_with_ellipsis_when_overflowing_max_lines() {
+    fn split_title_long_returns_full_remainder_no_ellipsis() {
         let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
-        // Force a very wide string into a 2-line budget — last line gets `…`.
-        let lines = wrap_into_lines(
-            "Words and more words and even more words and yet more words again",
+        let (l1, l2) = split_title(
+            "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN",
             64,
             &m.body_font,
-            2,
         );
-        assert_eq!(lines.len(), 2);
-        assert!(
-            lines.last().unwrap().ends_with('…'),
-            "expected trailing ellipsis on truncated last line, got {:?}",
-            lines.last()
-        );
+        assert!(l1.starts_with("M 6.2"));
+        // The remainder must be intact — the renderer will marquee it.
+        assert!(!l2.ends_with('…'));
+        assert!(l2.contains("JAPAN"), "remainder should include the tail, got {l2:?}");
+    }
+
+    #[test]
+    fn long_title_triggers_marquee() {
+        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let e = QuakeEvent {
+            magnitude: 6.2,
+            title: "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN".into(),
+            origin: Utc::now() - ChDuration::minutes(14),
+            depth_km: 24.0,
+            felt: Some(482),
+        };
+        let dist = m.line_2_scroll_distance(&e);
+        assert!(dist > 0, "expected marquee distance > 0 for long title");
+
+        // Mid-scroll the line 2 region (rows 9..16) should differ from the
+        // settled frame — pixel motion confirms the marquee is alive.
+        let settled = m.frame(&QuakeStatus::Event(e.clone()));
+        let mid = m.draw_frame(&QuakeStatus::Event(e), dist / 2);
+        let mut diffs = 0usize;
+        for y in 9..16u32 {
+            for x in 0..PANEL_W {
+                if settled.get_pixel(x, y) != mid.get_pixel(x, y) {
+                    diffs += 1;
+                }
+            }
+        }
+        assert!(diffs > 10, "line 2 should visibly shift mid-marquee, got {diffs} diffs");
+    }
+
+    #[test]
+    fn short_title_does_not_marquee() {
+        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let e = QuakeEvent {
+            magnitude: 3.1,
+            title: "M 3.1 - Reno NV".into(),
+            origin: Utc::now() - ChDuration::minutes(2),
+            depth_km: 5.0,
+            felt: None,
+        };
+        assert_eq!(m.line_2_scroll_distance(&e), 0);
     }
 
     #[test]
