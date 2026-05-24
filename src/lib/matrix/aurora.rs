@@ -59,6 +59,14 @@ const LABEL: Color = Color { r: 200, g: 200, b: 200 };
 const ALERT_BANNER: Color = Color { r: 0, g: 220, b: 255 };
 const BAR_OFF: Color = Color { r: 40, g: 40, b: 40 };
 
+/// Frame interval for the pulse animation — ~12 fps. Fine-grained enough
+/// for smooth motion on a 64×32 panel without being CPU-heavy.
+const ANIM_TICK: Duration = Duration::from_millis(83);
+/// Phase shift (in fraction-of-period units) between adjacent bar blocks,
+/// so the shimmer reads as a wave traveling rightward instead of all
+/// cells pulsing in lockstep.
+const BAR_PHASE_STEP: f32 = 0.07;
+
 #[derive(Debug, Clone)]
 pub struct AuroraFonts {
     pub label: PathBuf,
@@ -104,35 +112,57 @@ impl AuroraMatrix {
     }
 
     pub fn frame(&self, data: &AuroraReading) -> RgbImage {
+        self.draw_frame(data, 0)
+    }
+
+    /// Render one animation frame. `tick` is the monotonically increasing
+    /// per-render frame index; `pulse_factor` and `bar_factor` use it to
+    /// shape the digit's brightness pulse and the bar's shimmer wave.
+    pub fn draw_frame(&self, data: &AuroraReading, tick: u32) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
 
-        // "Kp" label, top-left.
+        // "Kp" label, top-left — never animated, anchors the eye.
         let label = "Kp";
         let label_y = self.label_font.ascent();
         draw_text(&mut img, &self.label_font, 1, label_y, LABEL, label);
 
-        // Huge centered digit.
+        // Huge centered digit, brightness modulated by pulse_factor so the
+        // tile feels alive when activity is high and stays close to static
+        // when it isn't.
         let digit = format!("{}", data.kp);
         let digit_w = self.big_font.text_width(&digit);
         let digit_x = ((PANEL_W as i32 - digit_w) / 2).max(0);
-        // Place the digit's baseline so it sits in rows ~7..=20.
         let digit_y = 20;
-        let digit_color = kp_color(data.kp);
+        let base = kp_color(data.kp);
+        let digit_color = scale_color(base, pulse_factor(data.kp, tick, 0.0));
         draw_text(&mut img, &self.big_font, digit_x, digit_y, digit_color, &digit);
 
-        // 9-block scale bar, centered, rows 22..=24 (3 tall).
-        draw_kp_bar(&mut img, data.kp, 22);
+        // 9-block scale bar at rows 22..=24, each lit cell carries an
+        // increasing phase offset so the shimmer reads as a wave.
+        draw_kp_bar(&mut img, data.kp, 22, tick);
 
-        // Alert banner — only when alerting. Renders in the bottom row.
+        // Alert banner — same pulse driver as the digit, slightly subdued so
+        // the digit stays the dominant element.
         if data.alert {
             let banner = "AURORA LIKELY";
             let banner_w = self.label_font.text_width(banner);
             let banner_x = ((PANEL_W as i32 - banner_w) / 2).max(0);
             let banner_y = (PANEL_H as i32) - 1;
-            draw_text(&mut img, &self.label_font, banner_x, banner_y, ALERT_BANNER, banner);
+            let banner_color = scale_color(ALERT_BANNER, pulse_factor(data.kp, tick, 0.5));
+            draw_text(&mut img, &self.label_font, banner_x, banner_y, banner_color, banner);
         }
 
         img
+    }
+
+    /// Total animated frames for a `render()` cycle. Aurora always picks
+    /// the animated path — even quiet readings get a very subtle pulse,
+    /// which keeps the tile from looking frozen next to other moving
+    /// modules in the rotation.
+    fn frames_per_cycle(alert: bool) -> u32 {
+        // 10s quiet / 15s alert at ~12 fps.
+        let secs = if alert { 15 } else { 10 };
+        (secs * 1000) / ANIM_TICK.as_millis() as u32
     }
 }
 
@@ -156,15 +186,12 @@ impl Renderer for AuroraMatrix {
 
     async fn render(&mut self, matrix: &mut RGBMatrix, data: &AuroraReading) -> Result<(), RenderError> {
         matrix.clear();
-        let img = self.frame(data);
-        matrix.set_image(&img, 0, 0);
-        let hold = if data.alert {
-            // Lean longer on alert so the viewer notices the banner.
-            Duration::from_secs(15)
-        } else {
-            Duration::from_secs(10)
-        };
-        tokio::time::sleep(hold).await;
+        let total = Self::frames_per_cycle(data.alert);
+        for tick in 0..total {
+            let img = self.draw_frame(data, tick);
+            matrix.set_image(&img, 0, 0);
+            tokio::time::sleep(ANIM_TICK).await;
+        }
         matrix.clear();
         Ok(())
     }
@@ -180,11 +207,48 @@ pub fn kp_color(kp: u8) -> Color {
     }
 }
 
+/// Period (in frames) and amplitude (fraction of full brightness) of the
+/// pulse for a given Kp. Returns `(period, amplitude)` — higher Kp =
+/// shorter period (faster pulse) AND larger amplitude (deeper dimming).
+fn pulse_params(kp: u8) -> (u32, f32) {
+    match kp {
+        0 => (1, 0.0),         // truly quiet — single-color, no movement
+        1..=2 => (96, 0.08),   // ~8s period, barely visible — a "heartbeat"
+        3 => (72, 0.15),       // ~6s, subtle
+        4 => (48, 0.25),       // ~4s, noticeable
+        5..=6 => (30, 0.40),   // ~2.5s, clearly pulsing
+        _ => (18, 0.55),       // ~1.5s, dramatic
+    }
+}
+
+/// Brightness multiplier in `[1 − amplitude, 1.0]` for the given Kp,
+/// frame, and per-element phase offset (fraction of a period).
+fn pulse_factor(kp: u8, tick: u32, phase_offset: f32) -> f32 {
+    let (period, amp) = pulse_params(kp);
+    if amp == 0.0 {
+        return 1.0;
+    }
+    let phase = (tick as f32 / period as f32 + phase_offset) * std::f32::consts::TAU;
+    let osc = (phase.sin() + 1.0) / 2.0; // 0..1
+    1.0 - amp + amp * osc
+}
+
+/// Multiply each channel of `c` by `factor` (clamped to `0.0..=1.0`).
+fn scale_color(c: Color, factor: f32) -> Color {
+    let f = factor.clamp(0.0, 1.0);
+    Color {
+        r: (c.r as f32 * f).round() as u8,
+        g: (c.g as f32 * f).round() as u8,
+        b: (c.b as f32 * f).round() as u8,
+    }
+}
+
 /// Draw the 9-block Kp gauge at `top_y`. The bar is 3 rows tall and
 /// horizontally centered. Each block is 5 px wide + 1 px gap; lit blocks
-/// take their band-color, unlit blocks render in dim grey so the scale
-/// is always visible (vs. a "fill from left" with empty cells).
-fn draw_kp_bar(img: &mut RgbImage, kp: u8, top_y: i32) {
+/// take their band-color (modulated by the pulse with a per-cell phase
+/// offset, so the shimmer waves rightward), unlit blocks render in dim
+/// grey so the scale is always visible.
+fn draw_kp_bar(img: &mut RgbImage, kp: u8, top_y: i32, tick: u32) {
     const BLOCK_W: i32 = 5;
     const GAP: i32 = 1;
     const N: u8 = 9;
@@ -195,11 +259,11 @@ fn draw_kp_bar(img: &mut RgbImage, kp: u8, top_y: i32) {
     for i in 0..N {
         let x0 = start_x + i as i32 * (BLOCK_W + GAP);
         let color = if i < kp {
-            // Lit: use the per-position color so the gauge gradient is
-            // visible even when not all blocks are filled. Position 0..=2
-            // is green, 3 amber, 4..=5 storm, 6+ severe — same banding as
-            // the headline digit.
-            kp_color(i + 1)
+            // Lit: per-position band color, modulated by the pulse with a
+            // phase offset proportional to the cell index — turns the
+            // shimmer into a left-to-right traveling wave.
+            let phase = BAR_PHASE_STEP * i as f32;
+            scale_color(kp_color(i + 1), pulse_factor(kp, tick, phase))
         } else {
             BAR_OFF
         };
@@ -265,10 +329,12 @@ mod tests {
         let a = m.frame(&sample(6, true));
         // Different pixel buffers — alert mode adds the banner.
         assert_ne!(q.as_raw(), a.as_raw());
-        // Cyan banner pixels (high G+B, low R) should appear in alert mode.
+        // Cyan-ish banner pixels (low R, dominant G+B with G < B) should
+        // appear in alert mode. Threshold relaxed since the banner is
+        // pulse-modulated and may render below the unpulsed peak color.
         let cyan = a
             .pixels()
-            .filter(|p| p.0[0] < 80 && p.0[1] > 180 && p.0[2] > 200)
+            .filter(|p| p.0[0] < 80 && p.0[1] > 100 && p.0[2] > 130 && p.0[2] > p.0[1])
             .count();
         assert!(cyan > 0, "alert frame should have cyan banner pixels");
     }
@@ -288,10 +354,11 @@ mod tests {
     fn kp_bar_lit_block_count_matches_value() {
         // For each Kp value, exactly that many bar blocks should be "lit"
         // (non-BAR_OFF). Count non-grey pixels in the bar's vertical
-        // strip and divide by the per-block pixel count.
+        // strip and divide by the per-block pixel count. tick=0 keeps
+        // the pulse at its peak amplitude so lit cells are at full color.
         let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
         for kp in 0..=9u8 {
-            let img = m.frame(&sample(kp, false));
+            let img = m.draw_frame(&sample(kp, false), 0);
             let mut lit_blocks = 0u8;
             // Bar lives at rows 22..=24, 5×3 px blocks, 1 px gaps.
             // Sample the center column of each block to detect lit vs off.
@@ -313,12 +380,76 @@ mod tests {
     #[test]
     fn higher_kp_uses_redder_digit() {
         let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
-        // Kp=8 should produce strongly-red digit pixels somewhere.
-        let img = m.frame(&sample(8, true));
+        // Kp=8 at tick=0 should produce strongly-red digit pixels.
+        let img = m.draw_frame(&sample(8, true), 0);
         let red_pixels = img
             .pixels()
             .filter(|p| p.0[0] > 200 && p.0[1] < 80 && p.0[2] < 80)
             .count();
         assert!(red_pixels > 5, "expected red digit pixels at Kp=8, got {red_pixels}");
+    }
+
+    #[test]
+    fn kp_zero_is_static_across_frames() {
+        // Quiet floor: no pulse, no shimmer — frames are byte-identical.
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let s = sample(0, false);
+        let f0 = m.draw_frame(&s, 0);
+        let f30 = m.draw_frame(&s, 30);
+        assert_eq!(f0.as_raw(), f30.as_raw(), "Kp=0 must not animate");
+    }
+
+    #[test]
+    fn high_kp_animates_across_frames() {
+        // Severe-storm: pulse + shimmer should make pixels visibly differ
+        // between an "on the peak" and "off the peak" frame.
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let s = sample(8, true);
+        let (period, _amp) = pulse_params(8);
+        let f0 = m.draw_frame(&s, 0); // peak
+        let f_mid = m.draw_frame(&s, period / 2); // trough
+        assert_ne!(f0.as_raw(), f_mid.as_raw(), "Kp=8 must animate over time");
+
+        // Specifically, the digit should be dimmer mid-pulse.
+        let digit_red_peak = f0.pixels().map(|p| p.0[0] as u32).sum::<u32>();
+        let digit_red_mid = f_mid.pixels().map(|p| p.0[0] as u32).sum::<u32>();
+        assert!(
+            digit_red_peak > digit_red_mid,
+            "digit total brightness should fall at the pulse trough"
+        );
+    }
+
+    #[test]
+    fn pulse_factor_stays_in_range() {
+        // Pulse multiplier must never exceed 1.0 or drop below the
+        // configured floor (1 − amplitude).
+        for kp in 0..=9u8 {
+            let (_period, amp) = pulse_params(kp);
+            let floor = 1.0 - amp;
+            for tick in 0..240 {
+                let f = pulse_factor(kp, tick, 0.0);
+                assert!(
+                    f >= floor - 1e-6 && f <= 1.0 + 1e-6,
+                    "kp={kp} tick={tick}: factor {f} outside [{floor}, 1.0]"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pulse_speed_scales_with_kp() {
+        // Higher Kp -> shorter period (faster pulse).
+        let mut periods: Vec<(u8, u32)> = (0..=9u8).map(|k| (k, pulse_params(k).0)).collect();
+        // Drop kp=0 (period = 1 = sentinel for "no animation").
+        periods.retain(|(k, _)| *k > 0);
+        // Each subsequent entry's period should be <= the previous (monotonic).
+        for w in periods.windows(2) {
+            let (k_lo, p_lo) = w[0];
+            let (k_hi, p_hi) = w[1];
+            assert!(
+                p_hi <= p_lo,
+                "pulse period should be monotone in Kp: kp={k_lo} -> {p_lo}, kp={k_hi} -> {p_hi}"
+            );
+        }
     }
 }
