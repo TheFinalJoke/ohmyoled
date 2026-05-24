@@ -47,8 +47,11 @@ crates/ohmyoled-matrix/       # panel-level abstractions (Color, Font, draw_*)
 examples/
 ├── configs/                  # ohmyoled.{json,yaml,toml} — drop-in samples
 ├── config_formats.rs         # round-trip check across all three formats
-├── multi_instance_check.rs   # single-or-array config shape verifier
-└── *_render_check.rs         # per-module ANSI render smoke tests
+└── multi_instance_check.rs   # single-or-array config shape verifier
+
+# Visual smoke tests live in src/preview.rs — run via `ohmyoled --preview <name>`.
+# Don't add new per-module `*_render_check.rs` examples; wire the renderer
+# into preview.rs instead so it shows up under the same flag.
 ```
 
 The split between `oledlib` (`src/lib/`) and the `ohmyoled` binary
@@ -248,7 +251,27 @@ for s in cfg.subway.iter().filter(|s| s.run) {
 }
 ```
 
-### 4. Update docs
+### 4. Wire into `--preview` — `src/preview.rs`
+
+The visual smoke test path for every renderer. Add a `preview_subway`
+async fn that builds the renderer via `with_fonts_async`, constructs a
+hand-tuned fake `Arrival` (or whatever the module's data type is), and
+loops `r.render(matrix, &data).await` forever. Then:
+
+- Add `"subway"` to `pub const NAMES: &[&str]` at the top.
+- Add `"subway" => preview_subway(&mut matrix, &fonts).await,` to the
+  `match name` block in `run()`.
+
+If the renderer has multiple visual modes (off-season vs in-season,
+overhead vs distance, etc.), alternate between fake data values inside
+the loop so each mode gets airtime. See `preview_iss` for the pattern.
+
+After this, `ohmyoled --preview subway` drives the renderer live against
+whichever backend `RGBMatrix` resolves to (terminal in devcontainer,
+panel on a Pi). **Don't add a new `examples/subway_render_check.rs`** —
+`--preview` is the one place we eyeball renderers.
+
+### 5. Update docs
 
 - Add a `# Config` block to the top of `src/lib/matrix/subway.rs` matching the
   format used by every other matrix doc-comment (layout diagram + YAML
@@ -331,6 +354,12 @@ scheduler.
 - **Sport renderers also need an `offseason_renders` test** — every team
   sport, golf, and F1 has months without data, and the off-season path
   is a separate code path.
+- **Visual smoke testing goes through `--preview`, not example bins.**
+  `ohmyoled --preview <name>` drives the renderer live with hand-tuned
+  fake data; that's the one path for eyeballing layout, scroll, color,
+  and mode transitions. Don't add new `examples/*_render_check.rs`
+  files — wire the renderer into `src/preview.rs` instead (see recipe
+  step 4). Unit tests still own correctness; preview owns visual judgement.
 
 ### Async + signals
 
@@ -542,10 +571,18 @@ build approach.
 ```bash
 bash scripts/fetch-fonts.sh                          # one-time after clone
 cargo build                                          # bin + lib
-cargo test --lib                                     # unit tests (60+)
+cargo test --lib                                     # unit tests
 cargo test --doc                                     # doc tests
 cargo clippy --lib --bin ohmyoled --examples         # lint
 cargo run --example config_formats                   # all three formats parse equivalently
 cargo run --example multi_instance_check             # single-or-array shape
-OHMYOLED_MATRIX_MODE=test cargo run -- -f examples/configs/ohmyoled.yaml  # end-to-end
+OHMYOLED_MATRIX_MODE=test cargo run -- --preview <name>                    # visual smoke for one renderer
+OHMYOLED_MATRIX_MODE=test cargo run -- -f examples/configs/ohmyoled.yaml   # end-to-end rotation
 ```
+
+`<name>` is any of `time`, `weather`, `stock`, `sport`, `golf`, `f1`,
+`iss`, … (see `pub const NAMES` in `src/preview.rs` for the live list).
+The preview loops until SIGINT, so wrap in `timeout 6 …` when scripting.
+
+The legacy `examples/*_render_check.rs` bins still compile but are
+frozen — new renderers ship via `--preview` only.
