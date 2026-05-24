@@ -53,23 +53,18 @@ const DIM: Color = Color { r: 130, g: 130, b: 130 };
 #[derive(Debug, Clone)]
 pub struct QuakeFonts {
     pub body: PathBuf,
-    pub small: PathBuf,
 }
 
 impl Default for QuakeFonts {
     fn default() -> Self {
         Self {
             body: "/usr/share/fonts/04B_03B_.TTF".into(),
-            small: "/usr/share/fonts/4x6.bdf".into(),
         }
     }
 }
 
 pub struct QuakeMatrix {
     body_font: Font,
-    /// Footer font — 4x6 BDF bitmap. Keeps the age/depth row to 6 rows so
-    /// it doesn't collide with the second wrap line of the place name.
-    small_font: Font,
 }
 
 impl QuakeMatrix {
@@ -84,7 +79,6 @@ impl QuakeMatrix {
     pub fn with_fonts(paths: QuakeFonts) -> Result<Self, String> {
         Ok(Self {
             body_font: Font::load_ttf(&paths.body, 8.0)?,
-            small_font: Font::load_bdf(&paths.small)?,
         })
     }
 
@@ -105,21 +99,21 @@ impl QuakeMatrix {
 
     fn draw_event(&self, img: &mut RgbImage, e: &QuakeEvent) {
         let body = &self.body_font;
-        let small = &self.small_font;
-        let body_line_h = body.height().max(body.ascent() + 1);
+        let line_h = body.height().max(body.ascent() + 1);
 
-        // Layout budget on a 32-row panel (body_line_h ≈ 8, small ≈ 6):
-        //   rows  0–6  : title line 1                (baseline at body.ascent)
-        //   rows  8–15 : title line 2                (baseline at body.ascent + body_line_h + 1)
-        //   rows 17–24 : title line 3                (baseline at body.ascent + 2·body_line_h + 2)
-        //   rows 26–31 : footer (small font)         (baseline at PANEL_H − 1)
-        // The whole title is color-coded by magnitude — the "M X.X -" prefix
-        // is already embedded in the USGS-curated title string, so we don't
-        // render it twice.
+        // Layout budget on a 32-row panel (line_h ≈ 8):
+        //   rows  0–6  : title line 1   (baseline at body.ascent)
+        //   rows  9–15 : title line 2   (baseline at body.ascent + line_h + 1, only if wrapped)
+        //   rows 24–30 : footer         (baseline at PANEL_H − 1)
+        // Footer uses the same body font so it stays readable — at the cost
+        // of capping the title at 2 wrap lines instead of 3. Long titles
+        // get an ellipsis on the second line, which is the right tradeoff
+        // because the magnitude prefix is what people actually read at a
+        // glance, and that always lives at the start of line 1.
         let mag_color = magnitude_color(e.magnitude);
-        let lines = wrap_into_lines(&e.title, PANEL_W as i32, body, 3);
+        let lines = wrap_into_lines(&e.title, PANEL_W as i32, body, 2);
         for (i, line) in lines.iter().enumerate() {
-            let y = body.ascent() + i as i32 * (body_line_h + 1);
+            let y = body.ascent() + i as i32 * (line_h + 1);
             draw_text(img, body, 1, y, mag_color, line);
         }
 
@@ -131,10 +125,10 @@ impl QuakeMatrix {
         };
         let depth = format!("{}km", e.depth_km.round() as i32);
         let footer_y = (PANEL_H as i32) - 1;
-        draw_text(img, small, 1, footer_y, DIM, &left);
-        let depth_w = small.text_width(&depth);
+        draw_text(img, body, 1, footer_y, DIM, &left);
+        let depth_w = body.text_width(&depth);
         let depth_x = (PANEL_W as i32 - depth_w - 1).max(0);
-        draw_text(img, small, depth_x, footer_y, DIM, &depth);
+        draw_text(img, body, depth_x, footer_y, DIM, &depth);
     }
 
     fn draw_quiet(&self, img: &mut RgbImage) {
@@ -269,7 +263,6 @@ mod tests {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts");
         QuakeFonts {
             body: repo.join("04B_03B_.TTF"),
-            small: repo.join("4x6.bdf"),
         }
     }
 
@@ -441,10 +434,10 @@ mod tests {
             img_without.as_raw(),
             "footer should differ when felt count is present vs absent"
         );
-        // And the footer rows (last 6 rows of the panel) should have lit
+        // And the footer rows (last 8 rows of the panel) should have lit
         // pixels — the "felt N" string is drawn there.
         let mut lit_footer = 0usize;
-        for y in (PANEL_H - 6)..PANEL_H {
+        for y in (PANEL_H - 8)..PANEL_H {
             for x in 0..PANEL_W {
                 if img_with.get_pixel(x, y).0 != [0, 0, 0] {
                     lit_footer += 1;
