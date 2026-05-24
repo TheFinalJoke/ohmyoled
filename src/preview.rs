@@ -1,0 +1,261 @@
+//! `--preview <name>` — drive any renderer live against the matrix with
+//! built-in fake data so you can eyeball changes without a real config or
+//! network. Loops forever until SIGINT.
+//!
+//! Backend is whatever `RGBMatrix` resolves to (terminal mode by default in
+//! the devcontainer; real panel on a Pi). Pick a screen by name:
+//!
+//! ```text
+//! ohmyoled --preview time
+//! ohmyoled --preview weather
+//! ohmyoled --preview stock
+//! ohmyoled --preview sport
+//! ohmyoled --preview golf
+//! ohmyoled --preview f1
+//! ohmyoled --preview iss
+//! ```
+//!
+//! Fonts resolve in this order: `OHMYOLED_FONTS_DIR`, the repo `fonts/`
+//! directory (when running from a source checkout), then
+//! `/usr/share/fonts/`.
+
+use std::path::{Path, PathBuf};
+
+use chrono::{Duration as ChDuration, Local, TimeZone};
+use ohmyoled_matrix::{Color, RGBMatrix};
+
+use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
+use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
+use oledlib::api::iss::IssState;
+use oledlib::api::sport::model::{
+    GameStatus, HomeOrAway, NextGame, SportApiSource, SportData, SportKind, StandingsEntry,
+    TeamSide,
+};
+use oledlib::api::stock::model::{StockApiSource, StockQuote};
+use oledlib::api::weather::model::{CurrentWeather, DayForecast, Weather, WeatherApiSource};
+use oledlib::matrix::f1::{F1Fonts, F1Matrix};
+use oledlib::matrix::golf::{GolfFonts, GolfMatrix};
+use oledlib::matrix::iss::{IssFonts, IssMatrix};
+use oledlib::matrix::sport::{SportFonts, SportMatrix};
+use oledlib::matrix::stock::{StockFonts, StockMatrix};
+use oledlib::matrix::time::TimeSnapshot;
+use oledlib::matrix::weather::{WeatherFonts, WeatherMatrix};
+use oledlib::matrix::{Renderer, TimeMatrix};
+
+pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss"];
+
+/// Resolve a directory that contains the project font files.
+fn font_dir() -> PathBuf {
+    if let Ok(env) = std::env::var("OHMYOLED_FONTS_DIR") {
+        let p = PathBuf::from(env);
+        if p.exists() {
+            return p;
+        }
+    }
+    // CARGO_MANIFEST_DIR is fixed at compile time; check it exists at runtime
+    // before trusting it (release binaries are compiled on a different host).
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fonts");
+    if repo.exists() {
+        return repo;
+    }
+    PathBuf::from("/usr/share/fonts")
+}
+
+pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
+    let fonts = font_dir();
+    log::info!("preview: rendering '{name}' with fonts from {}", fonts.display());
+    match name {
+        "time" => preview_time(&mut matrix, &fonts).await,
+        "weather" => preview_weather(&mut matrix, &fonts).await,
+        "stock" => preview_stock(&mut matrix, &fonts).await,
+        "sport" => preview_sport(&mut matrix, &fonts).await,
+        "golf" => preview_golf(&mut matrix, &fonts).await,
+        "f1" => preview_f1(&mut matrix, &fonts).await,
+        "iss" => preview_iss(&mut matrix, &fonts).await,
+        other => Err(format!(
+            "unknown preview '{other}'. Available: {}",
+            NAMES.join(", ")
+        )),
+    }
+}
+
+async fn preview_time(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let path = fonts.join("04B_03B_.TTF");
+    let mut r = TimeMatrix::new_async(Color::WHITE, Some(&path)).await?;
+    loop {
+        let snap = TimeSnapshot { now: Local::now() };
+        r.render(matrix, &snap).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_weather(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = WeatherMatrix::with_fonts_async(WeatherFonts {
+        body: fonts.join("04B_03B_.TTF"),
+        icon: fonts.join("weathericons.ttf"),
+        temp: fonts.join("BMmini.TTF"),
+    })
+    .await?;
+    let data = fake_weather();
+    loop {
+        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_stock(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = StockMatrix::with_fonts_async(StockFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    let data = StockQuote {
+        api: StockApiSource::Finnhub,
+        symbol: "AAPL".into(),
+        name: "Apple Inc.".into(),
+        open: 150.00,
+        current: 153.42,
+        high: 154.10,
+        low: 149.85,
+        previous_close: 150.20,
+    };
+    loop {
+        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_sport(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = SportMatrix::with_fonts_async(SportFonts {
+        body: fonts.join("04B_03B_.TTF"),
+        big: fonts.join("04b24.otf"),
+    })
+    .await?;
+    let data = SportData {
+        api: SportApiSource::Espn,
+        sport: SportKind::Basketball,
+        team_name: "Boston Celtics".into(),
+        record: "56-26".into(),
+        next_game: Some(NextGame {
+            start: Local.with_ymd_and_hms(2026, 5, 2, 19, 30, 0).unwrap(),
+            status: GameStatus::Final,
+            home: TeamSide {
+                name: "Boston Celtics".into(),
+                abbreviation: "BOS".into(),
+                logo_url: None,
+                score: Some(108),
+            },
+            away: TeamSide {
+                name: "Philadelphia 76ers".into(),
+                abbreviation: "PHI".into(),
+                logo_url: None,
+                score: Some(100),
+            },
+            our_side: HomeOrAway::Home,
+        }),
+        standings: (1..=5)
+            .map(|i| StandingsEntry {
+                position: i,
+                team_name: format!("Team{i}"),
+            })
+            .collect(),
+    };
+    loop {
+        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_golf(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = GolfMatrix::with_fonts_async(GolfFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    let data = GolfData {
+        tour: GolfTour::Pga,
+        event_name: "Masters Tournament".into(),
+        status: "In Progress".into(),
+        leaderboard: vec![
+            LeaderboardEntry { position: 1, player_short: "SCHEFFLER".into(), score: "-12".into() },
+            LeaderboardEntry { position: 2, player_short: "RAHM".into(),      score: "-8".into()  },
+            LeaderboardEntry { position: 3, player_short: "MORIKAWA".into(),  score: "-6".into()  },
+            LeaderboardEntry { position: 4, player_short: "SPIETH".into(),    score: "-4".into()  },
+            LeaderboardEntry { position: 5, player_short: "CANTLAY".into(),   score: "-3".into()  },
+        ],
+    };
+    loop {
+        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_f1(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = F1Matrix::with_fonts_async(F1Fonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    let data = F1Data {
+        season: "2026".into(),
+        next_race: Some(NextRace {
+            round: 7,
+            name: "Monaco Grand Prix".into(),
+            circuit: "Circuit de Monaco".into(),
+            start: Local::now() + ChDuration::days(3),
+        }),
+        standings: vec![
+            DriverStanding { position: 1, code: "VER".into(), family_name: "Verstappen".into(), points: 161.0 },
+            DriverStanding { position: 2, code: "NOR".into(), family_name: "Norris".into(),     points: 145.0 },
+            DriverStanding { position: 3, code: "LEC".into(), family_name: "Leclerc".into(),    points: 132.0 },
+            DriverStanding { position: 4, code: "RUS".into(), family_name: "Russell".into(),    points: 118.0 },
+            DriverStanding { position: 5, code: "HAM".into(), family_name: "Hamilton".into(),   points: 99.0  },
+        ],
+    };
+    loop {
+        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_iss(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = IssMatrix::with_fonts_async(IssFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    let distant = IssState {
+        ground_distance_km: 1247,
+        overhead: false,
+        lat: 23.5,
+        lon: -50.1,
+        altitude_km: 421.0,
+        velocity_kms: 7.66,
+        visibility: "daylight".into(),
+    };
+    let overhead = IssState { ground_distance_km: 250, overhead: true, ..distant.clone() };
+    // Alternate the two modes so the magenta OVERHEAD banner gets airtime too.
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &overhead } else { &distant };
+        toggle = !toggle;
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+fn fake_weather() -> Weather {
+    let now = Local.with_ymd_and_hms(2024, 6, 15, 12, 0, 0).unwrap();
+    Weather {
+        api: WeatherApiSource::OpenWeather,
+        lat: 37.7749,
+        lon: -122.4194,
+        location_name: "San Francisco".into(),
+        current: CurrentWeather {
+            conditions: "Clear".into(),
+            temp: 68.0,
+            feels_like: 66.0,
+            wind_speed: 9.0,
+            humidity: 72,
+            precipitation_chance: 10,
+            uv: Some(5.2),
+            wind_direction_deg: Some(270.0),
+            icon: oledlib::api::weather::icon_table::SUNNY,
+        },
+        forecast: DayForecast {
+            today_high: 74.0,
+            today_low: 56.0,
+            sunrise: now - ChDuration::hours(6),
+            sunset: now + ChDuration::hours(8),
+        },
+    }
+}
