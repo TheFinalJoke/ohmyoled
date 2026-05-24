@@ -51,16 +51,19 @@ pub struct WeatherApiType {
 #[serde(rename_all = "lowercase")]
 pub enum StockApi {
     Finnhub,
+    Coingecko,
 }
 impl StockApi {
     pub fn get_api(&self) -> String {
         match self {
             StockApi::Finnhub => "finnhub".to_string(),
+            StockApi::Coingecko => "coingecko".to_string(),
         }
     }
     pub fn str_to_api(api_str: String) -> Self {
         match api_str.as_str() {
             "finnhub" => Self::Finnhub,
+            "coingecko" => Self::Coingecko,
             _ => Self::Finnhub,
         }
     }

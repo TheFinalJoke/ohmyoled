@@ -1,8 +1,9 @@
 # ohmyoled
 
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
-modules — clock, weather, stock quotes, team sports, golf leaderboards,
-and Formula 1 standings — pulling from free or freemium public APIs.
+modules — clock, weather, stock and crypto quotes, team sports, golf
+leaderboards, and Formula 1 standings — pulling from free or freemium
+public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -244,8 +245,10 @@ identically across providers because NWS strings are mapped to OWM codes.
 
 ### `stock`
 
-A list of symbols. Each entry renders symbol + current price, change,
-high/low, and prev-close. Refresh: 30 s.
+A list of tickers. Each entry renders symbol + current price, change,
+high/low, and prev-close. Two providers share this section: **Finnhub**
+for equities (refresh 30 s) and **CoinGecko** for crypto (refresh 60 s).
+Both normalize into the same on-panel layout.
 
 ```yaml
 stock:
@@ -257,14 +260,22 @@ stock:
     api: finnhub
     api_key: YOUR_FINNHUB_KEY
     symbol: MSFT
+  - run: true
+    api: coingecko
+    api_key: null              # not needed for coingecko's free tier
+    symbol: bitcoin            # coin id, not ticker
+  - run: true
+    api: coingecko
+    api_key: null
+    symbol: ethereum
 ```
 
-| Field     | Type   | Required | Notes                                            |
-| --------- | ------ | -------- | ------------------------------------------------ |
-| `run`     | bool   | yes      |                                                  |
-| `api`     | enum   | yes      | Only `finnhub` is supported today.               |
-| `api_key` | string | yes      | Get one at <https://finnhub.io> (free tier OK).  |
-| `symbol`  | string | yes      | Ticker (e.g. `AAPL`, `MSFT`, `BTC-USD`).         |
+| Field     | Type   | Required | Notes                                                                                                          |
+| --------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `run`     | bool   | yes      |                                                                                                                |
+| `api`     | enum   | yes      | `finnhub` (equities) or `coingecko` (crypto).                                                                  |
+| `api_key` | string | finnhub only | Get a Finnhub key at <https://finnhub.io> (free tier OK). CoinGecko's public tier is keyless — set to `null`. |
+| `symbol`  | string | yes      | For Finnhub: ticker (e.g. `AAPL`). For CoinGecko: coin id (e.g. `bitcoin`, `ethereum`) — display ticker comes from the API. |
 
 Display colors: green for up, red for down.
 

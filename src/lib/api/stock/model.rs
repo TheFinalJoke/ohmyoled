@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StockApiSource {
     Finnhub,
+    Coingecko,
 }
 
 /// One company's current trading state plus the metadata needed for display.

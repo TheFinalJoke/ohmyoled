@@ -25,6 +25,7 @@ use crate::api::golf::{GolfCollector, GolfTour};
 use crate::api::sport::espn::EspnConfig;
 use crate::api::sport::model::SportKind;
 use crate::api::sport::SportCollector;
+use crate::api::stock::coingecko::CoingeckoConfig;
 use crate::api::stock::finnhub::FinnhubConfig;
 use crate::api::stock::StockCollector;
 use crate::api::weather::accuweather::AccuWeatherConfig;
@@ -253,14 +254,22 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
 }
 
 async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
-    let api_key = s
-        .api_key
-        .clone()
-        .ok_or_else(|| "stock: api_key missing".to_string())?;
     let collector = match s.api {
-        StockApi::Finnhub => StockCollector::from_finnhub(FinnhubConfig {
-            api_key,
-            symbol: s.symbol.clone(),
+        StockApi::Finnhub => {
+            let api_key = s
+                .api_key
+                .clone()
+                .ok_or_else(|| "stock: api_key missing".to_string())?;
+            StockCollector::from_finnhub(FinnhubConfig {
+                api_key,
+                symbol: s.symbol.clone(),
+            })
+            .map_err(|e| e.to_string())?
+        }
+        // CoinGecko's public tier is unauthenticated — `api_key` in the
+        // config is ignored. `symbol` carries the coin id (e.g. "bitcoin").
+        StockApi::Coingecko => StockCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
         })
         .map_err(|e| e.to_string())?,
     };

@@ -26,7 +26,7 @@ animation = "subtle"          # off | subtle | prominent
 
 [[stock]]
 run = true
-api = "finnhub"
+api = "finnhub"               # finnhub (equities) | coingecko (crypto, no key)
 api_key = "YOUR_FINNHUB_KEY"
 symbol = "AAPL"
 
@@ -35,6 +35,21 @@ run = true
 api = "finnhub"
 api_key = "YOUR_FINNHUB_KEY"
 symbol = "MSFT"
+
+# Crypto entries reuse the stock renderer. `symbol` carries the CoinGecko
+# coin id (lowercase, e.g. "bitcoin"); the display ticker is pulled from
+# the API response. `api_key` is unused for coingecko's free tier.
+[[stock]]
+run = true
+api = "coingecko"
+api_key = "null"
+symbol = "bitcoin"
+
+[[stock]]
+run = true
+api = "coingecko"
+api_key = "null"
+symbol = "ethereum"
 
 # Team sports + golf + F1 all live under [[sport]]. Each entry is
 # discriminated by its `sport` field. Team sports require `team_logo`;
