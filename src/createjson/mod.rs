@@ -1,5 +1,12 @@
+pub mod aurora;
 pub mod f1;
+pub mod flights;
 pub mod golf;
+pub mod hass;
+pub mod iss;
+pub mod launch;
+pub mod pihole;
+pub mod quake;
 pub mod sport;
 pub mod stock;
 pub mod time;
@@ -60,10 +67,17 @@ fn print_menu(entries: &[Entry]) {
     println!("  {}", ui::bold(&ui::cyan("Modules")));
     println!("    {} Time", ui::bold("[1]"));
     println!("    {} Weather", ui::bold("[2]"));
-    println!("    {} Stock", ui::bold("[3]"));
+    println!("    {} Stock (live + optional historical chart)", ui::bold("[3]"));
     println!("    {} Sport — team (MLB / NBA / NFL / NHL)", ui::bold("[4]"));
     println!("    {} Sport — Golf", ui::bold("[5]"));
     println!("    {} Sport — Formula 1", ui::bold("[6]"));
+    println!("    {} ISS — overhead countdown", ui::bold("[7]"));
+    println!("    {} Earthquake — largest recent USGS event", ui::bold("[8]"));
+    println!("    {} Aurora — NOAA planetary Kp index", ui::bold("[9]"));
+    println!("    {} Flights — nearby aircraft (OpenSky)", ui::bold("[10]"));
+    println!("    {} Launch — next orbital launch countdown", ui::bold("[11]"));
+    println!("    {} Home Assistant entity", ui::bold("[12]"));
+    println!("    {} Pi-hole DNS-block summary", ui::bold("[13]"));
     println!();
     println!("  {}", ui::bold(&ui::cyan("Actions")));
     println!("    {} Matrix panel options", ui::bold("[m]"));
@@ -127,15 +141,24 @@ fn fold_section(values: Vec<Value>) -> Option<Value> {
 /// Non-interactive starter config. Used by `--init-config` so users who
 /// download a release binary get a config they can edit without having to
 /// run the interactive `-c` flow. Time is enabled out of the box (no
-/// external API needed); the other modules are wired in but `run: false`
-/// with `REPLACE_ME_*` placeholders for the keys the user has to fill in.
+/// external API needed); every other module is wired in with `run: false`
+/// and `REPLACE_ME_*` placeholders for any required values, so the user
+/// just has to flip `run` and fill the placeholders for whatever tiles
+/// they want on the panel.
 pub fn default_config() -> Value {
     let json = r#"{
         "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
         "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
         "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle"},
-        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL"},
-        "sport": []
+        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL","chart":false},
+        "sport": [],
+        "iss": {"run":false,"lat":40.7128,"lon":-74.0060},
+        "quake": {"run":false,"feed":"significant_day"},
+        "aurora": {"run":false,"alert_threshold":5},
+        "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0},
+        "launch": {"run":false,"agency_filter":[]},
+        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60]},
+        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null"}
     }"#;
     serde_json::from_str(json).expect("starter config must parse")
 }
@@ -215,6 +238,62 @@ pub fn create_json(dev_mode: bool) -> Value {
                 }
                 Err(e) => ui::error(&format!("f1 config failed: {e}")),
             },
+            "7" => match iss::configure() {
+                Ok(opts) => {
+                    let label = iss::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("IssOptions serializes");
+                    entries.push(Entry { section: "iss", label, value });
+                }
+                Err(e) => ui::error(&format!("iss config failed: {e}")),
+            },
+            "8" => match quake::configure() {
+                Ok(opts) => {
+                    let label = quake::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("QuakeOptions serializes");
+                    entries.push(Entry { section: "quake", label, value });
+                }
+                Err(e) => ui::error(&format!("quake config failed: {e}")),
+            },
+            "9" => match aurora::configure() {
+                Ok(opts) => {
+                    let label = aurora::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("AuroraOptions serializes");
+                    entries.push(Entry { section: "aurora", label, value });
+                }
+                Err(e) => ui::error(&format!("aurora config failed: {e}")),
+            },
+            "10" => match flights::configure() {
+                Ok(opts) => {
+                    let label = flights::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("FlightsOptions serializes");
+                    entries.push(Entry { section: "flights", label, value });
+                }
+                Err(e) => ui::error(&format!("flights config failed: {e}")),
+            },
+            "11" => match launch::configure() {
+                Ok(opts) => {
+                    let label = launch::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("LaunchOptions serializes");
+                    entries.push(Entry { section: "launch", label, value });
+                }
+                Err(e) => ui::error(&format!("launch config failed: {e}")),
+            },
+            "12" => match hass::configure() {
+                Ok(opts) => {
+                    let label = hass::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("HassOptions serializes");
+                    entries.push(Entry { section: "hass", label, value });
+                }
+                Err(e) => ui::error(&format!("hass config failed: {e}")),
+            },
+            "13" => match pihole::configure() {
+                Ok(opts) => {
+                    let label = pihole::summary_line(&opts);
+                    let value = serde_json::to_value(opts).expect("PiholeOptions serializes");
+                    entries.push(Entry { section: "pihole", label, value });
+                }
+                Err(e) => ui::error(&format!("pihole config failed: {e}")),
+            },
             "m" => configure_matrix(&mut matrix_opts),
             "u" => match entries.pop() {
                 Some(e) => ui::success(&format!("Removed: {}", e.label)),
@@ -241,7 +320,10 @@ pub fn create_json(dev_mode: bool) -> Value {
         serde_json::to_value(&matrix_opts).expect("MatrixOptions serializes"),
     );
 
-    let sections = ["time", "weather", "stock", "sport"];
+    let sections = [
+        "time", "weather", "stock", "sport", "iss", "quake", "aurora",
+        "flights", "launch", "hass", "pihole",
+    ];
     for name in sections {
         let bucket: Vec<Value> = entries
             .iter()
