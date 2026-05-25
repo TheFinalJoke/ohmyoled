@@ -60,13 +60,36 @@ const T_IMMINENT_A: Color = Color { r: 255, g: 30, b: 30 };
 const T_IMMINENT_B: Color = Color { r: 110, g: 0, b: 0 };
 const LIFTOFF: Color = Color { r: 0, g: 255, b: 80 };
 
-/// Frame interval for the live countdown — 1 fps is enough resolution
-/// for the seconds digit to tick visibly without burning frames.
-const TICK: Duration = Duration::from_secs(1);
-/// One full render cycle, in frames. Extended in T-imminent mode so the
-/// scheduler doesn't rotate the panel off mid-countdown.
-const STATIC_FRAMES: u32 = 15;
-const IMMINENT_FRAMES: u32 = 70;
+/// Frame interval for the render loop. 50 ms (~20 fps) buys smooth
+/// pixel-by-pixel mission marquee without the live countdown stuttering.
+const TICK: Duration = Duration::from_millis(50);
+const FPS: u32 = 20;
+/// One full render cycle, in *frames* (not seconds). Extended in
+/// T-imminent and Liftoff modes so the panel doesn't rotate off mid-
+/// countdown.
+const STATIC_FRAMES: u32 = 15 * FPS; // 15 s
+const IMMINENT_FRAMES: u32 = 70 * FPS; // 70 s
+/// Mission marquee pacing: pause at start, scroll left, pause at end,
+/// then loop. All in 20 fps frames.
+const MISSION_SETTLE: u32 = 2 * FPS;
+const MISSION_TRAIL_PAUSE: u32 = FPS;
+const MISSION_OVERSCROLL: i32 = 12;
+
+// Fixed y-coordinates for the four rows. Hardcoded (rather than derived
+// from font metrics) so we can guarantee a visible gap between the
+// countdown row and the mission row — the original ascent-derived layout
+// put them 2 rows apart and they visually blurred together.
+//   rows  0–5  : provider     (baseline y = 5)
+//   rows  6–12 : vehicle      (baseline y = 12)
+//   rows 14–20 : countdown    (baseline y = 20)
+//   rows 24–31 : mission      (baseline y = 31)
+// Gap between countdown bottom (row 21 with descender) and mission top
+// (row 24) is 3 dark rows — enough breathing room that the eye reads
+// the countdown and the mission caption as distinct elements.
+const PROVIDER_Y: i32 = 5;
+const VEHICLE_Y: i32 = 12;
+const COUNTDOWN_Y: i32 = 20;
+const MISSION_Y: i32 = 31;
 
 #[derive(Debug, Clone)]
 pub struct LaunchFonts {
@@ -107,36 +130,51 @@ impl LaunchMatrix {
     }
 
     pub fn frame(&self, data: &UpcomingLaunch, now: DateTime<Utc>, blink: bool) -> RgbImage {
+        self.draw_frame(data, now, blink, 0)
+    }
+
+    /// Render one frame at the given mission-marquee offset. `scroll_px`
+    /// shifts the mission row leftward by N pixels — 0 means settled at
+    /// the left margin. The provider/vehicle/countdown rows are unaffected
+    /// so the at-a-glance read stays stable.
+    pub fn draw_frame(
+        &self,
+        data: &UpcomingLaunch,
+        now: DateTime<Utc>,
+        blink: bool,
+        scroll_px: i32,
+    ) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
         let body = &self.body_font;
-        let line_h = body.height().max(body.ascent() + 1);
-
         let mode = countdown_mode(data, now);
 
-        // Top: provider (small grey). Truncate if it doesn't fit the panel.
+        // Top: provider (small grey). Truncates with `…` if too long.
         let provider = truncate_to_width(&data.provider, PANEL_W as i32 - 2, body);
-        draw_text(&mut img, body, 1, body.ascent(), PROVIDER, &provider);
+        draw_text(&mut img, body, 1, PROVIDER_Y, PROVIDER, &provider);
 
-        // Row 2: vehicle (bright white).
+        // Vehicle (bright white).
         let vehicle = truncate_to_width(&data.vehicle, PANEL_W as i32 - 2, body);
-        let vehicle_y = body.ascent() + line_h + 1;
-        draw_text(&mut img, body, 1, vehicle_y, VEHICLE, &vehicle);
+        draw_text(&mut img, body, 1, VEHICLE_Y, VEHICLE, &vehicle);
 
-        // Row 3 (centered, the visual focal point): countdown text or LIFT-OFF banner.
+        // Countdown (centered, color-coded by mode).
         let (line, color) = countdown_line(mode, data, now, blink);
         let line_w = body.text_width(&line);
         let line_x = ((PANEL_W as i32 - line_w) / 2).max(0);
-        let line_y = body.ascent() + 2 * line_h + 4;
-        draw_text(&mut img, body, line_x, line_y, color, &line);
+        draw_text(&mut img, body, line_x, COUNTDOWN_Y, color, &line);
 
-        // Row 4: mission (dim grey), truncated to fit.
+        // Mission row at the bottom — marquees when the rendered text
+        // would overflow the panel so the full name reads over time
+        // instead of truncating mid-word.
         if !data.mission.is_empty() {
-            let mission = truncate_to_width(&data.mission, PANEL_W as i32 - 2, body);
-            let mission_y = (PANEL_H as i32) - 1;
-            draw_text(&mut img, body, 1, mission_y, MISSION, &mission);
+            draw_text(&mut img, body, 1 - scroll_px, MISSION_Y, MISSION, &data.mission);
         }
 
         img
+    }
+
+    /// True when the mission text wouldn't fit on the panel statically.
+    fn mission_overflows(&self, data: &UpcomingLaunch) -> bool {
+        self.body_font.text_width(&data.mission) > PANEL_W as i32 - 2
     }
 }
 
@@ -155,22 +193,22 @@ impl Renderer for LaunchMatrix {
     }
 
     fn cycle_duration(&self) -> Duration {
-        Duration::from_secs(STATIC_FRAMES as u64)
+        Duration::from_millis((STATIC_FRAMES as u64) * (TICK.as_millis() as u64))
     }
 
     async fn render(&mut self, matrix: &mut RGBMatrix, data: &UpcomingLaunch) -> Result<(), RenderError> {
         matrix.clear();
-        // Pick frame count based on mode — extend in T-imminent so the
-        // launch doesn't rotate off the panel before liftoff.
-        let now = Utc::now();
-        let frames = match countdown_mode(data, now) {
+        let frames = match countdown_mode(data, Utc::now()) {
             CountdownMode::Imminent | CountdownMode::Liftoff => IMMINENT_FRAMES,
             _ => STATIC_FRAMES,
         };
+        let mission_w = self.body_font.text_width(&data.mission);
+        let mission_overflows = self.mission_overflows(data);
         for tick in 0..frames {
-            // Blink in T-imminent and liftoff modes by alternating per frame.
-            let blink = tick.is_multiple_of(2);
-            let img = self.frame(data, Utc::now(), blink);
+            // ~2 Hz blink in imminent/liftoff modes — slow enough to read.
+            let blink = (tick / (FPS / 2)).is_multiple_of(2);
+            let scroll_px = mission_scroll_px(tick, mission_w, mission_overflows);
+            let img = self.draw_frame(data, Utc::now(), blink, scroll_px);
             matrix.set_image(&img, 0, 0);
             tokio::time::sleep(TICK).await;
         }
@@ -239,6 +277,27 @@ fn countdown_line(
             )
         }
         CountdownMode::Liftoff => ("LIFT-OFF".to_string(), LIFTOFF),
+    }
+}
+
+/// X-offset for the mission row at frame `tick`. When the text fits
+/// statically we return 0 (no scroll). Otherwise we cycle: settle for
+/// MISSION_SETTLE frames, scroll left at 1 px/frame until the text is
+/// fully off the left edge, pause briefly, then reset and repeat.
+fn mission_scroll_px(tick: u32, text_w: i32, overflows: bool) -> i32 {
+    if !overflows {
+        return 0;
+    }
+    let scroll_frames = (text_w + MISSION_OVERSCROLL).max(1) as u32;
+    let cycle = MISSION_SETTLE + scroll_frames + MISSION_TRAIL_PAUSE;
+    let local = tick % cycle;
+    if local < MISSION_SETTLE {
+        0
+    } else if local < MISSION_SETTLE + scroll_frames {
+        (local - MISSION_SETTLE) as i32
+    } else {
+        // Trail pause holds the line just off the right edge, then loops.
+        scroll_frames as i32
     }
 }
 
@@ -417,5 +476,96 @@ mod tests {
     fn truncate_to_width_passes_through_short_text() {
         let m = LaunchMatrix::with_fonts(repo_fonts()).expect("fonts");
         assert_eq!(truncate_to_width("Hi", 64, &m.body_font), "Hi");
+    }
+
+    /// Regression for the "Starlink Ground" complaint: the countdown row
+    /// (baseline y=20, glyphs span ~14..=21) and the mission row
+    /// (baseline y=31, glyphs span ~25..=31) must leave at least one
+    /// fully-dark row between them, so they don't visually merge.
+    #[test]
+    fn countdown_and_mission_have_clear_gap() {
+        let m = LaunchMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let n = now();
+        let img = m.frame(&sample(n + chrono::Duration::days(2), LaunchStatus::Go), n, false);
+        // Rows 22, 23, 24 should be entirely dark — the dividing gap
+        // between countdown bottom and mission top.
+        for y in 22..=24u32 {
+            let lit = (0..PANEL_W)
+                .filter(|&x| img.get_pixel(x, y).0 != [0, 0, 0])
+                .count();
+            assert_eq!(
+                lit, 0,
+                "row {y} should be a clear gap between countdown and mission"
+            );
+        }
+    }
+
+    #[test]
+    fn long_mission_marquees() {
+        let m = LaunchMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let n = now();
+        let mut s = sample(n + chrono::Duration::days(2), LaunchStatus::Go);
+        s.mission = "Starlink Group 8-5 with extra long suffix".into();
+        assert!(m.mission_overflows(&s), "this mission should overflow");
+
+        // Mission row (rows 25..=31) should look different at scroll_px=0
+        // vs scroll_px=12 — the marquee has shifted the text leftward.
+        let f0 = m.draw_frame(&s, n, false, 0);
+        let fmid = m.draw_frame(&s, n, false, 12);
+        let row_diff = (25..32u32)
+            .flat_map(|y| (0..PANEL_W).map(move |x| (x, y)))
+            .filter(|&(x, y)| f0.get_pixel(x, y) != fmid.get_pixel(x, y))
+            .count();
+        assert!(row_diff > 5, "mission row should visibly shift with scroll_px");
+
+        // The other rows (provider/vehicle/countdown) must stay identical
+        // between scroll positions — only the mission row animates.
+        let upper_diff = (0..24u32)
+            .flat_map(|y| (0..PANEL_W).map(move |x| (x, y)))
+            .filter(|&(x, y)| f0.get_pixel(x, y) != fmid.get_pixel(x, y))
+            .count();
+        assert_eq!(upper_diff, 0, "non-mission rows must stay static");
+    }
+
+    #[test]
+    fn short_mission_does_not_marquee() {
+        let m = LaunchMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let mut s = sample(now() + chrono::Duration::days(2), LaunchStatus::Go);
+        s.mission = "Crew-9".into();
+        assert!(!m.mission_overflows(&s), "'Crew-9' should fit statically");
+    }
+
+    /// Regression for the original user complaint: the default sample
+    /// mission "Starlink Group 8-5" is wide enough that it has to
+    /// marquee on the 64-px panel. If this ever stops being true (font
+    /// metrics drift, mission name shortens, panel widens) the
+    /// renderer needs a different overflow strategy.
+    #[test]
+    fn starlink_group_8_5_actually_overflows() {
+        let m = LaunchMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let s = sample(now() + chrono::Duration::days(2), LaunchStatus::Go);
+        assert_eq!(s.mission, "Starlink Group 8-5");
+        assert!(
+            m.mission_overflows(&s),
+            "default mission must overflow — that's why we wired up the marquee"
+        );
+    }
+
+    #[test]
+    fn mission_scroll_px_holds_at_zero_when_no_overflow() {
+        for tick in 0..1000 {
+            assert_eq!(mission_scroll_px(tick, 100, false), 0);
+        }
+    }
+
+    #[test]
+    fn mission_scroll_px_advances_during_scroll_phase() {
+        // 80 px text -> scroll_frames = 92. Settle 40 frames, then scroll.
+        // At tick=40 we're at the start of the scroll phase, scroll=0.
+        // At tick=50 we should be 10 px in.
+        let s0 = mission_scroll_px(40, 80, true);
+        let s10 = mission_scroll_px(50, 80, true);
+        assert_eq!(s0, 0);
+        assert_eq!(s10, 10);
     }
 }
