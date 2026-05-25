@@ -86,6 +86,10 @@ fn print_menu(entries: &[Entry]) {
         "    {} `e N` to edit entry #N in place (re-runs that module's prompts)",
         ui::bold("[e]")
     );
+    println!(
+        "    {} `s N` to show entry #N's full JSON (so you can copy api_keys etc.)",
+        ui::bold("[s]")
+    );
     println!("    {} Continue and write config", ui::bold("[c]"));
     println!("    {} Quit without saving", ui::bold("[q]"));
     println!();
@@ -129,6 +133,20 @@ fn configure_matrix(current: &mut MatrixOptions) {
     );
 
     ui::success("Matrix options updated");
+}
+
+/// Pretty-print one entry's JSON so the user can read off api_keys /
+/// tokens / urls without having to look them up elsewhere. Falls back
+/// to compact form if pretty-printing somehow fails (shouldn't, but
+/// belt-and-braces — we never want this helper to swallow content).
+fn print_entry_json(entry: &Entry) {
+    let pretty = serde_json::to_string_pretty(&entry.value)
+        .unwrap_or_else(|_| entry.value.to_string());
+    println!();
+    for line in pretty.lines() {
+        println!("    {line}");
+    }
+    println!();
 }
 
 /// Re-run the prompts for an existing entry, returning a fresh
@@ -530,6 +548,12 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
                             // silently destroys data.
                             let original = entries.remove(idx);
                             ui::info(&format!("Editing #{}: {}", idx + 1, original.label));
+                            // Print the entry's current JSON so the user
+                            // can read off api_keys / tokens / urls
+                            // without leaving the prompt. Prompts still
+                            // default to the module's hard-coded values,
+                            // so this is the "look it up here" affordance.
+                            print_entry_json(&original);
                             match re_configure_entry(&original) {
                                 Some(new) => {
                                     let new_label = new.label.clone();
@@ -545,6 +569,21 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
                                     entries.insert(idx, original);
                                 }
                             }
+                        }
+                        Err(e) => ui::warn(&e),
+                    }
+                }
+            }
+            "s" => {
+                if arg.is_empty() {
+                    ui::warn("Usage: `s N` — pick entry # from the summary above to show");
+                } else {
+                    match parse_entry_index(arg, entries.len()) {
+                        Ok(idx) => {
+                            ui::info(&format!(
+                                "Entry #{}: {}", idx + 1, entries[idx].label
+                            ));
+                            print_entry_json(&entries[idx]);
                         }
                         Err(e) => ui::warn(&e),
                     }
