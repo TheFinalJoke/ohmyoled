@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "ohmyoled"
-version = "3.5.0"
+version = "3.5.1"
 edition = "2021"
 default-run = "ohmyoled"
 
@@ -21,6 +21,10 @@ image = "0.25"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Used only at config-load time to wrap the top-level RegistryConfig
+# deserialize so failures include the JSON path that broke (e.g.
+# `stock[2].api: unknown variant 'coingecko'`). Zero deps, ~5 KB.
+serde_path_to_error = "0.1"
 serde_yml = "0.0.12"
 toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }

@@ -78,10 +78,13 @@ const MARKER: Color = Color { r: 255, g: 255, b: 255 };
 const NO_DATA: Color = Color { r: 140, g: 140, b: 140 };
 
 const FRAME_TICK: Duration = Duration::from_millis(50);
-const CYCLE: Duration = Duration::from_secs(12);
-/// Frames each period holds before the cycle advances. 4 s × 20 fps
-/// = 80 frames per period.
-const FRAMES_PER_PERIOD: u32 = 80;
+/// 14 s per period × 3 periods = 42 s total. Each period gets a long
+/// enough dwell that the user can actually read the chart, the marquee
+/// can run its two passes, and the eye can settle on the trend.
+const CYCLE: Duration = Duration::from_secs(42);
+/// Frames each period holds before the cycle advances. 14 s × 20 fps
+/// = 280 frames per period.
+const FRAMES_PER_PERIOD: u32 = 280;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Period {
@@ -637,12 +640,19 @@ mod tests {
 
     #[test]
     fn period_rotates_with_frame_index() {
-        // 80 frames per period. Confirm the rotation matches.
+        // Confirm the rotation tracks FRAMES_PER_PERIOD without hard-
+        // coding the value, so future dwell bumps don't require test
+        // edits.
+        let n = FRAMES_PER_PERIOD;
         assert_eq!(Period::from_frame_idx(0), Period::Day);
-        assert_eq!(Period::from_frame_idx(79), Period::Day);
-        assert_eq!(Period::from_frame_idx(80), Period::Month);
-        assert_eq!(Period::from_frame_idx(159), Period::Month);
-        assert_eq!(Period::from_frame_idx(160), Period::Year);
-        assert_eq!(Period::from_frame_idx(240), Period::Day, "wraps after one full cycle");
+        assert_eq!(Period::from_frame_idx(n - 1), Period::Day);
+        assert_eq!(Period::from_frame_idx(n), Period::Month);
+        assert_eq!(Period::from_frame_idx(2 * n - 1), Period::Month);
+        assert_eq!(Period::from_frame_idx(2 * n), Period::Year);
+        assert_eq!(
+            Period::from_frame_idx(3 * n),
+            Period::Day,
+            "wraps after one full cycle"
+        );
     }
 }
