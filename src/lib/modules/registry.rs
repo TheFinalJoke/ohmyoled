@@ -26,6 +26,8 @@ use crate::api::aurora::swpc::SwpcConfig;
 use crate::api::aurora::AuroraCollector;
 use crate::api::flights::opensky::OpenSkyConfig;
 use crate::api::flights::FlightsCollector;
+use crate::api::launch::lldev::LldevConfig;
+use crate::api::launch::LaunchCollector;
 use crate::api::iss::wheretheiss::WhereTheIssConfig;
 use crate::api::iss::IssCollector;
 use crate::api::quake::model::QuakeFeed;
@@ -48,6 +50,7 @@ use crate::matrix::golf::GolfMatrix;
 use crate::matrix::aurora::AuroraMatrix;
 use crate::matrix::flights::FlightsMatrix;
 use crate::matrix::iss::IssMatrix;
+use crate::matrix::launch::LaunchMatrix;
 use crate::matrix::quake::QuakeMatrix;
 use crate::matrix::sport::SportMatrix;
 use crate::matrix::stock::StockMatrix;
@@ -81,6 +84,8 @@ pub struct RegistryConfig {
     pub aurora: Vec<AuroraSection>,
     #[serde(default, deserialize_with = "one_or_many")]
     pub flights: Vec<FlightsSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub launch: Vec<LaunchSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,6 +160,16 @@ fn default_flights_radius_km() -> f32 {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct LaunchSection {
+    pub run: bool,
+    /// Case-insensitive substring whitelist applied to LL2's
+    /// `launch_service_provider.name`. Empty (the default) = show every
+    /// upcoming launch regardless of provider.
+    #[serde(default)]
+    pub agency_filter: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StockSection {
     pub run: bool,
     pub api: StockApi,
@@ -204,7 +219,7 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={} launch={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
@@ -212,7 +227,8 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
         cfg.iss.len(),
         cfg.quake.len(),
         cfg.aurora.len(),
-        cfg.flights.len()
+        cfg.flights.len(),
+        cfg.launch.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -292,6 +308,18 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("flights: skipping module: {e}"),
+        }
+    }
+    for s in cfg.launch.iter().filter(|s| s.run) {
+        match build_launch(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: launch loaded (agency_filter={:?})",
+                    s.agency_filter
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("launch: skipping module: {e}"),
         }
     }
 
@@ -459,6 +487,17 @@ async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String>
     let renderer = FlightsMatrix::new_async()
         .await
         .map_err(|e| format!("flights fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_launch(s: &LaunchSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = LaunchCollector::from_lldev(LldevConfig {
+        agency_filter: s.agency_filter.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = LaunchMatrix::new_async()
+        .await
+        .map_err(|e| format!("launch fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }
 

@@ -46,6 +46,15 @@ stock:
     api_key: null
     symbol: ethereum
 
+# Next upcoming orbital launch via Launch Library 2. Three countdown
+# modes: T-far ("T-2d 14h"), T-near ("T-03:42:11"), and T-imminent
+# ("T-00:00:08", red flashing). `agency_filter` is a case-insensitive
+# substring whitelist on the launch provider name — leave empty for
+# every upcoming launch worldwide.
+launch:
+  run: true
+  agency_filter: []         # e.g. ["SpaceX", "Rocket Lab"] to narrow
+
 # Aircraft within a configurable radius via OpenSky Network. Shows count
 # of nearby planes plus the closest one's callsign, altitude (FLnnn),
 # distance, and bearing. `lat`/`lon` in decimal degrees; `radius_km`

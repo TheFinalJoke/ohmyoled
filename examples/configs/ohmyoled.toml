@@ -51,6 +51,13 @@ api = "coingecko"
 api_key = "null"
 symbol = "ethereum"
 
+# Next upcoming orbital launch via Launch Library 2. Three countdown
+# modes by remaining time. `agency_filter` is a case-insensitive
+# substring whitelist on the launch provider name — empty = all.
+[launch]
+run = true
+agency_filter = []           # e.g. ["SpaceX", "Rocket Lab"]
+
 # Aircraft within a configurable radius via OpenSky Network. Shows count
 # of nearby planes plus the closest one's callsign, altitude (FLnnn),
 # distance, and bearing. `lat`/`lon` decimal degrees; `radius_km` 1..500

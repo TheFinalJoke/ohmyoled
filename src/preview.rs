@@ -29,6 +29,7 @@ use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
 use oledlib::api::aurora::AuroraReading;
 use oledlib::api::flights::{FlightInfo, FlightSnapshot};
 use oledlib::api::iss::IssState;
+use oledlib::api::launch::{LaunchStatus, UpcomingLaunch};
 use oledlib::api::quake::{QuakeEvent, QuakeStatus};
 use oledlib::api::sport::model::{
     GameStatus, HomeOrAway, NextGame, SportApiSource, SportData, SportKind, StandingsEntry,
@@ -44,6 +45,7 @@ use oledlib::matrix::golf::{GolfFonts, GolfMatrix};
 use oledlib::matrix::aurora::{AuroraFonts, AuroraMatrix};
 use oledlib::matrix::flights::{FlightsFonts, FlightsMatrix};
 use oledlib::matrix::iss::{IssFonts, IssMatrix};
+use oledlib::matrix::launch::{LaunchFonts, LaunchMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
 use oledlib::matrix::stock::{StockFonts, StockMatrix};
@@ -51,7 +53,10 @@ use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
-pub const NAMES: &[&str] = &["time", "weather", "stock", "sport", "golf", "f1", "iss", "quake", "aurora", "flights"];
+pub const NAMES: &[&str] = &[
+    "time", "weather", "stock", "sport", "golf", "f1",
+    "iss", "quake", "aurora", "flights", "launch",
+];
 
 /// Resolve a directory that contains the project font files.
 fn font_dir() -> PathBuf {
@@ -84,6 +89,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "quake" => preview_quake(&mut matrix, &fonts).await,
         "aurora" => preview_aurora(&mut matrix, &fonts).await,
         "flights" => preview_flights(&mut matrix, &fonts).await,
+        "launch" => preview_launch(&mut matrix, &fonts).await,
         other => Err(format!(
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
@@ -342,6 +348,36 @@ async fn preview_flights(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Str
         snap(3, Some(flight("UAL899", 0, 1.2, 90.0, true))),
         snap(12, Some(flight("LUFTHANSA404", 38_000, 47.0, 315.0, false))),
         snap(0, None),
+    ];
+    let mut i = 0usize;
+    loop {
+        let data = &cycle[i % cycle.len()];
+        i = i.wrapping_add(1);
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_launch(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = LaunchMatrix::with_fonts_async(LaunchFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    let now = chrono::Utc::now();
+    let make = |offset: chrono::Duration, status: LaunchStatus| UpcomingLaunch {
+        provider: "SpaceX".into(),
+        vehicle: "Falcon 9".into(),
+        mission: "Starlink Group 8-5".into(),
+        launch_at: now + offset,
+        status,
+        country_code: "USA".into(),
+    };
+    // Cycle through all four countdown modes so each color band and the
+    // imminent-blink path get airtime.
+    let cycle = [
+        make(chrono::Duration::days(2) + chrono::Duration::hours(14), LaunchStatus::Go), // T-far
+        make(chrono::Duration::hours(3) + chrono::Duration::minutes(42), LaunchStatus::Go), // T-near
+        make(chrono::Duration::seconds(8), LaunchStatus::Go), // T-imminent
+        make(chrono::Duration::seconds(-2), LaunchStatus::InFlight), // liftoff
     ];
     let mut i = 0usize;
     loop {

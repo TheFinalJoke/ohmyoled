@@ -11,6 +11,7 @@ pub mod flights;
 pub mod golf;
 pub mod http;
 pub mod iss;
+pub mod launch;
 pub mod quake;
 pub mod sport;
 pub mod stock;

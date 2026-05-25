@@ -3,8 +3,8 @@
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
 leaderboards, Formula 1 standings, a live ISS tracker, recent
-earthquakes, aurora forecasts, and nearby flights — pulling from
-free or freemium public APIs.
+earthquakes, aurora forecasts, nearby flights, and orbital launch
+countdowns — pulling from free or freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -28,6 +28,7 @@ backstory.
   - [`quake`](#quake)
   - [`aurora`](#aurora)
   - [`flights`](#flights)
+  - [`launch`](#launch)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -477,6 +478,36 @@ seeing 429s.
 
 ---
 
+### `launch`
+
+Live countdown to the next upcoming orbital launch. Three visual modes
+by remaining time: **T-far** (`T-2d 14h`, cyan) when more than 24h
+away, **T-near** (`T-03:42:11`, amber) under 24h, and **T-imminent**
+(`T-00:00:08`, flashing red) in the final 60 seconds. After liftoff
+the panel switches to a green `LIFT-OFF` banner and lingers so the
+moment doesn't rotate off the panel mid-launch.
+
+```yaml
+launch:
+  run: true
+  agency_filter: []         # case-insensitive substrings, e.g. ["SpaceX", "Rocket Lab"]
+```
+
+| Field           | Type      | Required | Notes                                                                                                  |
+| --------------- | --------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `run`           | bool      | yes      |                                                                                                        |
+| `agency_filter` | string[]  | no       | Empty (default) = every upcoming launch worldwide. Otherwise, provider name must contain one of these. |
+
+The countdown ticks at 1 fps and is computed at render time from the
+cached `net` timestamp — the collector polls once per 30 minutes, well
+inside Launch Library 2's anonymous ~15 req/hr limit. Provider, vehicle
+and mission text truncates with `…` when it doesn't fit the 64-px row.
+
+Data source: <https://ll.thespacedevs.com/2.2.0/launch/upcoming/>
+(public, no auth).
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -497,7 +528,7 @@ seeing 429s.
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights` (body text + iss big number) |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights`, `launch` (body text + iss big number) |
 | `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit) |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |

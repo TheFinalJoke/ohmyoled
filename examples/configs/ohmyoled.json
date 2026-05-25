@@ -49,6 +49,10 @@
     "lon": -74.0060,
     "radius_km": 80
   },
+  "launch": {
+    "run": true,
+    "agency_filter": []
+  },
   "sport": [
     {
       "run": true,
