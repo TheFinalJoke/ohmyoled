@@ -163,9 +163,85 @@ pub fn default_config() -> Value {
     serde_json::from_str(json).expect("starter config must parse")
 }
 
+/// Section names recognised when merging an existing config back in.
+const KNOWN_SECTIONS: &[&str] = &[
+    "time", "weather", "stock", "sport", "iss", "quake", "aurora",
+    "flights", "launch", "hass", "pihole",
+];
+
+/// Pull existing entries out of a previously-written config so the
+/// builder can pre-populate them and let the user append / undo rather
+/// than starting blank. A section that's an array becomes one entry
+/// per array element; a single object becomes one entry. Unknown or
+/// malformed sections are skipped (the builder rewrites them faithfully
+/// because the JSON `Value` survives round-trip).
+fn load_existing_entries(existing: &Value) -> (Vec<Entry>, MatrixOptions) {
+    let mut entries = Vec::new();
+    let matrix_opts = existing
+        .get("matrix_options")
+        .and_then(|mo| serde_json::from_value::<MatrixOptions>(mo.clone()).ok())
+        .unwrap_or_default();
+
+    for &section in KNOWN_SECTIONS {
+        let Some(v) = existing.get(section) else { continue };
+        let items: Vec<Value> = match v {
+            Value::Array(arr) => arr.clone(),
+            Value::Object(_) => vec![v.clone()],
+            _ => continue,
+        };
+        for item in items {
+            let label = describe_existing_entry(section, &item);
+            entries.push(Entry { section, label, value: item });
+        }
+    }
+    (entries, matrix_opts)
+}
+
+/// One-line summary for a pre-loaded entry. Pulls the obvious
+/// identifier per section (symbol / city / entity / team) so the user
+/// can recognise what's already there without re-running each module's
+/// `configure()` to regenerate the summary.
+fn describe_existing_entry(section: &'static str, value: &Value) -> String {
+    let str_field = |key: &str| -> Option<String> {
+        value.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    };
+    let suffix = match section {
+        "weather" => str_field("api").map(|s| format!(" ({s})")),
+        "stock" => str_field("symbol").map(|s| format!(" ({s})")),
+        "sport" => {
+            let kind = str_field("sport").unwrap_or_else(|| "?".into());
+            let team = value
+                .get("team_logo")
+                .and_then(|t| t.get("name"))
+                .and_then(|n| n.as_str());
+            match team {
+                Some(name) => Some(format!(": {kind} ({name})")),
+                None => Some(format!(": {kind}")),
+            }
+        }
+        "hass" => str_field("entity_id").map(|s| format!(" ({s})")),
+        "iss" | "flights" => {
+            match (value.get("lat").and_then(|v| v.as_f64()), value.get("lon").and_then(|v| v.as_f64())) {
+                (Some(lat), Some(lon)) => Some(format!(" ({lat:.2}, {lon:.2})")),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    format!(
+        "{section}{} — existing",
+        suffix.unwrap_or_default()
+    )
+}
+
 /// Build the on-disk config interactively (or with `dev_mode = true` for the
 /// canned dev config).
-pub fn create_json(dev_mode: bool) -> Value {
+///
+/// When `existing` is `Some`, pre-load its entries + matrix options so
+/// the user can append to / undo from the current config instead of
+/// starting blank. Passing `None` (overwrite mode) yields the legacy
+/// fresh-start behavior.
+pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
     if dev_mode {
         let dev_json = r#"{
             "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
@@ -185,8 +261,20 @@ pub fn create_json(dev_mode: bool) -> Value {
     ui::info("Pick the modules you want on the panel. Most options have sane defaults.");
     ui::hint("Selections are accumulated below — sport entries can mix team sports, golf, and F1.");
 
-    let mut entries: Vec<Entry> = Vec::new();
-    let mut matrix_opts = MatrixOptions::default();
+    let (mut entries, mut matrix_opts): (Vec<Entry>, MatrixOptions) = match existing {
+        Some(v) => {
+            let (entries, opts) = load_existing_entries(&v);
+            if !entries.is_empty() {
+                ui::success(&format!(
+                    "Loaded {} entr{} from existing config — append or `u` to remove",
+                    entries.len(),
+                    if entries.len() == 1 { "y" } else { "ies" }
+                ));
+            }
+            (entries, opts)
+        }
+        None => (Vec::new(), MatrixOptions::default()),
+    };
 
     loop {
         print_menu(&entries);
@@ -341,4 +429,83 @@ pub fn create_json(dev_mode: bool) -> Value {
     }
 
     Value::Object(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_existing_expands_arrays_and_objects() {
+        // Mixed shape: stock is an array, weather is a single object,
+        // sport carries a team_logo with a name, hass is an array.
+        // Each item should land as its own Entry.
+        let existing = serde_json::json!({
+            "matrix_options": {
+                "chain_length": 2, "parallel": 1, "brightness": 70,
+                "oled_slowdown": 3, "fail_on_error": false,
+                "hardware_mapping": "adafruit-hat"
+            },
+            "time": {"run": true, "color": [255, 255, 255]},
+            "weather": {"run": true, "api": "nws"},
+            "stock": [
+                {"run": true, "api": "finnhub", "symbol": "AAPL"},
+                {"run": true, "api": "finnhub", "symbol": "MSFT"}
+            ],
+            "sport": [
+                {"run": true, "sport": "basketball", "team_logo": {"name": "Boston Celtics"}},
+                {"run": true, "sport": "f1"}
+            ],
+            "iss": {"run": true, "lat": 40.7128, "lon": -74.0060},
+            "hass": [{"run": true, "entity_id": "sensor.kitchen_temp"}]
+        });
+        let (entries, opts) = load_existing_entries(&existing);
+        let sections: Vec<&str> = entries.iter().map(|e| e.section).collect();
+        // 1 time + 1 weather + 2 stock + 2 sport + 1 iss + 1 hass = 8
+        assert_eq!(entries.len(), 8);
+        assert!(sections.contains(&"time"));
+        assert!(sections.contains(&"weather"));
+        assert_eq!(sections.iter().filter(|s| **s == "stock").count(), 2);
+        assert_eq!(sections.iter().filter(|s| **s == "sport").count(), 2);
+        assert!(sections.contains(&"hass"));
+        // Matrix options carried through.
+        assert_eq!(opts.chain_length, 2);
+        assert_eq!(opts.brightness, 70);
+    }
+
+    #[test]
+    fn describe_picks_up_identifying_fields() {
+        let stock = serde_json::json!({"symbol": "AAPL", "api": "finnhub"});
+        assert!(describe_existing_entry("stock", &stock).contains("AAPL"));
+
+        let weather = serde_json::json!({"api": "nws"});
+        assert!(describe_existing_entry("weather", &weather).contains("nws"));
+
+        let hass = serde_json::json!({"entity_id": "sensor.kitchen_temp"});
+        assert!(describe_existing_entry("hass", &hass).contains("sensor.kitchen_temp"));
+
+        let sport = serde_json::json!({
+            "sport": "basketball",
+            "team_logo": {"name": "Boston Celtics"}
+        });
+        let s = describe_existing_entry("sport", &sport);
+        assert!(s.contains("basketball"));
+        assert!(s.contains("Boston Celtics"));
+
+        let iss = serde_json::json!({"lat": 40.7128, "lon": -74.0060});
+        let s = describe_existing_entry("iss", &iss);
+        assert!(s.contains("40.71"));
+        assert!(s.contains("-74.01"));
+    }
+
+    #[test]
+    fn load_existing_skips_unknown_sections_cleanly() {
+        let existing = serde_json::json!({
+            "time": {"run": true, "color": [255, 255, 255]},
+            "made_up_section": {"foo": "bar"}
+        });
+        let (entries, _) = load_existing_entries(&existing);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].section, "time");
+    }
 }

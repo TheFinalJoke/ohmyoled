@@ -146,7 +146,7 @@ async fn main() {
 
     if matches.get_flag("dev_mode") {
         println!("Building a dev environment, replacing {target_path} with a dev config");
-        let main_json = createjson::create_json(true);
+        let main_json = createjson::create_json(true, None);
         if filelib::check_if_exists(&target_path) {
             std::fs::remove_file(&target_path).expect("Can not Remove file");
         }
@@ -173,22 +173,42 @@ async fn main() {
 
     if matches.get_flag("create_config") {
         if filelib::check_if_exists(&target_path) {
-            println!("Would you like to overwrite ({})? (y/n)", &target_path);
-            match oledlib::get_input().unwrap().to_lowercase().as_str() {
-                "y" => {
-                    let main_json = createjson::create_json(false);
+            println!(
+                "Config exists at {}. (m)erge into existing entries, (o)verwrite, or (c)ancel? [m]",
+                &target_path
+            );
+            let raw = oledlib::get_input().unwrap_or_default();
+            let choice = raw.trim().to_lowercase();
+            let choice = if choice.is_empty() { "m" } else { choice.as_str() };
+            match choice {
+                "m" | "merge" => {
+                    let existing = parse_config_file(&target_path);
+                    let main_json = createjson::create_json(false, Some(existing));
+                    if main_json.get("failure").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        return;
+                    }
+                    std::fs::remove_file(&target_path).expect("Can not Remove file");
+                    ensure_config_dir(&target_path);
+                    config_io::write(&target_path, &main_json).expect("write failed");
+                    println!("Updated config at {target_path}");
+                }
+                "o" | "overwrite" => {
+                    let main_json = createjson::create_json(false, None);
+                    if main_json.get("failure").and_then(|v| v.as_bool()).unwrap_or(false) {
+                        return;
+                    }
                     std::fs::remove_file(&target_path).expect("Can not Remove file");
                     ensure_config_dir(&target_path);
                     config_io::write(&target_path, &main_json).expect("write failed");
                     println!("Wrote changes to File: {target_path}");
                 }
                 _ => {
-                    println!("Exiting...");
-                    std::process::exit(1)
+                    println!("Cancelled — config not changed");
+                    std::process::exit(0)
                 }
             }
         } else {
-            let main_json = createjson::create_json(false);
+            let main_json = createjson::create_json(false, None);
             ensure_config_dir(&target_path);
             config_io::write(&target_path, &main_json).expect("write failed");
         }
