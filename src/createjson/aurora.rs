@@ -7,6 +7,8 @@ pub struct AuroraOptions {
     /// Kp value at which the "AURORA LIKELY" banner appears. 5 matches
     /// NOAA's G1 minor-storm threshold and the registry default.
     pub alert_threshold: u8,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for AuroraOptions {
@@ -14,6 +16,7 @@ impl Default for AuroraOptions {
         Self {
             run: true,
             alert_threshold: 5,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -29,11 +32,13 @@ pub fn configure() -> Result<AuroraOptions, String> {
             _ => ui::warn("Expected an integer in 0..=9"),
         }
     };
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     ui::success(&format!("Aurora — alert at Kp ≥ {alert_threshold}"));
     Ok(AuroraOptions {
         run: true,
         alert_threshold,
+        cache_ttl_secs,
     })
 }
 

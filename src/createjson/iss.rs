@@ -6,6 +6,8 @@ pub struct IssOptions {
     pub run: bool,
     pub lat: f64,
     pub lon: f64,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for IssOptions {
@@ -16,6 +18,7 @@ impl Default for IssOptions {
             run: true,
             lat: 40.7128,
             lon: -74.0060,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -26,9 +29,10 @@ pub fn configure() -> Result<IssOptions, String> {
 
     let lat = read_coord("Latitude (degrees, -90..90)", 40.7128, -90.0, 90.0);
     let lon = read_coord("Longitude (degrees, -180..180)", -74.0060, -180.0, 180.0);
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     ui::success(&format!("ISS — lat={lat:.4}, lon={lon:.4}"));
-    Ok(IssOptions { run: true, lat, lon })
+    Ok(IssOptions { run: true, lat, lon, cache_ttl_secs })
 }
 
 pub fn summary_line(opts: &IssOptions) -> String {

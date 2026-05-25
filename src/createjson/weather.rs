@@ -32,6 +32,8 @@ pub struct WeatherOptions {
     pub weather_format: Option<WeatherFormat>,
     #[serde(default, deserialize_with = "null_string_as_none")]
     pub current_location_api_key: Option<String>,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for WeatherOptions {
@@ -44,6 +46,7 @@ impl Default for WeatherOptions {
             city: None,
             weather_format: Some(WeatherFormat::Imperial),
             current_location_api_key: None,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -122,6 +125,7 @@ pub fn configure() -> Result<WeatherOptions, String> {
 
     let (current_location, city, ipinfo_token) = configure_location();
     let weather_format = pick_format();
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     ui::success(&format!(
         "Weather — {} ({}, {})",
@@ -138,6 +142,7 @@ pub fn configure() -> Result<WeatherOptions, String> {
         city,
         weather_format,
         current_location_api_key: ipinfo_token,
+        cache_ttl_secs,
     })
 }
 

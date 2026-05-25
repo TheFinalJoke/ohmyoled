@@ -18,6 +18,8 @@ pub struct HassOptions {
     /// (sparkline). Falls back to `"state"` if history isn't available.
     #[serde(default = "default_display_mode")]
     pub display_mode: String,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 fn default_display_mode() -> String {
@@ -36,6 +38,7 @@ impl Default for HassOptions {
             nominal_color: (120, 220, 120),
             alarm_color: (255, 60, 60),
             display_mode: default_display_mode(),
+            cache_ttl_secs: None,
         }
     }
 }
@@ -71,6 +74,7 @@ pub fn configure() -> Result<HassOptions, String> {
     let nominal_color = read_rgb("Nominal-state RGB", (120, 220, 120));
     let alarm_color = read_rgb("Alarm-state RGB", (255, 60, 60));
     let display_mode = read_display_mode();
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     ui::success(&format!("HASS — {entity_id} @ {base_url} ({display_mode})"));
     Ok(HassOptions {
@@ -83,6 +87,7 @@ pub fn configure() -> Result<HassOptions, String> {
         nominal_color,
         alarm_color,
         display_mode,
+        cache_ttl_secs,
     })
 }
 

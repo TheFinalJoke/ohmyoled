@@ -15,6 +15,8 @@ pub struct StockOptions {
     /// keep parsing unchanged.
     #[serde(default)]
     pub chart: bool,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for StockOptions {
@@ -25,6 +27,7 @@ impl Default for StockOptions {
             api_key: None,
             symbol: "AAPL".to_owned(),
             chart: false,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -65,6 +68,7 @@ pub fn configure() -> Result<StockOptions, String> {
         "Also enable the 1D/1M/1Y historical chart tile?",
         false,
     );
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     let chart_tag = if chart { " + chart" } else { "" };
     ui::success(&format!("Stock — {symbol} via {}{chart_tag}", api.get_api()));
@@ -74,6 +78,7 @@ pub fn configure() -> Result<StockOptions, String> {
         api_key,
         symbol,
         chart,
+        cache_ttl_secs,
     })
 }
 

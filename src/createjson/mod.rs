@@ -277,17 +277,17 @@ fn fold_section(values: Vec<Value>) -> Option<Value> {
 pub fn default_config() -> Value {
     let json = r#"{
         "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
-        "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
-        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle"},
-        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL","chart":false},
+        "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null","cache_ttl_secs":null},
+        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle","cache_ttl_secs":null},
+        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL","chart":false,"cache_ttl_secs":null},
         "sport": [],
-        "iss": {"run":false,"lat":40.7128,"lon":-74.0060},
-        "quake": {"run":false,"feed":"significant_day"},
-        "aurora": {"run":false,"alert_threshold":5},
-        "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0},
-        "launch": {"run":false,"agency_filter":[]},
-        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60],"display_mode":"state"},
-        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null"}
+        "iss": {"run":false,"lat":40.7128,"lon":-74.0060,"cache_ttl_secs":null},
+        "quake": {"run":false,"feed":"significant_day","cache_ttl_secs":null},
+        "aurora": {"run":false,"alert_threshold":5,"cache_ttl_secs":null},
+        "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0,"cache_ttl_secs":null},
+        "launch": {"run":false,"agency_filter":[],"cache_ttl_secs":null},
+        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60],"display_mode":"state","cache_ttl_secs":null},
+        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null","cache_ttl_secs":null}
     }"#;
     serde_json::from_str(json).expect("starter config must parse")
 }
