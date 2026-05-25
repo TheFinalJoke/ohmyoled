@@ -17,6 +17,7 @@ pub mod quake;
 pub mod renderer;
 pub mod sport;
 pub mod stock;
+pub mod stock_chart;
 pub mod time;
 pub mod weather;
 
@@ -33,5 +34,6 @@ pub use quake::QuakeMatrix;
 pub use renderer::Renderer;
 pub use sport::SportMatrix;
 pub use stock::StockMatrix;
+pub use stock_chart::StockChartMatrix;
 pub use time::{TimeFormat, TimeMatrix};
 pub use weather::WeatherMatrix;

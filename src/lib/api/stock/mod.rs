@@ -10,11 +10,13 @@ use std::time::Duration;
 pub mod coingecko;
 pub mod finnhub;
 pub mod model;
+pub mod yahoo;
 
-pub use model::{Direction, StockApiSource, StockQuote};
+pub use model::{Direction, HistorySeries, StockApiSource, StockHistory, StockQuote};
 
 use coingecko::{CoingeckoConfig, CoingeckoProvider};
 use finnhub::{FinnhubConfig, FinnhubProvider};
+use yahoo::{YahooConfig, YahooProvider};
 
 /// Which provider this collector is using.
 pub enum StockSource {
@@ -75,6 +77,71 @@ impl Collector for StockCollector {
     }
 
     async fn poll(&self) -> Result<StockQuote, ApiError> {
+        self.source.poll().await
+    }
+}
+
+/// Provider dispatch for the chart-mode (historical) collector.
+/// Yahoo for equity tickers, CoinGecko for crypto — matches the
+/// `api` setting on `StockSection`. Each provider's `poll_history`
+/// returns the same normalized `StockHistory` shape.
+pub enum HistorySource {
+    Yahoo(YahooProvider),
+    Coingecko(CoingeckoProvider),
+}
+
+impl HistorySource {
+    pub async fn poll(&self) -> Result<StockHistory, ApiError> {
+        match self {
+            Self::Yahoo(p) => p.poll_history().await,
+            Self::Coingecko(p) => p.poll_history().await,
+        }
+    }
+}
+
+/// Top-level collector for the chart tile. Same Module/Renderer
+/// pattern as `StockCollector` — keeps the live and chart paths
+/// independent so a flaky Yahoo response can't blank the live price.
+pub struct StockHistoryCollector {
+    source: HistorySource,
+    refresh: Duration,
+}
+
+impl StockHistoryCollector {
+    pub fn new(source: HistorySource) -> Self {
+        // 5 minutes — Yahoo and CoinGecko both serve daily/weekly
+        // candles that change at most once per minute (the 1D 5-min
+        // bar). Three fetches per refresh × 5 min ≫ rate-limit ceiling
+        // for both providers.
+        Self::new_with_refresh(source, Duration::from_secs(300))
+    }
+
+    pub fn new_with_refresh(source: HistorySource, refresh: Duration) -> Self {
+        Self { source, refresh }
+    }
+
+    pub fn from_yahoo(cfg: YahooConfig) -> Result<Self, ApiError> {
+        Ok(Self::new(HistorySource::Yahoo(YahooProvider::new(cfg)?)))
+    }
+
+    pub fn from_coingecko(cfg: CoingeckoConfig) -> Result<Self, ApiError> {
+        Ok(Self::new(HistorySource::Coingecko(CoingeckoProvider::new(cfg)?)))
+    }
+}
+
+#[async_trait]
+impl Collector for StockHistoryCollector {
+    type Output = StockHistory;
+
+    fn id(&self) -> &'static str {
+        "stock_chart"
+    }
+
+    fn refresh_interval(&self) -> Duration {
+        self.refresh
+    }
+
+    async fn poll(&self) -> Result<StockHistory, ApiError> {
         self.source.poll().await
     }
 }

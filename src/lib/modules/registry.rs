@@ -42,7 +42,8 @@ use crate::api::sport::model::SportKind;
 use crate::api::sport::SportCollector;
 use crate::api::stock::coingecko::CoingeckoConfig;
 use crate::api::stock::finnhub::FinnhubConfig;
-use crate::api::stock::StockCollector;
+use crate::api::stock::yahoo::YahooConfig;
+use crate::api::stock::{StockCollector, StockHistoryCollector};
 use crate::api::weather::accuweather::AccuWeatherConfig;
 use crate::api::weather::nws::NwsConfig;
 use crate::api::weather::openweather::OpenWeatherConfig;
@@ -60,6 +61,7 @@ use crate::matrix::pihole::PiholeMatrix;
 use crate::matrix::quake::QuakeMatrix;
 use crate::matrix::sport::SportMatrix;
 use crate::matrix::stock::StockMatrix;
+use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
 use crate::modules::{DynModule, Module};
@@ -232,6 +234,14 @@ pub struct StockSection {
     #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
     pub api_key: Option<String>,
     pub symbol: String,
+    /// When true, also build a `stock_chart` tile (historical 1D/1M/1Y
+    /// line graph) alongside this entry's live tile. Defaults to false
+    /// to preserve existing configs unchanged. For Finnhub-style
+    /// equity tickers the chart is sourced from Yahoo Finance (the
+    /// only free historical option); CoinGecko entries pull the chart
+    /// from CoinGecko's own `/market_chart` endpoint.
+    #[serde(default)]
+    pub chart: bool,
 }
 
 /// One entry in the `sport` array. The `sport` field selects which renderer
@@ -318,6 +328,15 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("stock: skipping module: {e}"),
+        }
+        if s.chart {
+            match build_stock_chart(s).await {
+                Ok(m) => {
+                    log::info!("registry: stock_chart loaded ({})", s.symbol);
+                    modules.push(m);
+                }
+                Err(e) => log::error!("stock_chart: skipping module ({}): {e}", s.symbol),
+            }
         }
     }
     for s in cfg.sport.iter().filter(|s| s.run()) {
@@ -468,6 +487,28 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
     let renderer = WeatherMatrix::new_with_animation_async(w.animation)
         .await
         .map_err(|e| format!("weather fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+/// Build the chart-mode (historical) module for one stock entry. For
+/// Finnhub-style configs the chart source is always Yahoo (Finnhub's
+/// `/candle` is paid-tier only); for CoinGecko configs the chart is
+/// sourced from CoinGecko's own `/market_chart` endpoint so the same
+/// provider stays in use across both tiles.
+async fn build_stock_chart(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = match s.api {
+        StockApi::Finnhub => StockHistoryCollector::from_yahoo(YahooConfig {
+            symbol: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+        StockApi::Coingecko => StockHistoryCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+    };
+    let renderer = StockChartMatrix::new_async()
+        .await
+        .map_err(|e| format!("stock_chart fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }
 

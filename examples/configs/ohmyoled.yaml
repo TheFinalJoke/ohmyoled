@@ -29,6 +29,11 @@ stock:
     api: finnhub             # finnhub (equities) | coingecko (crypto, no key)
     api_key: YOUR_FINNHUB_KEY
     symbol: AAPL
+    # chart: true adds a historical 1D/1M/1Y line graph tile in
+    # addition to the live price tile. Finnhub configs source the
+    # chart from Yahoo Finance (Finnhub's /candle is paid-only);
+    # coingecko configs source it from coingecko's market_chart.
+    chart: true
   - run: true
     api: finnhub
     api_key: YOUR_FINNHUB_KEY

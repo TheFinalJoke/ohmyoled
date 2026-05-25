@@ -52,13 +52,15 @@ use oledlib::matrix::launch::{LaunchFonts, LaunchMatrix};
 use oledlib::matrix::pihole::{PiholeFonts, PiholeMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
+use oledlib::api::stock::{HistorySeries, StockHistory};
 use oledlib::matrix::stock::{StockFonts, StockMatrix};
+use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
-    "time", "weather", "stock", "sport", "golf", "f1",
+    "time", "weather", "stock", "stock_chart", "sport", "golf", "f1",
     "iss", "quake", "aurora", "flights", "launch", "hass", "pihole",
 ];
 
@@ -86,6 +88,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "time" => preview_time(&mut matrix, &fonts).await,
         "weather" => preview_weather(&mut matrix, &fonts).await,
         "stock" => preview_stock(&mut matrix, &fonts).await,
+        "stock_chart" => preview_stock_chart(&mut matrix, &fonts).await,
         "sport" => preview_sport(&mut matrix, &fonts).await,
         "golf" => preview_golf(&mut matrix, &fonts).await,
         "f1" => preview_f1(&mut matrix, &fonts).await,
@@ -143,6 +146,38 @@ async fn preview_stock(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         high: 154.10,
         low: 149.85,
         previous_close: 150.20,
+    };
+    loop {
+        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_stock_chart(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = StockChartMatrix::with_fonts_async(StockChartFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    // Hand-tuned trajectories so each window has a distinct shape:
+    // 1D = noisy intraday wave that closes up; 1M = clear uptrend
+    // with a midmonth dip; 1Y = steady climb. Lets the preview verify
+    // the autoscale and direction-color logic across all three.
+    let day: Vec<f64> = (0..78)
+        .map(|i| 180.0 + (i as f64 * 0.12).sin() * 1.2 + i as f64 * 0.03)
+        .collect();
+    let month: Vec<f64> = (0..22)
+        .map(|i| 170.0 + i as f64 * 0.7 - ((i as f64 - 12.0) * 0.4).abs())
+        .collect();
+    let year: Vec<f64> = (0..52)
+        .map(|i| 140.0 + i as f64 * 0.85 + (i as f64 * 0.3).sin() * 4.0)
+        .collect();
+    let data = StockHistory {
+        api: oledlib::api::stock::StockApiSource::Yahoo,
+        symbol: "AAPL".into(),
+        current: *day.last().unwrap(),
+        previous_close: day[0],
+        day: HistorySeries::from_closes(day),
+        month: HistorySeries::from_closes(month),
+        year: HistorySeries::from_closes(year),
     };
     loop {
         r.render(matrix, &data).await.map_err(|e| e.to_string())?;
