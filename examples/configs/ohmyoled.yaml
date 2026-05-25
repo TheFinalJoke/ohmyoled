@@ -46,6 +46,25 @@ stock:
     api_key: null
     symbol: ethereum
 
+# Home Assistant entities — display any HASS sensor/state on the panel.
+# Multi-instance: one rotation entry per entity. Requires a long-lived
+# access token (Profile → Security → Long-Lived Access Tokens in HASS).
+# `alarm_state` (optional) flips the state-row color to red when the
+# current state matches — useful for door-open / motion-detected /
+# alarm-tripped flagging.
+hass:
+  - run: true
+    base_url: http://homeassistant.local:8123
+    token: YOUR_HASS_LONG_LIVED_TOKEN
+    entity_id: sensor.kitchen_temp
+    label: KITCHEN
+  - run: true
+    base_url: http://homeassistant.local:8123
+    token: YOUR_HASS_LONG_LIVED_TOKEN
+    entity_id: binary_sensor.garage_door
+    label: GARAGE
+    alarm_state: open
+
 # Next upcoming orbital launch via Launch Library 2. Three countdown
 # modes: T-far ("T-2d 14h"), T-near ("T-03:42:11"), and T-imminent
 # ("T-00:00:08", red flashing). `agency_filter` is a case-insensitive

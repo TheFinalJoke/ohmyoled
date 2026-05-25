@@ -51,6 +51,25 @@ api = "coingecko"
 api_key = "null"
 symbol = "ethereum"
 
+# Home Assistant entities — multi-instance, one [[hass]] entry per
+# entity. Requires a long-lived access token. `alarm_state` (optional)
+# flips the state-row color to red on match — useful for doors,
+# motion, alarms.
+[[hass]]
+run = true
+base_url = "http://homeassistant.local:8123"
+token = "YOUR_HASS_LONG_LIVED_TOKEN"
+entity_id = "sensor.kitchen_temp"
+label = "KITCHEN"
+
+[[hass]]
+run = true
+base_url = "http://homeassistant.local:8123"
+token = "YOUR_HASS_LONG_LIVED_TOKEN"
+entity_id = "binary_sensor.garage_door"
+label = "GARAGE"
+alarm_state = "open"
+
 # Next upcoming orbital launch via Launch Library 2. Three countdown
 # modes by remaining time. `agency_filter` is a case-insensitive
 # substring whitelist on the launch provider name — empty = all.

@@ -3,8 +3,9 @@
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
 leaderboards, Formula 1 standings, a live ISS tracker, recent
-earthquakes, aurora forecasts, nearby flights, and orbital launch
-countdowns — pulling from free or freemium public APIs.
+earthquakes, aurora forecasts, nearby flights, orbital launch
+countdowns, and any Home Assistant entity — pulling from free or
+freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -29,6 +30,7 @@ backstory.
   - [`aurora`](#aurora)
   - [`flights`](#flights)
   - [`launch`](#launch)
+  - [`hass`](#hass)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -508,6 +510,49 @@ Data source: <https://ll.thespacedevs.com/2.2.0/launch/upcoming/>
 
 ---
 
+### `hass`
+
+Display any Home Assistant entity on the panel — sensors, binary
+sensors, switches, anything that has a `state`. Multi-instance: one
+entry per entity. Layout adapts: numeric states render as
+`72.4 °F` (state + unit) in sage green; text states render uppercased
+as `OPEN`/`ON`/`UNAVAILABLE`. When `alarm_state` is set and the
+entity's state matches it, the state row flips to red — useful for
+flagging tripped sensors at a glance.
+
+```yaml
+hass:
+  - run: true
+    base_url: http://homeassistant.local:8123
+    token: YOUR_HASS_LONG_LIVED_TOKEN
+    entity_id: sensor.kitchen_temp
+    label: KITCHEN
+  - run: true
+    base_url: http://homeassistant.local:8123
+    token: YOUR_HASS_LONG_LIVED_TOKEN
+    entity_id: binary_sensor.garage_door
+    label: GARAGE
+    alarm_state: open
+```
+
+| Field           | Type     | Required | Notes                                                                                            |
+| --------------- | -------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `run`           | bool     | yes      |                                                                                                  |
+| `base_url`      | string   | yes      | HASS root, e.g. `http://homeassistant.local:8123` (no trailing slash needed; we strip it).      |
+| `token`         | string   | yes      | Long-lived access token. Generate via Profile → Security → Long-Lived Access Tokens.            |
+| `entity_id`     | string   | yes      | Any HASS entity id, e.g. `sensor.kitchen_temp`, `binary_sensor.front_door`, `switch.lamp_1`.    |
+| `label`         | string   | no       | Display override. Defaults to `attributes.friendly_name`, then the bare entity id.              |
+| `alarm_state`   | string   | no       | Case-insensitive. When the entity's state matches, the state row renders in `alarm_color`.      |
+| `nominal_color` | [u8;3]   | no       | RGB for the steady-state row. Defaults to `[120, 220, 120]` (sage green).                       |
+| `alarm_color`   | [u8;3]   | no       | RGB for the alarm-tripped row. Defaults to `[255, 60, 60]` (red).                               |
+
+Refresh: 30 s. Data source: bearer-auth GET against your local HASS
+REST API at `<base_url>/api/states/<entity_id>`. Footer shows
+"updated Ns ago" for numeric entities, "since Nm ago" for text/binary
+entities — both computed live from `last_changed`.
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -528,7 +573,7 @@ Data source: <https://ll.thespacedevs.com/2.2.0/launch/upcoming/>
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights`, `launch` (body text + iss big number) |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights`, `launch`, `hass` (body text + iss big number) |
 | `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit) |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |

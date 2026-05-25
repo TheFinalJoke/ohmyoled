@@ -53,6 +53,23 @@
     "run": true,
     "agency_filter": []
   },
+  "hass": [
+    {
+      "run": true,
+      "base_url": "http://homeassistant.local:8123",
+      "token": "YOUR_HASS_LONG_LIVED_TOKEN",
+      "entity_id": "sensor.kitchen_temp",
+      "label": "KITCHEN"
+    },
+    {
+      "run": true,
+      "base_url": "http://homeassistant.local:8123",
+      "token": "YOUR_HASS_LONG_LIVED_TOKEN",
+      "entity_id": "binary_sensor.garage_door",
+      "label": "GARAGE",
+      "alarm_state": "open"
+    }
+  ],
   "sport": [
     {
       "run": true,

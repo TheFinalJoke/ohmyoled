@@ -26,6 +26,8 @@ use crate::api::aurora::swpc::SwpcConfig;
 use crate::api::aurora::AuroraCollector;
 use crate::api::flights::opensky::OpenSkyConfig;
 use crate::api::flights::FlightsCollector;
+use crate::api::hass::rest::RestConfig as HassRestConfig;
+use crate::api::hass::HassCollector;
 use crate::api::launch::lldev::LldevConfig;
 use crate::api::launch::LaunchCollector;
 use crate::api::iss::wheretheiss::WhereTheIssConfig;
@@ -49,6 +51,7 @@ use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
 use crate::matrix::aurora::AuroraMatrix;
 use crate::matrix::flights::FlightsMatrix;
+use crate::matrix::hass::{HassDisplay, HassMatrix};
 use crate::matrix::iss::IssMatrix;
 use crate::matrix::launch::LaunchMatrix;
 use crate::matrix::quake::QuakeMatrix;
@@ -86,6 +89,8 @@ pub struct RegistryConfig {
     pub flights: Vec<FlightsSection>,
     #[serde(default, deserialize_with = "one_or_many")]
     pub launch: Vec<LaunchSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub hass: Vec<HassSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -170,6 +175,41 @@ pub struct LaunchSection {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct HassSection {
+    pub run: bool,
+    /// Base URL of the HASS instance, e.g. `http://homeassistant.local:8123`.
+    pub base_url: String,
+    /// HASS long-lived access token (Profile → Security → Long-Lived
+    /// Access Tokens). Sent as a `Bearer` header.
+    pub token: String,
+    /// Entity id, e.g. `sensor.kitchen_temp`.
+    pub entity_id: String,
+    /// Optional display label override. Falls back to HASS's
+    /// `attributes.friendly_name`, then the bare entity id.
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub label: Option<String>,
+    /// State string (case-insensitive) that flips the color from
+    /// `nominal_color` to `alarm_color`. Useful for binary entities
+    /// where one state is interesting (e.g. `"open"`, `"on"`).
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub alarm_state: Option<String>,
+    /// RGB color for the default state row. Defaults to sage green.
+    #[serde(default = "default_hass_nominal_color")]
+    pub nominal_color: (u8, u8, u8),
+    /// RGB color for the alarm state row. Defaults to red.
+    #[serde(default = "default_hass_alarm_color")]
+    pub alarm_color: (u8, u8, u8),
+}
+
+fn default_hass_nominal_color() -> (u8, u8, u8) {
+    (120, 220, 120)
+}
+
+fn default_hass_alarm_color() -> (u8, u8, u8) {
+    (255, 60, 60)
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StockSection {
     pub run: bool,
     pub api: StockApi,
@@ -219,7 +259,7 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={} launch={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={} launch={} hass={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
@@ -228,7 +268,8 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
         cfg.quake.len(),
         cfg.aurora.len(),
         cfg.flights.len(),
-        cfg.launch.len()
+        cfg.launch.len(),
+        cfg.hass.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -320,6 +361,18 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("launch: skipping module: {e}"),
+        }
+    }
+    for s in cfg.hass.iter().filter(|s| s.run) {
+        match build_hass(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: hass loaded (entity_id={}, label={:?}, alarm_state={:?})",
+                    s.entity_id, s.label, s.alarm_state
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("hass: skipping module: {e}"),
         }
     }
 
@@ -498,6 +551,28 @@ async fn build_launch(s: &LaunchSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = LaunchMatrix::new_async()
         .await
         .map_err(|e| format!("launch fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = HassCollector::from_rest(HassRestConfig {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+        entity_id: s.entity_id.clone(),
+        label_override: s.label.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let display = HassDisplay {
+        nominal_color: ohmyoled_matrix::Color::new(s.nominal_color.0, s.nominal_color.1, s.nominal_color.2),
+        alarm_color: ohmyoled_matrix::Color::new(s.alarm_color.0, s.alarm_color.1, s.alarm_color.2),
+        alarm_state: s.alarm_state.clone(),
+    };
+    let renderer = HassMatrix::with_fonts_async(
+        crate::matrix::hass::HassFonts::default(),
+        display,
+    )
+    .await
+    .map_err(|e| format!("hass fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }
 

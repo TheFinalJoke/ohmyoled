@@ -28,6 +28,7 @@ use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
 use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
 use oledlib::api::aurora::AuroraReading;
 use oledlib::api::flights::{FlightInfo, FlightSnapshot};
+use oledlib::api::hass::HassEntity;
 use oledlib::api::iss::IssState;
 use oledlib::api::launch::{LaunchStatus, UpcomingLaunch};
 use oledlib::api::quake::{QuakeEvent, QuakeStatus};
@@ -44,6 +45,7 @@ use oledlib::matrix::f1::{F1Fonts, F1Matrix};
 use oledlib::matrix::golf::{GolfFonts, GolfMatrix};
 use oledlib::matrix::aurora::{AuroraFonts, AuroraMatrix};
 use oledlib::matrix::flights::{FlightsFonts, FlightsMatrix};
+use oledlib::matrix::hass::{HassDisplay, HassFonts, HassMatrix};
 use oledlib::matrix::iss::{IssFonts, IssMatrix};
 use oledlib::matrix::launch::{LaunchFonts, LaunchMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
@@ -55,7 +57,7 @@ use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
     "time", "weather", "stock", "sport", "golf", "f1",
-    "iss", "quake", "aurora", "flights", "launch",
+    "iss", "quake", "aurora", "flights", "launch", "hass",
 ];
 
 /// Resolve a directory that contains the project font files.
@@ -90,6 +92,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "aurora" => preview_aurora(&mut matrix, &fonts).await,
         "flights" => preview_flights(&mut matrix, &fonts).await,
         "launch" => preview_launch(&mut matrix, &fonts).await,
+        "hass" => preview_hass(&mut matrix, &fonts).await,
         other => Err(format!(
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
@@ -378,6 +381,43 @@ async fn preview_launch(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Stri
         make(chrono::Duration::hours(3) + chrono::Duration::minutes(42), LaunchStatus::Go), // T-near
         make(chrono::Duration::seconds(8), LaunchStatus::Go), // T-imminent
         make(chrono::Duration::seconds(-2), LaunchStatus::InFlight), // liftoff
+    ];
+    let mut i = 0usize;
+    loop {
+        let data = &cycle[i % cycle.len()];
+        i = i.wrapping_add(1);
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_hass(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    // Alarm-state defaults to "open" so the binary-sensor cycle entry
+    // demonstrates the color flip. Other cycle entries don't match the
+    // alarm, so they render in the nominal green.
+    let mut r = HassMatrix::with_fonts_async(
+        HassFonts {
+            body: fonts.join("04B_03B_.TTF"),
+        },
+        HassDisplay {
+            alarm_state: Some("open".into()),
+            ..HassDisplay::default()
+        },
+    )
+    .await?;
+    let now = chrono::Utc::now();
+    let entity = |state: &str, unit: Option<&str>, label: &str, age_secs: i64| HassEntity {
+        state: state.into(),
+        unit: unit.map(str::to_string),
+        label: label.into(),
+        last_changed: now - chrono::Duration::seconds(age_secs),
+    };
+    // Cycle: numeric sensor, binary door (alarm tripped), binary motion (idle),
+    // unavailable (edge case).
+    let cycle = [
+        entity("72.4", Some("°F"), "KITCHEN", 12),
+        entity("open", None, "GARAGE", 14 * 60),
+        entity("off", None, "MOTION", 35),
+        entity("unavailable", None, "OFFICE LIGHT", 5),
     ];
     let mut i = 0usize;
     loop {
