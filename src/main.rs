@@ -204,13 +204,23 @@ async fn main() {
         parse_config_file(&path)
     };
 
-    let parsed: ParsedConfig = serde_json::from_value(configuration.clone()).unwrap_or_else(|e| {
-        println!("Failed to deserialize config: {e}");
-        std::process::exit(33);
-    });
-    let registry_cfg: registry::RegistryConfig =
-        serde_json::from_value(configuration).unwrap_or_else(|e| {
-            println!("Failed to deserialize registry config: {e}");
+    // `serde_path_to_error` wraps the deserialize so failures report
+    // the JSON path that broke (e.g. `stock[2].api: unknown variant
+    // 'coingecko'`). The path is what makes the error actionable;
+    // without it the user has to bisect the config to find the bad
+    // section. Cost is one tiny dep, well worth it.
+    let parsed: ParsedConfig =
+        serde_path_to_error::deserialize(configuration.clone()).unwrap_or_else(|e| {
+            println!("Failed to deserialize config at {}: {}", e.path(), e.inner());
+            std::process::exit(33);
+        });
+    let registry_cfg: registry::RegistryConfig = serde_path_to_error::deserialize(configuration)
+        .unwrap_or_else(|e| {
+            println!(
+                "Failed to deserialize registry config at {}: {}",
+                e.path(),
+                e.inner()
+            );
             std::process::exit(34);
         });
     let dev = std::env::var("DEV").is_ok();

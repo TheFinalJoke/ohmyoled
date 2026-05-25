@@ -24,21 +24,55 @@ where
 /// Lets each config section be either `"sport": {...}` (single instance, the
 /// legacy shape) or `"sport": [{...}, {...}]` (multiple instances in the same
 /// rotation).
+///
+/// Implemented as a hand-rolled `Visitor` rather than `#[serde(untagged)]`
+/// so the inner deserialize error (e.g. `unknown variant 'coingecko'`)
+/// surfaces directly. The untagged-enum variant tries both shapes and on
+/// failure reports a useless `data did not match any variant of untagged
+/// enum OneOrMany`, which costs hours of bisecting whenever a config
+/// section breaks.
 pub fn one_or_many<'de, T, D>(de: D) -> Result<Vec<T>, D::Error>
 where
     T: Deserialize<'de>,
     D: Deserializer<'de>,
 {
-    #[derive(Deserialize)]
-    #[serde(untagged)]
-    enum OneOrMany<T> {
-        One(T),
-        Many(Vec<T>),
+    use serde::de::{value::MapAccessDeserializer, MapAccess, SeqAccess, Visitor};
+    use std::fmt;
+    use std::marker::PhantomData;
+
+    struct OneOrManyVisitor<T>(PhantomData<fn() -> T>);
+
+    impl<'de, T> Visitor<'de> for OneOrManyVisitor<T>
+    where
+        T: Deserialize<'de>,
+    {
+        type Value = Vec<T>;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("a single object or an array of objects")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<T>, A::Error> {
+            let mut out = Vec::with_capacity(seq.size_hint().unwrap_or(0));
+            // Manual loop (vs `Vec::<T>::deserialize`) preserves the
+            // element index in the error path — `[2]` lands in the
+            // message instead of being eaten by the inner Vec impl.
+            while let Some(item) = seq.next_element::<T>()? {
+                out.push(item);
+            }
+            Ok(out)
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Vec<T>, A::Error> {
+            // Single-object case — forward the same map to T so the
+            // field-level error message (and `serde_path_to_error`
+            // path, when wrapped) reads naturally.
+            let item = T::deserialize(MapAccessDeserializer::new(map))?;
+            Ok(vec![item])
+        }
     }
-    Ok(match OneOrMany::<T>::deserialize(de)? {
-        OneOrMany::One(t) => vec![t],
-        OneOrMany::Many(v) => v,
-    })
+
+    de.deserialize_any(OneOrManyVisitor(PhantomData))
 }
 
 #[cfg(test)]
@@ -73,5 +107,31 @@ mod tests {
     fn missing_defaults_to_empty() {
         let w: Wrap = serde_json::from_str("{}").unwrap();
         assert!(w.items.is_empty());
+    }
+
+    #[test]
+    fn bad_element_surfaces_inner_error() {
+        // Before the visitor rewrite this returned the useless
+        // "data did not match any variant of untagged enum OneOrMany"
+        // message. Now the underlying type error from T comes through.
+        let err = serde_json::from_str::<Wrap>(r#"{"items": [{"id": "not-a-number"}]}"#).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid type") || msg.contains("expected"),
+            "expected a typed-deserialize error, got {msg}"
+        );
+        assert!(
+            !msg.contains("untagged enum OneOrMany"),
+            "OneOrMany wrapper should not appear in error: {msg}"
+        );
+    }
+
+    #[test]
+    fn bad_single_object_surfaces_inner_error() {
+        // Same contract for the single-object path.
+        let err = serde_json::from_str::<Wrap>(r#"{"items": {"id": "not-a-number"}}"#).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid type") || msg.contains("expected"));
+        assert!(!msg.contains("untagged enum OneOrMany"));
     }
 }
