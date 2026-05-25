@@ -88,9 +88,17 @@ pub trait Renderer: Send {
 }
 ```
 
-**`refresh_interval`** caps how often `poll()` is called per module —
-e.g. weather 600 s, stock 30 s, time 1 s. The scheduler caches the last
-good output and re-renders it between polls.
+**`refresh_interval`** is the per-module poll cadence — e.g. weather
+600 s, stock 30 s, time 1 s. A background `tokio::spawn`'d task owns
+the collector, calls `poll().await`, publishes the result via
+`tokio::sync::watch::channel::<Option<Arc<Output>>>`, then sleeps for
+the interval. The scheduler's render loop reads the latest value via
+`watch::Receiver::borrow()` — it never blocks on the network. Each
+section can override the cadence with `cache_ttl_secs: <int>` in
+config: `Some(n > 0)` ⇒ override the collector's default; `Some(0)`
+⇒ no background task, the renderer polls inline on every render
+(always fresh, panel briefly stalls during the round-trip); `None`
+(omitted) ⇒ use `refresh_interval()`.
 
 **`cycle_duration`** is the renderer's contract for how long one full
 render cycle takes (e.g. weather 65 s for both screens + scroll +
@@ -222,6 +230,10 @@ deserialize it via `one_or_many`, and emit modules in `build()`.
 pub struct SubwaySection {
     pub run: bool,
     pub station_id: String,
+    /// Optional override for the background poll cadence — see the
+    /// "polling model" notes above. Same shape on every section.
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 // 3b. field on RegistryConfig
@@ -231,7 +243,9 @@ pub struct RegistryConfig {
     pub subway: Vec<SubwaySection>,
 }
 
-// 3c. builder helper
+// 3c. builder helper — `module_with_ttl` resolves cache_ttl_secs to a
+// Duration (or falls back to collector.refresh_interval()) and either
+// spawns a background poll task or stages an inline-poll renderer.
 async fn build_subway(s: &SubwaySection) -> Result<Box<dyn DynModule>, String> {
     let collector = SubwayCollector::from_mta(MtaConfig {
         station_id: s.station_id.clone(),
@@ -239,7 +253,7 @@ async fn build_subway(s: &SubwaySection) -> Result<Box<dyn DynModule>, String> {
     let renderer = SubwayMatrix::new_async()
         .await
         .map_err(|e| format!("subway fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 // 3d. loop in `build()`
@@ -373,6 +387,14 @@ scheduler.
 - **Variant-bearing sections use `#[serde(tag = "...", rename_all = "lowercase")]`**
   enums — see `SportSection` for the pattern. Don't nest separate
   top-level keys for variants of the same concept.
+- **Every section gets `cache_ttl_secs: Option<u64>`** with
+  `#[serde(default)]`. The `module_with_ttl(collector, renderer, s.cache_ttl_secs)`
+  helper in `registry.rs` turns it into a `Duration`, picking
+  `collector.refresh_interval()` when omitted and treating `Some(0)`
+  as "skip the background task, poll inline on every render." For
+  enum-shaped sections (`SportSection`), add the field to every
+  variant and expose a `cache_ttl_secs()` accessor that pulls it from
+  whichever variant matched — same pattern as the existing `run()`.
 
 ### Collectors
 

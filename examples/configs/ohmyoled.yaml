@@ -1,5 +1,12 @@
 # ohmyoled config — YAML form. Same shape as ohmyoled.json.
 # Sections that accept multiple instances (weather/stock/sport) are lists.
+#
+# Every section also accepts an optional `cache_ttl_secs: <int>` that
+# controls how often a background tokio task re-polls the upstream API:
+#   - omit (default): use the collector's built-in refresh_interval
+#   - any positive integer: poll every <int> seconds
+#   - 0: disable the background task; poll inline on every render
+#        (always fresh; the panel briefly stalls during the round-trip)
 
 matrix_options:
   chain_length: 1
@@ -34,10 +41,12 @@ stock:
     # chart from Yahoo Finance (Finnhub's /candle is paid-only);
     # coingecko configs source it from coingecko's market_chart.
     chart: true
+    cache_ttl_secs: 0         # opt out of caching: poll on every render
   - run: true
     api: finnhub
     api_key: YOUR_FINNHUB_KEY
     symbol: MSFT
+    # no cache_ttl_secs → use collector default (30 s for live equities)
   # Crypto entries reuse the stock renderer. `symbol` carries the
   # CoinGecko coin id (lowercase, e.g. "bitcoin", "ethereum"); the
   # display ticker is pulled from the API response. `api_key` is unused
@@ -123,6 +132,7 @@ iss:
   run: true
   lat: 40.7128
   lon: -74.0060
+  cache_ttl_secs: 30           # poll wheretheiss.at every 30 s
 
 # Team sports + golf + F1 all live under `sport`. Each entry is
 # discriminated by its `sport:` field. Team sports require `team_logo`;
