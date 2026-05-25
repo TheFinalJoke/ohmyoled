@@ -92,8 +92,27 @@ where
 }
 
 /// Background poll loop — owns the collector, writes each fresh value
-/// into `tx` as an `Arc`, sleeps `ttl` between polls. Exits cleanly if
-/// every receiver has been dropped (panel shutdown).
+/// into `tx` as an `Arc`, sleeps `ttl` between polls.
+///
+/// ## TTL invariant
+///
+/// The cache is "invalidated" implicitly: every `ttl` seconds the loop
+/// wakes, polls the collector, and (on success) overwrites the
+/// channel's stored value. Renderers reading the channel always see
+/// the most-recent successful poll. There's no explicit cache-entry
+/// timestamp — the loop's own cadence enforces the freshness bound.
+///
+/// On a failed poll the previous value stays in the channel (better
+/// to render stale data than blank tiles); the next tick still fires
+/// at `ttl` later, so a transient API outage doesn't break the
+/// freshness budget once it recovers.
+///
+/// Effective spacing between polls is `ttl + poll_duration` because we
+/// sleep *after* each poll. For typical ohmyoled workloads
+/// (`poll_duration < 1 s`, `ttl >= 30 s`) the drift is well under the
+/// rendering cycle and not worth complicating the loop for.
+///
+/// Exits cleanly if every receiver has been dropped (panel shutdown).
 async fn background_poll<C>(
     collector: C,
     tx: watch::Sender<Option<Arc<C::Output>>>,
@@ -274,6 +293,36 @@ mod tests {
         // Exactly one poll from the background task; ten renders.
         assert_eq!(polls.load(Ordering::SeqCst), 1, "background task should poll once before sleeping for the 60 s ttl");
         assert_eq!(renders.load(Ordering::SeqCst), 10);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cached_module_repolls_after_ttl_boundary() {
+        // The cache TTL is implicit — every `ttl` seconds the background
+        // task wakes and overwrites the watch::channel with a fresh
+        // value. Verify that across multiple TTL boundaries the poll
+        // counter grows, i.e. the cache really does refresh once the
+        // configured cadence has elapsed (not just on the first tick).
+        let polls = Arc::new(AtomicUsize::new(0));
+        let renders = Arc::new(AtomicUsize::new(0));
+        let _module = Module::new(
+            CountingCollector {
+                polls: polls.clone(),
+                interval: Duration::from_millis(60),
+            },
+            CountingRenderer {
+                renders: renders.clone(),
+            },
+            Duration::from_millis(60),
+        );
+        // ~3.5 cadences. Generous margin on the assert because CI
+        // schedulers can drift; the goal is "much more than 1 poll."
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        let n = polls.load(Ordering::SeqCst);
+        assert!(
+            n >= 3,
+            "expected >=3 polls in 250ms with ttl=60ms; got {n} \
+             (cache may not be refreshing on TTL boundaries)"
+        );
     }
 
     #[tokio::test(flavor = "current_thread")]
