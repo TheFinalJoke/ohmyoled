@@ -54,7 +54,7 @@ use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
 use crate::matrix::aurora::AuroraMatrix;
 use crate::matrix::flights::FlightsMatrix;
-use crate::matrix::hass::{HassDisplay, HassMatrix};
+use crate::matrix::hass::{HassDisplay, HassDisplayMode, HassMatrix};
 use crate::matrix::iss::IssMatrix;
 use crate::matrix::launch::LaunchMatrix;
 use crate::matrix::pihole::PiholeMatrix;
@@ -206,6 +206,11 @@ pub struct HassSection {
     /// RGB color for the alarm state row. Defaults to red.
     #[serde(default = "default_hass_alarm_color")]
     pub alarm_color: (u8, u8, u8),
+    /// Which layout to use: `"state"` (default), `"historical"`, or
+    /// `"graph"`. Historical and graph fall back to state for
+    /// non-numeric entities or until history has been fetched.
+    #[serde(default)]
+    pub display_mode: HassDisplayMode,
 }
 
 fn default_hass_nominal_color() -> (u8, u8, u8) {
@@ -637,6 +642,7 @@ async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
         nominal_color: ohmyoled_matrix::Color::new(s.nominal_color.0, s.nominal_color.1, s.nominal_color.2),
         alarm_color: ohmyoled_matrix::Color::new(s.alarm_color.0, s.alarm_color.1, s.alarm_color.2),
         alarm_state: s.alarm_state.clone(),
+        mode: s.display_mode,
     };
     let renderer = HassMatrix::with_fonts_async(
         crate::matrix::hass::HassFonts::default(),

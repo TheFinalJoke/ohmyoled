@@ -8,6 +8,16 @@
 
 use chrono::{DateTime, Utc};
 
+/// One historical sample for a numeric HASS entity. Used by the
+/// renderer's `Graph` and `Historical` display modes. Sample order
+/// in `HassEntity::history` is chronological — oldest first, newest
+/// last (matching the order `/api/history/period/...` returns).
+#[derive(Debug, Clone, Copy)]
+pub struct HassSample {
+    pub at: DateTime<Utc>,
+    pub value: f64,
+}
+
 #[derive(Debug, Clone)]
 pub struct HassEntity {
     /// Raw state string as HASS reports it. `"72.4"`, `"on"`,
@@ -22,6 +32,12 @@ pub struct HassEntity {
     /// When HASS most recently observed a state change. Used to render
     /// "updated 12s ago" on the footer.
     pub last_changed: DateTime<Utc>,
+    /// Optional historical samples for numeric sensors. Powers the
+    /// `Graph` and `Historical` renderer modes. Empty for binary
+    /// entities or when the collector hasn't fetched history yet —
+    /// the renderer falls back to single-value `State` display in
+    /// that case.
+    pub history: Vec<HassSample>,
 }
 
 impl HassEntity {
@@ -51,6 +67,7 @@ mod tests {
             unit: Some("°F".into()),
             label: "Kitchen".into(),
             last_changed: t,
+            history: vec![],
         }
     }
 

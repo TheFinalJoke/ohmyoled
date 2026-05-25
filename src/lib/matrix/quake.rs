@@ -169,8 +169,8 @@ impl QuakeMatrix {
 
     fn draw_quiet(&self, img: &mut RgbImage) {
         let font = &self.body_font;
-        let banner = "QUIET";
-        let sub = "no events 24h";
+        let banner = "NO QUAKES";
+        let sub = "in last 24h";
         let banner_w = font.text_width(banner);
         let sub_w = font.text_width(sub);
         let line_h = font.height().max(font.ascent() + 1);
@@ -378,6 +378,24 @@ mod tests {
         );
         let lit_q = img_q.pixels().filter(|p| p.0 != [0, 0, 0]).count();
         assert!(lit_q > 30, "quiet banner should still light pixels");
+    }
+
+    #[test]
+    fn quiet_lines_fit_panel_width() {
+        // The quiet sub-line used to be "no events 24h", which measured
+        // wide enough to brush the 64 px panel edge in 04B_03B 8pt.
+        // Guard the literals so future text edits can't silently reintroduce
+        // clipping.
+        let m = QuakeMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let font = &m.body_font;
+        for literal in ["NO QUAKES", "in last 24h"] {
+            let w = font.text_width(literal);
+            assert!(
+                w <= PANEL_W as i32 - 2,
+                "`{literal}` measures {w}px; must be <= {} to clear the panel edge",
+                PANEL_W as i32 - 2
+            );
+        }
     }
 
     #[test]

@@ -13,9 +13,15 @@
 //!  └─────────────────────────────────────────────────┘
 //! ```
 //!
-//! - **Header (top 8 px)**: ticker (white), current price (white),
-//!   percent change (green / red / grey by [`Direction`]), and the
-//!   active period badge (`1D` / `1M` / `1Y`) in the top-right.
+//! - **Header (top 8 px)**: ticker (white), current price (white)
+//!   followed by the baseline price (`vs $180.10`) on the left strip,
+//!   percent change (green / red / grey by [`Direction`]) followed by
+//!   the absolute dollar change (`+$2.24`) on the right strip, and the
+//!   active period badge (`1D` / `1M` / `1Y`) in the top-right. Both
+//!   strips marquee twice and settle to the head (`AAPL  $182.34` on
+//!   the left, `+1.24%` on the right), so the baseline + dollar diff
+//!   read like a rolling caption while the dominant numbers stay
+//!   visible at rest.
 //! - **Graph (bottom 24 px)**: line drawn between consecutive closes.
 //!   The series is bucketed across the 62-px-wide plotting area so a
 //!   ~78-sample intraday window and a ~52-sample yearly window both
@@ -70,6 +76,10 @@ const GRAPH_RIGHT: i32 = PANEL_W as i32 - 2;
 
 // Palette.
 const HEADER_LABEL: Color = Color { r: 255, g: 255, b: 255 };
+/// Dim grey for the "vs $X.XX" tail on the left strip — reads as a
+/// caption to the white symbol+price head, not as data competing
+/// with it.
+const BASELINE_LABEL: Color = Color { r: 160, g: 160, b: 160 };
 const PERIOD_BADGE: Color = Color { r: 200, g: 200, b: 200 };
 const UP: Color = Color { r: 30, g: 220, b: 90 };
 const DOWN: Color = Color { r: 240, g: 70, b: 70 };
@@ -188,51 +198,81 @@ impl StockChartMatrix {
             Direction::Flat => FLAT,
         };
 
-        // Percent change — right-anchored just left of the badge,
-        // also always visible. The two right-side cells together
-        // anchor the eye while the symbol/price strip scrolls on the
-        // left if it needs to.
-        let pct_txt = if series.is_empty() {
+        // Right strip — percent change as the head, dollar change
+        // scrolling through. Slot is sized to the head exactly so the
+        // marquee settles to a clean "+1.24%" between scrolls; the
+        // dollar diff (`+$2.24`) twice per period rolls through the
+        // same slot to surface the absolute move.
+        let pct_head = if series.is_empty() {
             String::new()
         } else {
             format!("{:+.2}%", series.percent_change())
         };
-        let pct_w = body.text_width(&pct_txt);
+        let pct_head_w = body.text_width(&pct_head);
         let right_gap = 2;
-        let pct_x = label_x - pct_w - right_gap;
-        if !pct_txt.is_empty() {
-            draw_text(img, body, pct_x, baseline, pct_color, &pct_txt);
+        let pct_x = label_x - pct_head_w - right_gap;
+
+        if !pct_head.is_empty() && pct_head_w > 0 {
+            let baseline_price = series.closes.first().copied().unwrap_or(0.0);
+            let dollar_diff = data.current - baseline_price;
+            let diff_txt = format_signed_dollars(dollar_diff);
+            // Two-space separator matches the symbol/price strip.
+            let tail = format!("  {diff_txt}");
+            draw_scrolling_header(
+                img,
+                body,
+                &[(&pct_head, pct_color), (&tail, pct_color)],
+                pct_x,
+                baseline,
+                pct_head_w,
+                HEADER_H,
+                scroll_phase,
+            );
         }
 
-        // Everything left of the percent is the "symbol + price"
-        // strip. Compose them with a 2-px space and let
-        // `draw_scrolling_header` decide whether the strip fits
-        // statically or needs to marquee.
+        // Left strip — "symbol  $current" (white) + "  vs $baseline"
+        // (dim grey caption). Settles to the head so the user sees
+        // current price at rest; the baseline scrolls in twice per
+        // period to answer "vs what?". Coloring the caption distinctly
+        // keeps the user from misreading it as current data.
         let price = data.current;
         let price_txt = if price >= 1000.0 {
             format!("${price:.0}")
         } else {
             format!("${price:.2}")
         };
-        let strip = if series.is_empty() {
-            data.symbol.clone()
-        } else {
-            format!("{}  {}", data.symbol, price_txt)
-        };
-        // The strip occupies x=0..(pct_x - gap). Reserve one extra
-        // gap pixel so the strip never visually kisses the percent.
         let strip_w = pct_x - right_gap;
         if strip_w > 0 {
-            draw_scrolling_header(
-                img,
-                body,
-                &strip,
-                0,
-                baseline,
-                strip_w,
-                HEADER_LABEL,
-                scroll_phase,
-            );
+            if series.is_empty() {
+                draw_scrolling_header(
+                    img,
+                    body,
+                    &[(data.symbol.as_str(), HEADER_LABEL)],
+                    0,
+                    baseline,
+                    strip_w,
+                    HEADER_H,
+                    scroll_phase,
+                );
+            } else {
+                let baseline_price = series.closes.first().copied().unwrap_or(0.0);
+                let baseline_txt = if baseline_price >= 1000.0 {
+                    format!("  vs ${baseline_price:.0}")
+                } else {
+                    format!("  vs ${baseline_price:.2}")
+                };
+                let head = format!("{}  {}", data.symbol, price_txt);
+                draw_scrolling_header(
+                    img,
+                    body,
+                    &[(&head, HEADER_LABEL), (&baseline_txt, BASELINE_LABEL)],
+                    0,
+                    baseline,
+                    strip_w,
+                    HEADER_H,
+                    scroll_phase,
+                );
+            }
         }
     }
 
@@ -379,16 +419,25 @@ fn bucket_to_width(closes: &[f64], width_px: usize) -> Vec<f64> {
 /// from reading as a joined string.
 const MARQUEE_GAP_PX: i32 = 6;
 /// How many full passes the strip scrolls before settling at the head
-/// for the rest of the period. Two passes lets the eye verify the
-/// content; settling stops the panel from moving forever.
-const MARQUEE_PASSES: i32 = 2;
+/// for the rest of the period. One pass at half-scroll-speed leaves
+/// each strip ~5 s of dwell within a 14 s period; bumping to two would
+/// keep the left strip scrolling the entire period.
+const MARQUEE_PASSES: i32 = 1;
+/// Frames per scroll step. 1 = 1 px/frame (~20 fps panel ⇒ 20 px/sec);
+/// higher values slow the scroll proportionally. 2 → half speed, easier
+/// to read on a 64-px panel without making the user chase pixels.
+const SCROLL_FRAMES_PER_STEP: u32 = 2;
 
-/// Draw `text` at `(dest_x, baseline)` with `color`, clipped to
-/// `max_w` pixels. When the rendered text fits the slot it draws
+/// Draw a sequence of colored `segments` at `(dest_x, baseline)`,
+/// clipped to `max_w` pixels wide and `row_h` pixels tall (one font
+/// row). When the combined rendered width fits the slot it draws
 /// once; otherwise it marquees left and settles after
 /// `MARQUEE_PASSES`. Renders into a temp `RgbImage` and blits the
-/// visible window so nothing bleeds into the percent / badge cells
-/// to the right.
+/// visible window so nothing bleeds into adjacent cells.
+///
+/// Segments let one marquee mix colors (e.g. white symbol+price
+/// followed by a dim grey `vs $baseline` caption) without breaking
+/// the wrap-continuity of a single scrolling string.
 ///
 /// Inlined per the codebase convention (CLAUDE.md: "scroll loops are
 /// inlined per renderer; don't extract a shared helper").
@@ -396,21 +445,27 @@ const MARQUEE_PASSES: i32 = 2;
 fn draw_scrolling_header(
     img: &mut RgbImage,
     font: &Font,
-    text: &str,
+    segments: &[(&str, Color)],
     dest_x: i32,
     baseline: i32,
     max_w: i32,
-    color: Color,
+    row_h: i32,
     scroll_phase: u32,
 ) {
-    let text_w = font.text_width(text);
+    let text_w: i32 = segments.iter().map(|(t, _)| font.text_width(t)).sum();
     if text_w <= max_w {
-        draw_text(img, font, dest_x, baseline, color, text);
+        let mut x = dest_x;
+        for (text, color) in segments {
+            x = draw_text(img, font, x, baseline, *color, text);
+        }
         return;
     }
     let cycle = text_w + MARQUEE_GAP_PX;
     let total_scroll = cycle * MARQUEE_PASSES;
-    let phase = scroll_phase as i32;
+    // Quantise the incoming frame counter so each scroll step lasts
+    // `SCROLL_FRAMES_PER_STEP` frames — the scroll moves at
+    // (1 / SCROLL_FRAMES_PER_STEP) px per frame.
+    let phase = (scroll_phase / SCROLL_FRAMES_PER_STEP) as i32;
     let offset = if phase >= total_scroll {
         0
     } else {
@@ -418,23 +473,27 @@ fn draw_scrolling_header(
     };
 
     // Render two consecutive copies so a window straddling the wrap
-    // reads continuously.
+    // reads continuously. Each copy walks the segments in order so
+    // colored runs land at the same temp-x in both passes.
     let temp_w = (cycle * 2) as u32;
-    let row_h = HEADER_H as u32;
-    let mut temp = RgbImage::new(temp_w, row_h);
+    let temp_h = row_h as u32;
+    let mut temp = RgbImage::new(temp_w, temp_h);
     let temp_baseline = font.ascent();
-    draw_text(&mut temp, font, 0, temp_baseline, color, text);
-    draw_text(&mut temp, font, cycle, temp_baseline, color, text);
+    for copy_start in [0, cycle] {
+        let mut sx = copy_start;
+        for (text, color) in segments {
+            sx = draw_text(&mut temp, font, sx, temp_baseline, *color, text);
+        }
+    }
 
-    // The header sits in rows 0..HEADER_H — convert the temp's
-    // baseline-relative y back to row-top relative for the blit.
+    // Convert the temp's baseline-relative y back to row-top relative for the blit.
     let row_top = baseline - font.ascent();
     for x in 0..max_w {
         let src_x = offset + x;
         if src_x < 0 || src_x as u32 >= temp_w {
             continue;
         }
-        for y in 0..row_h as i32 {
+        for y in 0..row_h {
             let src = temp.get_pixel(src_x as u32, y as u32);
             if src.0 == [0, 0, 0] {
                 continue;
@@ -445,6 +504,19 @@ fn draw_scrolling_header(
                 img.put_pixel(dx as u32, dy as u32, *src);
             }
         }
+    }
+}
+
+/// Format a signed dollar amount as `+$2.24` / `-$5.67` — sign first,
+/// then `$`, so the user sees direction immediately. Large diffs
+/// (≥ $1000) drop the cents to keep the slot readable.
+fn format_signed_dollars(diff: f64) -> String {
+    let sign = if diff >= 0.0 { '+' } else { '-' };
+    let abs = diff.abs();
+    if abs >= 1000.0 {
+        format!("{sign}${abs:.0}")
+    } else {
+        format!("{sign}${abs:.2}")
     }
 }
 
@@ -540,6 +612,73 @@ mod tests {
     }
 
     #[test]
+    fn dollar_diff_scrolls_through_percent_cell() {
+        // Regression: the percent slot marquees "+1.24%  +$2.24" so
+        // the dollar change scrolls into view. At rest (phase 0) the
+        // slot shows the percent head; mid-cycle the dollar diff
+        // rolls through — so the right-side header band must differ
+        // between phases.
+        let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let h = sample(ramp(180.0, 0.05, 78), ramp(170.0, 0.5, 22), ramp(140.0, 0.8, 52));
+        let head = m.draw_frame(&h, Period::Day, 0);
+        // Pick a phase deep enough into the scroll that the marquee
+        // has shifted off the head.
+        let mid = m.draw_frame(&h, Period::Day, 40);
+        let right_band = |img: &RgbImage| -> Vec<[u8; 3]> {
+            ((PANEL_W / 2)..PANEL_W)
+                .flat_map(|x| (0..HEADER_H as u32).map(move |y| (x, y)))
+                .map(|(x, y)| img.get_pixel(x, y).0)
+                .collect()
+        };
+        assert_ne!(
+            right_band(&head),
+            right_band(&mid),
+            "percent cell should differ between settled head and mid-scroll"
+        );
+    }
+
+    #[test]
+    fn vs_baseline_uses_dim_grey_in_left_strip() {
+        // The "vs $X.XX" tail on the left strip should render in
+        // BASELINE_LABEL (dim grey), distinct from the white symbol
+        // + current price head. Sweep scroll phases so the tail
+        // definitely passes through the visible slot at some frame.
+        let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let h = sample(ramp(180.0, 0.05, 78), ramp(170.0, 0.5, 22), ramp(140.0, 0.8, 52));
+        let needle = [BASELINE_LABEL.r, BASELINE_LABEL.g, BASELINE_LABEL.b];
+        let mut hits = 0u32;
+        for phase in 0..FRAMES_PER_PERIOD {
+            let img = m.draw_frame(&h, Period::Day, phase);
+            // Left strip lives roughly in x=0..(PANEL_W/2). The
+            // baseline tail must show grey pixels somewhere there
+            // across the sweep.
+            for x in 0..(PANEL_W / 2) {
+                for y in 0..HEADER_H as u32 {
+                    if img.get_pixel(x, y).0 == needle {
+                        hits += 1;
+                    }
+                }
+            }
+            if hits > 5 {
+                break;
+            }
+        }
+        assert!(
+            hits > 5,
+            "vs $baseline tail should render in BASELINE_LABEL grey somewhere in the left strip"
+        );
+    }
+
+    #[test]
+    fn format_signed_dollars_styles() {
+        assert_eq!(format_signed_dollars(2.24), "+$2.24");
+        assert_eq!(format_signed_dollars(-5.67), "-$5.67");
+        assert_eq!(format_signed_dollars(0.0), "+$0.00");
+        assert_eq!(format_signed_dollars(1234.5), "+$1234");
+        assert_eq!(format_signed_dollars(-9999.99), "-$10000");
+    }
+
+    #[test]
     fn empty_window_shows_no_data_badge() {
         // An empty period draws the NO_DATA badge instead of a line.
         let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");
@@ -619,7 +758,7 @@ mod tests {
     }
 
     #[test]
-    fn marquee_settles_after_two_passes() {
+    fn marquee_settles_after_passes_complete() {
         // Past total_scroll, the strip pixels stop changing — same
         // contract as the flights marquee.
         let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");

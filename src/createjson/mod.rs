@@ -157,7 +157,7 @@ pub fn default_config() -> Value {
         "aurora": {"run":false,"alert_threshold":5},
         "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0},
         "launch": {"run":false,"agency_filter":[]},
-        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60]},
+        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60],"display_mode":"state"},
         "pihole": {"run":false,"base_url":"http://pi.hole","token":"null"}
     }"#;
     serde_json::from_str(json).expect("starter config must parse")

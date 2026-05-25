@@ -383,6 +383,10 @@ const MARQUEE_GAP_PX: i32 = 6;
 /// callsign it read on the first one; after that, freezing at the
 /// head keeps the panel calm for the remainder of the cycle.
 const MARQUEE_PASSES: i32 = 2;
+/// Frames per scroll step. 1 = 1 px/frame (~20 px/sec on the 20 fps
+/// panel); raising this slows the marquee proportionally so callsigns
+/// are easier to read.
+const SCROLL_FRAMES_PER_STEP: u32 = 2;
 
 /// Draw `text` at `(dest_x, row_top)` clipped to `max_w` pixels. If
 /// the rendered width fits, draws once; otherwise marquees left at
@@ -411,7 +415,10 @@ fn draw_scrolling_text(
     // what makes the row legible after the second pass — without it
     // the panel would never stop moving.
     let total_scroll = cycle * MARQUEE_PASSES;
-    let phase = scroll_phase as i32;
+    // Quantise the incoming frame counter so each scroll step lasts
+    // `SCROLL_FRAMES_PER_STEP` frames — the marquee moves at
+    // (1 / SCROLL_FRAMES_PER_STEP) px per frame.
+    let phase = (scroll_phase / SCROLL_FRAMES_PER_STEP) as i32;
     let offset = if phase >= total_scroll {
         0
     } else {
