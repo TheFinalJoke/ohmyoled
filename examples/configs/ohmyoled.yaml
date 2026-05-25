@@ -46,6 +46,15 @@ stock:
     api_key: null
     symbol: ethereum
 
+# Pi-hole DNS-block summary — % blocked today, total queries, blocked.
+# `token` is optional: many home installs expose summary stats without
+# auth. Supply the v5 admin token (Settings → API/Web interface → Show
+# API token) only if your install has API access locked down.
+pihole:
+  run: true
+  base_url: http://pi.hole
+  token: null
+
 # Home Assistant entities — display any HASS sensor/state on the panel.
 # Multi-instance: one rotation entry per entity. Requires a long-lived
 # access token (Profile → Security → Long-Lived Access Tokens in HASS).

@@ -13,6 +13,7 @@ pub mod hass;
 pub mod http;
 pub mod iss;
 pub mod launch;
+pub mod pihole;
 pub mod quake;
 pub mod sport;
 pub mod stock;

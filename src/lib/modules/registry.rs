@@ -30,6 +30,8 @@ use crate::api::hass::rest::RestConfig as HassRestConfig;
 use crate::api::hass::HassCollector;
 use crate::api::launch::lldev::LldevConfig;
 use crate::api::launch::LaunchCollector;
+use crate::api::pihole::v5::V5Config as PiholeV5Config;
+use crate::api::pihole::PiholeCollector;
 use crate::api::iss::wheretheiss::WhereTheIssConfig;
 use crate::api::iss::IssCollector;
 use crate::api::quake::model::QuakeFeed;
@@ -54,6 +56,7 @@ use crate::matrix::flights::FlightsMatrix;
 use crate::matrix::hass::{HassDisplay, HassMatrix};
 use crate::matrix::iss::IssMatrix;
 use crate::matrix::launch::LaunchMatrix;
+use crate::matrix::pihole::PiholeMatrix;
 use crate::matrix::quake::QuakeMatrix;
 use crate::matrix::sport::SportMatrix;
 use crate::matrix::stock::StockMatrix;
@@ -91,6 +94,8 @@ pub struct RegistryConfig {
     pub launch: Vec<LaunchSection>,
     #[serde(default, deserialize_with = "one_or_many")]
     pub hass: Vec<HassSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub pihole: Vec<PiholeSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -210,6 +215,17 @@ fn default_hass_alarm_color() -> (u8, u8, u8) {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct PiholeSection {
+    pub run: bool,
+    /// Pi-hole base URL (no trailing slash needed), e.g. `http://pi.hole`.
+    pub base_url: String,
+    /// Optional v5 admin token (SHA-256 from Settings → API/Web
+    /// interface → Show API token). `null`/omitted = unauth.
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StockSection {
     pub run: bool,
     pub api: StockApi,
@@ -259,7 +275,7 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={} launch={} hass={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={} launch={} hass={} pihole={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
@@ -269,7 +285,8 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
         cfg.aurora.len(),
         cfg.flights.len(),
         cfg.launch.len(),
-        cfg.hass.len()
+        cfg.hass.len(),
+        cfg.pihole.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -373,6 +390,19 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("hass: skipping module: {e}"),
+        }
+    }
+    for s in cfg.pihole.iter().filter(|s| s.run) {
+        match build_pihole(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: pihole loaded (base_url={}, token={})",
+                    s.base_url,
+                    if s.token.is_some() { "present" } else { "none" }
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("pihole: skipping module: {e}"),
         }
     }
 
@@ -573,6 +603,18 @@ async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
     )
     .await
     .map_err(|e| format!("hass fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_pihole(s: &PiholeSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = PiholeCollector::from_v5(PiholeV5Config {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = PiholeMatrix::new_async()
+        .await
+        .map_err(|e| format!("pihole fonts: {e}"))?;
     Ok(Box::new(Module::new(collector, renderer)))
 }
 

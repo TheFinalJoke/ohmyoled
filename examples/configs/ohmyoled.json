@@ -53,6 +53,11 @@
     "run": true,
     "agency_filter": []
   },
+  "pihole": {
+    "run": true,
+    "base_url": "http://pi.hole",
+    "token": null
+  },
   "hass": [
     {
       "run": true,

@@ -4,8 +4,8 @@ A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
 modules — clock, weather, stock and crypto quotes, team sports, golf
 leaderboards, Formula 1 standings, a live ISS tracker, recent
 earthquakes, aurora forecasts, nearby flights, orbital launch
-countdowns, and any Home Assistant entity — pulling from free or
-freemium public APIs.
+countdowns, any Home Assistant entity, and Pi-hole block stats —
+pulling from free or freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -31,6 +31,7 @@ backstory.
   - [`flights`](#flights)
   - [`launch`](#launch)
   - [`hass`](#hass)
+  - [`pihole`](#pihole)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -553,6 +554,33 @@ entities — both computed live from `last_changed`.
 
 ---
 
+### `pihole`
+
+DNS-blocking summary from a local Pi-hole instance — today's percent
+blocked as a big intensity-colored number, with `Nk Q  Nk BLK` totals
+across the bottom. Color tier reflects how aggressively Pi-hole is
+filtering today: bright emerald above 30%, medium 10–30%, dim below.
+
+```yaml
+pihole:
+  run: true
+  base_url: http://pi.hole
+  token: null               # optional v5 admin token; null = unauth
+```
+
+| Field      | Type    | Required | Notes                                                                                          |
+| ---------- | ------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `run`      | bool    | yes      |                                                                                                |
+| `base_url` | string  | yes      | Pi-hole root URL, e.g. `http://pi.hole` or `http://192.168.1.2`. Trailing slash is stripped.   |
+| `token`    | string  | no       | Optional v5 admin token (Settings → API/Web interface → Show API token). Required only if your install has restricted API access. |
+
+Refresh: 30 s. Data source: Pi-hole v5 `admin/api.php?summaryRaw`
+endpoint. The Pi-hole v6 API moves auth to a session-token model and
+isn't implemented yet — the `PiholeSource` enum has a slot for it
+when the v6 ergonomics settle.
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -573,8 +601,8 @@ entities — both computed live from `last_changed`.
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights`, `launch`, `hass` (body text + iss big number) |
-| `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit) |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights`, `launch`, `hass`, `pihole` (body text + iss big number) |
+| `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit), `pihole` (big percent) |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |
 

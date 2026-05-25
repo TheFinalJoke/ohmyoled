@@ -51,6 +51,14 @@ api = "coingecko"
 api_key = "null"
 symbol = "ethereum"
 
+# Pi-hole DNS-block summary — % blocked today, totals.
+# `token` is optional ("null" literal = none); the v5 summary endpoint
+# works unauthenticated on most home installs.
+[pihole]
+run = true
+base_url = "http://pi.hole"
+token = "null"
+
 # Home Assistant entities — multi-instance, one [[hass]] entry per
 # entity. Requires a long-lived access token. `alarm_state` (optional)
 # flips the state-row color to red on match — useful for doors,

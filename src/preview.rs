@@ -31,6 +31,7 @@ use oledlib::api::flights::{FlightInfo, FlightSnapshot};
 use oledlib::api::hass::HassEntity;
 use oledlib::api::iss::IssState;
 use oledlib::api::launch::{LaunchStatus, UpcomingLaunch};
+use oledlib::api::pihole::PiholeSummary;
 use oledlib::api::quake::{QuakeEvent, QuakeStatus};
 use oledlib::api::sport::model::{
     GameStatus, HomeOrAway, NextGame, SportApiSource, SportData, SportKind, StandingsEntry,
@@ -48,6 +49,7 @@ use oledlib::matrix::flights::{FlightsFonts, FlightsMatrix};
 use oledlib::matrix::hass::{HassDisplay, HassFonts, HassMatrix};
 use oledlib::matrix::iss::{IssFonts, IssMatrix};
 use oledlib::matrix::launch::{LaunchFonts, LaunchMatrix};
+use oledlib::matrix::pihole::{PiholeFonts, PiholeMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
 use oledlib::matrix::stock::{StockFonts, StockMatrix};
@@ -57,7 +59,7 @@ use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
     "time", "weather", "stock", "sport", "golf", "f1",
-    "iss", "quake", "aurora", "flights", "launch", "hass",
+    "iss", "quake", "aurora", "flights", "launch", "hass", "pihole",
 ];
 
 /// Resolve a directory that contains the project font files.
@@ -93,6 +95,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
         "flights" => preview_flights(&mut matrix, &fonts).await,
         "launch" => preview_launch(&mut matrix, &fonts).await,
         "hass" => preview_hass(&mut matrix, &fonts).await,
+        "pihole" => preview_pihole(&mut matrix, &fonts).await,
         other => Err(format!(
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
@@ -418,6 +421,34 @@ async fn preview_hass(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String
         entity("open", None, "GARAGE", 14 * 60),
         entity("off", None, "MOTION", 35),
         entity("unavailable", None, "OFFICE LIGHT", 5),
+    ];
+    let mut i = 0usize;
+    loop {
+        let data = &cycle[i % cycle.len()];
+        i = i.wrapping_add(1);
+        r.render(matrix, data).await.map_err(|e| e.to_string())?;
+    }
+}
+
+async fn preview_pihole(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    let mut r = PiholeMatrix::with_fonts_async(PiholeFonts {
+        body: fonts.join("04B_03B_.TTF"),
+        big: fonts.join("04b24.otf"),
+    })
+    .await?;
+    let s = |pct: f32, q: u32, blk: u32| PiholeSummary {
+        percent_blocked: pct,
+        queries_today: q,
+        blocked_today: blk,
+        unique_clients: 12,
+    };
+    // Cycle: typical home install, busy/aggressive, near-zero (small
+    // network), and brand-new install (no traffic yet).
+    let cycle = [
+        s(34.2, 12_348, 4_221),  // bright tier
+        s(58.7, 88_500, 51_949), // bright (lots of ads)
+        s(7.4, 2_100, 156),      // dim tier (quiet weekend)
+        s(0.0, 0, 0),             // brand new
     ];
     let mut i = 0usize;
     loop {
