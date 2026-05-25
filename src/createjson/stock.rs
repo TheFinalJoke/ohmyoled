@@ -10,6 +10,11 @@ pub struct StockOptions {
     #[serde(default, deserialize_with = "null_string_as_none")]
     pub api_key: Option<String>,
     pub symbol: String,
+    /// Flips on the historical 1D/1M/1Y line-chart tile in addition
+    /// to the live price tile. Defaults to false so existing configs
+    /// keep parsing unchanged.
+    #[serde(default)]
+    pub chart: bool,
 }
 
 impl Default for StockOptions {
@@ -19,13 +24,21 @@ impl Default for StockOptions {
             api: StockApi::Finnhub,
             api_key: None,
             symbol: "AAPL".to_owned(),
+            chart: false,
         }
     }
 }
 
 fn pick_api() -> StockApi {
-    ui::info("Finnhub is the only supported provider (free tier — register at finnhub.io).");
-    StockApi::Finnhub
+    let slug = ui::choose(
+        "Provider",
+        &[
+            ("finnhub", "Equity tickers — free tier, requires API key"),
+            ("coingecko", "Crypto coin ids — free, no key"),
+        ],
+        "finnhub",
+    );
+    StockApi::str_to_api(slug)
 }
 
 pub fn configure() -> Result<StockOptions, String> {
@@ -33,20 +46,38 @@ pub fn configure() -> Result<StockOptions, String> {
     ui::hint("Polls a single ticker. Add this option again for multiple symbols.");
 
     let api = pick_api();
-    let api_key = ui::read_required("Finnhub API key");
-    let symbol = ui::read_line_default("Ticker symbol (uppercased)", "AAPL")
-        .trim()
-        .to_uppercase();
+    // Finnhub needs an API key; CoinGecko's public tier is unauth.
+    let api_key = match api {
+        StockApi::Finnhub => Some(ui::read_required("Finnhub API key")),
+        StockApi::Coingecko => None,
+    };
+    let symbol_prompt = match api {
+        StockApi::Finnhub => "Ticker symbol (uppercased)",
+        StockApi::Coingecko => "CoinGecko coin id (e.g. bitcoin, ethereum)",
+    };
+    let raw_symbol = ui::read_line_default(symbol_prompt, "AAPL");
+    let symbol = match api {
+        StockApi::Finnhub => raw_symbol.trim().to_uppercase(),
+        StockApi::Coingecko => raw_symbol.trim().to_lowercase(),
+    };
 
-    ui::success(&format!("Stock — {symbol} via {}", api.get_api()));
+    let chart = ui::read_yes_no(
+        "Also enable the 1D/1M/1Y historical chart tile?",
+        false,
+    );
+
+    let chart_tag = if chart { " + chart" } else { "" };
+    ui::success(&format!("Stock — {symbol} via {}{chart_tag}", api.get_api()));
     Ok(StockOptions {
         run: true,
         api,
-        api_key: Some(api_key),
+        api_key,
         symbol,
+        chart,
     })
 }
 
 pub fn summary_line(opts: &StockOptions) -> String {
-    format!("stock: {} ({})", opts.symbol, opts.api.get_api())
+    let chart = if opts.chart { " + chart" } else { "" };
+    format!("stock: {} ({}){}", opts.symbol, opts.api.get_api(), chart)
 }

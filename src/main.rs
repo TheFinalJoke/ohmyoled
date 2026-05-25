@@ -105,7 +105,7 @@ async fn main() {
             .action(ArgAction::SetTrue),
         Arg::new("preview")
             .long("preview")
-            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, sport, golf, f1, iss")
+            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, stock_chart, sport, golf, f1, iss, quake, aurora, flights, launch, hass, pihole")
             .value_name("NAME"),
         Arg::new("verbose")
             .short('v')
