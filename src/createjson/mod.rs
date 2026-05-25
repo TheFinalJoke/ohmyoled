@@ -81,7 +81,11 @@ fn print_menu(entries: &[Entry]) {
     println!();
     println!("  {}", ui::bold(&ui::cyan("Actions")));
     println!("    {} Matrix panel options", ui::bold("[m]"));
-    println!("    {} Undo last entry", ui::bold("[u]"));
+    println!("    {} Undo last entry, or `u N` to remove entry #N", ui::bold("[u]"));
+    println!(
+        "    {} `e N` to edit entry #N in place (re-runs that module's prompts)",
+        ui::bold("[e]")
+    );
     println!("    {} Continue and write config", ui::bold("[c]"));
     println!("    {} Quit without saving", ui::bold("[q]"));
     println!();
@@ -125,6 +129,113 @@ fn configure_matrix(current: &mut MatrixOptions) {
     );
 
     ui::success("Matrix options updated");
+}
+
+/// Re-run the prompts for an existing entry, returning a fresh
+/// `Entry` to insert in its place. Dispatches on `entry.section`
+/// (plus the inner `sport` tag when the section is `sport`) so the
+/// caller doesn't need to remember which module number maps to which
+/// configure() function.
+///
+/// Returns `None` if the underlying configure() reported an error or
+/// the section is unrecognised. The caller is responsible for
+/// restoring the original entry in that case — `e N` should never
+/// silently delete user data.
+fn re_configure_entry(entry: &Entry) -> Option<Entry> {
+    macro_rules! run_typed {
+        ($section:expr, $module:ident, $expect:expr) => {
+            match $module::configure() {
+                Ok(opts) => Some(Entry {
+                    section: $section,
+                    label: $module::summary_line(&opts),
+                    value: serde_json::to_value(opts).expect($expect),
+                }),
+                Err(e) => {
+                    ui::error(&format!("{}: {e}", $section));
+                    None
+                }
+            }
+        };
+    }
+    macro_rules! run_value {
+        ($section:expr, $module:ident) => {
+            match $module::configure() {
+                Ok(value) => Some(Entry {
+                    section: $section,
+                    label: $module::summary_line(&value),
+                    value,
+                }),
+                Err(e) => {
+                    ui::error(&format!("{}: {e}", $section));
+                    None
+                }
+            }
+        };
+    }
+    match entry.section {
+        "time" => {
+            let opts = time::configure();
+            Some(Entry {
+                section: "time",
+                label: time::summary_line(&opts),
+                value: serde_json::to_value(opts).expect("TimeOptions serializes"),
+            })
+        }
+        "weather" => run_typed!("weather", weather, "WeatherOptions serializes"),
+        "stock" => run_typed!("stock", stock, "StockOptions serializes"),
+        "sport" => {
+            // The "sport" section is the umbrella for three different
+            // configure() flows; pick the one matching the original's
+            // tag so editing a golf entry doesn't drop the user into
+            // a basketball prompt.
+            let kind = entry
+                .value
+                .get("sport")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            match kind {
+                "basketball" | "baseball" | "football" | "hockey" => {
+                    run_value!("sport", sport)
+                }
+                "golf" => run_value!("sport", golf),
+                "f1" => run_value!("sport", f1),
+                other => {
+                    ui::error(&format!("unknown sport variant `{other}` — can't edit"));
+                    None
+                }
+            }
+        }
+        "iss" => run_typed!("iss", iss, "IssOptions serializes"),
+        "quake" => run_typed!("quake", quake, "QuakeOptions serializes"),
+        "aurora" => run_typed!("aurora", aurora, "AuroraOptions serializes"),
+        "flights" => run_typed!("flights", flights, "FlightsOptions serializes"),
+        "launch" => run_typed!("launch", launch, "LaunchOptions serializes"),
+        "hass" => run_typed!("hass", hass, "HassOptions serializes"),
+        "pihole" => run_typed!("pihole", pihole, "PiholeOptions serializes"),
+        other => {
+            ui::error(&format!("unknown section `{other}` — can't edit"));
+            None
+        }
+    }
+}
+
+/// Parse a 1-based entry index from a user-supplied string. Returns
+/// the 0-based vec position on success, a user-facing error message
+/// otherwise. Used by the `u N` / `e N` action arms.
+fn parse_entry_index(s: &str, len: usize) -> Result<usize, String> {
+    let n: usize = s
+        .parse()
+        .map_err(|_| format!("`{s}` is not a positive integer"))?;
+    if n == 0 || n > len {
+        if len == 0 {
+            return Err("Nothing to remove — entry list is empty".into());
+        }
+        return Err(format!(
+            "No entry #{n} — valid range is 1..={}",
+            len
+        ));
+    }
+    Ok(n - 1)
 }
 
 /// Collapse repeated section entries into either a single object (count == 1)
@@ -282,7 +393,13 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
             Some(s) => s,
             None => continue,
         };
-        match raw.trim().to_lowercase().as_str() {
+        // Split into head + optional index arg — supports `u`, `u 3`, `e 2`.
+        let lowered = raw.trim().to_lowercase();
+        let (head, arg) = match lowered.split_once(char::is_whitespace) {
+            Some((h, rest)) => (h, rest.trim()),
+            None => (lowered.as_str(), ""),
+        };
+        match head {
             "1" => {
                 let opts = time::configure();
                 let label = time::summary_line(&opts);
@@ -383,10 +500,56 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
                 Err(e) => ui::error(&format!("pihole config failed: {e}")),
             },
             "m" => configure_matrix(&mut matrix_opts),
-            "u" => match entries.pop() {
-                Some(e) => ui::success(&format!("Removed: {}", e.label)),
-                None => ui::warn("Nothing to undo"),
-            },
+            "u" => {
+                if arg.is_empty() {
+                    match entries.pop() {
+                        Some(e) => ui::success(&format!("Removed: {}", e.label)),
+                        None => ui::warn("Nothing to undo"),
+                    }
+                } else {
+                    match parse_entry_index(arg, entries.len()) {
+                        Ok(idx) => {
+                            let removed = entries.remove(idx);
+                            ui::success(&format!("Removed #{}: {}", idx + 1, removed.label));
+                        }
+                        Err(e) => ui::warn(&e),
+                    }
+                }
+            }
+            "e" => {
+                if arg.is_empty() {
+                    ui::warn("Usage: `e N` — pick entry # from the summary above to edit");
+                } else {
+                    match parse_entry_index(arg, entries.len()) {
+                        Ok(idx) => {
+                            // Pull the entry out, hand it to the matching
+                            // module's `configure()` for a fresh prompt run,
+                            // then insert the new value at the original
+                            // index. On error or unrecognised section the
+                            // original entry is restored — `e N` never
+                            // silently destroys data.
+                            let original = entries.remove(idx);
+                            ui::info(&format!("Editing #{}: {}", idx + 1, original.label));
+                            match re_configure_entry(&original) {
+                                Some(new) => {
+                                    let new_label = new.label.clone();
+                                    entries.insert(idx, new);
+                                    ui::success(&format!(
+                                        "Replaced #{}: {new_label}", idx + 1
+                                    ));
+                                }
+                                None => {
+                                    ui::warn(
+                                        "Edit cancelled or failed — restoring original entry"
+                                    );
+                                    entries.insert(idx, original);
+                                }
+                            }
+                        }
+                        Err(e) => ui::warn(&e),
+                    }
+                }
+            }
             "c" => {
                 if entries.is_empty() {
                     ui::warn("No modules selected — add at least one before continuing");
@@ -496,6 +659,20 @@ mod tests {
         let s = describe_existing_entry("iss", &iss);
         assert!(s.contains("40.71"));
         assert!(s.contains("-74.01"));
+    }
+
+    #[test]
+    fn parse_entry_index_accepts_valid_one_based() {
+        assert_eq!(parse_entry_index("1", 3).unwrap(), 0);
+        assert_eq!(parse_entry_index("3", 3).unwrap(), 2);
+    }
+
+    #[test]
+    fn parse_entry_index_rejects_out_of_range_and_zero() {
+        assert!(parse_entry_index("0", 3).is_err());
+        assert!(parse_entry_index("4", 3).is_err());
+        assert!(parse_entry_index("abc", 3).is_err());
+        assert!(parse_entry_index("1", 0).is_err());
     }
 
     #[test]
