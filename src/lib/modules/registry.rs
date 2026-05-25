@@ -22,11 +22,28 @@
 
 use crate::api::f1::F1Collector;
 use crate::api::golf::{GolfCollector, GolfTour};
+use crate::api::aurora::swpc::SwpcConfig;
+use crate::api::aurora::AuroraCollector;
+use crate::api::flights::opensky::OpenSkyConfig;
+use crate::api::flights::FlightsCollector;
+use crate::api::hass::rest::RestConfig as HassRestConfig;
+use crate::api::hass::HassCollector;
+use crate::api::launch::lldev::LldevConfig;
+use crate::api::launch::LaunchCollector;
+use crate::api::pihole::v5::V5Config as PiholeV5Config;
+use crate::api::pihole::PiholeCollector;
+use crate::api::iss::wheretheiss::WhereTheIssConfig;
+use crate::api::iss::IssCollector;
+use crate::api::quake::model::QuakeFeed;
+use crate::api::quake::usgs::UsgsConfig;
+use crate::api::quake::QuakeCollector;
 use crate::api::sport::espn::EspnConfig;
 use crate::api::sport::model::SportKind;
 use crate::api::sport::SportCollector;
+use crate::api::stock::coingecko::CoingeckoConfig;
 use crate::api::stock::finnhub::FinnhubConfig;
-use crate::api::stock::StockCollector;
+use crate::api::stock::yahoo::YahooConfig;
+use crate::api::stock::{StockCollector, StockHistoryCollector};
 use crate::api::weather::accuweather::AccuWeatherConfig;
 use crate::api::weather::nws::NwsConfig;
 use crate::api::weather::openweather::OpenWeatherConfig;
@@ -35,8 +52,16 @@ use crate::api::weather::WeatherCollector;
 use crate::api::{StockApi, WeatherApi};
 use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
+use crate::matrix::aurora::AuroraMatrix;
+use crate::matrix::flights::FlightsMatrix;
+use crate::matrix::hass::{HassDisplay, HassMatrix};
+use crate::matrix::iss::IssMatrix;
+use crate::matrix::launch::LaunchMatrix;
+use crate::matrix::pihole::PiholeMatrix;
+use crate::matrix::quake::QuakeMatrix;
 use crate::matrix::sport::SportMatrix;
 use crate::matrix::stock::StockMatrix;
+use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
 use crate::modules::{DynModule, Module};
@@ -59,6 +84,20 @@ pub struct RegistryConfig {
     /// field of each entry.
     #[serde(default, deserialize_with = "one_or_many")]
     pub sport: Vec<SportSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub iss: Vec<IssSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub quake: Vec<QuakeSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub aurora: Vec<AuroraSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub flights: Vec<FlightsSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub launch: Vec<LaunchSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub hass: Vec<HassSection>,
+    #[serde(default, deserialize_with = "one_or_many")]
+    pub pihole: Vec<PiholeSection>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,12 +129,119 @@ pub struct WeatherSection {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct IssSection {
+    pub run: bool,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct QuakeSection {
+    pub run: bool,
+    #[serde(default)]
+    pub feed: QuakeFeed,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AuroraSection {
+    pub run: bool,
+    /// Kp value at which the "AURORA LIKELY" banner appears. Defaults to
+    /// 5 — NOAA's G1 minor-storm threshold and the value above which
+    /// mid-latitude observers can typically see aurora.
+    #[serde(default = "default_aurora_threshold")]
+    pub alert_threshold: u8,
+}
+
+fn default_aurora_threshold() -> u8 {
+    5
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FlightsSection {
+    pub run: bool,
+    pub lat: f64,
+    pub lon: f64,
+    /// Search radius from `(lat, lon)`, in km. Larger radius = larger
+    /// bbox query = more credits/req against OpenSky's anonymous tier.
+    #[serde(default = "default_flights_radius_km")]
+    pub radius_km: f32,
+}
+
+fn default_flights_radius_km() -> f32 {
+    80.0
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LaunchSection {
+    pub run: bool,
+    /// Case-insensitive substring whitelist applied to LL2's
+    /// `launch_service_provider.name`. Empty (the default) = show every
+    /// upcoming launch regardless of provider.
+    #[serde(default)]
+    pub agency_filter: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HassSection {
+    pub run: bool,
+    /// Base URL of the HASS instance, e.g. `http://homeassistant.local:8123`.
+    pub base_url: String,
+    /// HASS long-lived access token (Profile → Security → Long-Lived
+    /// Access Tokens). Sent as a `Bearer` header.
+    pub token: String,
+    /// Entity id, e.g. `sensor.kitchen_temp`.
+    pub entity_id: String,
+    /// Optional display label override. Falls back to HASS's
+    /// `attributes.friendly_name`, then the bare entity id.
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub label: Option<String>,
+    /// State string (case-insensitive) that flips the color from
+    /// `nominal_color` to `alarm_color`. Useful for binary entities
+    /// where one state is interesting (e.g. `"open"`, `"on"`).
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub alarm_state: Option<String>,
+    /// RGB color for the default state row. Defaults to sage green.
+    #[serde(default = "default_hass_nominal_color")]
+    pub nominal_color: (u8, u8, u8),
+    /// RGB color for the alarm state row. Defaults to red.
+    #[serde(default = "default_hass_alarm_color")]
+    pub alarm_color: (u8, u8, u8),
+}
+
+fn default_hass_nominal_color() -> (u8, u8, u8) {
+    (120, 220, 120)
+}
+
+fn default_hass_alarm_color() -> (u8, u8, u8) {
+    (255, 60, 60)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PiholeSection {
+    pub run: bool,
+    /// Pi-hole base URL (no trailing slash needed), e.g. `http://pi.hole`.
+    pub base_url: String,
+    /// Optional v5 admin token (SHA-256 from Settings → API/Web
+    /// interface → Show API token). `null`/omitted = unauth.
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub token: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct StockSection {
     pub run: bool,
     pub api: StockApi,
     #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
     pub api_key: Option<String>,
     pub symbol: String,
+    /// When true, also build a `stock_chart` tile (historical 1D/1M/1Y
+    /// line graph) alongside this entry's live tile. Defaults to false
+    /// to preserve existing configs unchanged. For Finnhub-style
+    /// equity tickers the chart is sourced from Yahoo Finance (the
+    /// only free historical option); CoinGecko entries pull the chart
+    /// from CoinGecko's own `/market_chart` endpoint.
+    #[serde(default)]
+    pub chart: bool,
 }
 
 /// One entry in the `sport` array. The `sport` field selects which renderer
@@ -139,11 +285,18 @@ fn default_golf_tour() -> GolfTour {
 pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
     let mut modules: Vec<Box<dyn DynModule>> = Vec::new();
     log::debug!(
-        "registry: parsed sections — time={} weather={} stock={} sport={}",
+        "registry: parsed sections — time={} weather={} stock={} sport={} iss={} quake={} aurora={} flights={} launch={} hass={} pihole={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
-        cfg.sport.len()
+        cfg.sport.len(),
+        cfg.iss.len(),
+        cfg.quake.len(),
+        cfg.aurora.len(),
+        cfg.flights.len(),
+        cfg.launch.len(),
+        cfg.hass.len(),
+        cfg.pihole.len()
     );
 
     for t in cfg.time.iter().filter(|t| t.run) {
@@ -176,6 +329,15 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
             }
             Err(e) => log::error!("stock: skipping module: {e}"),
         }
+        if s.chart {
+            match build_stock_chart(s).await {
+                Ok(m) => {
+                    log::info!("registry: stock_chart loaded ({})", s.symbol);
+                    modules.push(m);
+                }
+                Err(e) => log::error!("stock_chart: skipping module ({}): {e}", s.symbol),
+            }
+        }
     }
     for s in cfg.sport.iter().filter(|s| s.run()) {
         match build_sport(s).await {
@@ -184,6 +346,82 @@ pub async fn build(cfg: &RegistryConfig) -> Vec<Box<dyn DynModule>> {
                 modules.push(m);
             }
             Err(e) => log::error!("sport: skipping module: {e}"),
+        }
+    }
+    for s in cfg.iss.iter().filter(|s| s.run) {
+        match build_iss(s).await {
+            Ok(m) => {
+                log::info!("registry: iss loaded (lat={}, lon={})", s.lat, s.lon);
+                modules.push(m);
+            }
+            Err(e) => log::error!("iss: skipping module: {e}"),
+        }
+    }
+    for s in cfg.quake.iter().filter(|s| s.run) {
+        match build_quake(s).await {
+            Ok(m) => {
+                log::info!("registry: quake loaded (feed={})", s.feed.slug());
+                modules.push(m);
+            }
+            Err(e) => log::error!("quake: skipping module: {e}"),
+        }
+    }
+    for s in cfg.aurora.iter().filter(|s| s.run) {
+        match build_aurora(s).await {
+            Ok(m) => {
+                log::info!("registry: aurora loaded (threshold={})", s.alert_threshold);
+                modules.push(m);
+            }
+            Err(e) => log::error!("aurora: skipping module: {e}"),
+        }
+    }
+    for s in cfg.flights.iter().filter(|s| s.run) {
+        match build_flights(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: flights loaded (lat={}, lon={}, radius_km={})",
+                    s.lat, s.lon, s.radius_km
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("flights: skipping module: {e}"),
+        }
+    }
+    for s in cfg.launch.iter().filter(|s| s.run) {
+        match build_launch(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: launch loaded (agency_filter={:?})",
+                    s.agency_filter
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("launch: skipping module: {e}"),
+        }
+    }
+    for s in cfg.hass.iter().filter(|s| s.run) {
+        match build_hass(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: hass loaded (entity_id={}, label={:?}, alarm_state={:?})",
+                    s.entity_id, s.label, s.alarm_state
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("hass: skipping module: {e}"),
+        }
+    }
+    for s in cfg.pihole.iter().filter(|s| s.run) {
+        match build_pihole(s).await {
+            Ok(m) => {
+                log::info!(
+                    "registry: pihole loaded (base_url={}, token={})",
+                    s.base_url,
+                    if s.token.is_some() { "present" } else { "none" }
+                );
+                modules.push(m);
+            }
+            Err(e) => log::error!("pihole: skipping module: {e}"),
         }
     }
 
@@ -252,15 +490,45 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
     Ok(Box::new(Module::new(collector, renderer)))
 }
 
-async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
-    let api_key = s
-        .api_key
-        .clone()
-        .ok_or_else(|| "stock: api_key missing".to_string())?;
+/// Build the chart-mode (historical) module for one stock entry. For
+/// Finnhub-style configs the chart source is always Yahoo (Finnhub's
+/// `/candle` is paid-tier only); for CoinGecko configs the chart is
+/// sourced from CoinGecko's own `/market_chart` endpoint so the same
+/// provider stays in use across both tiles.
+async fn build_stock_chart(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
     let collector = match s.api {
-        StockApi::Finnhub => StockCollector::from_finnhub(FinnhubConfig {
-            api_key,
+        StockApi::Finnhub => StockHistoryCollector::from_yahoo(YahooConfig {
             symbol: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+        StockApi::Coingecko => StockHistoryCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+    };
+    let renderer = StockChartMatrix::new_async()
+        .await
+        .map_err(|e| format!("stock_chart fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = match s.api {
+        StockApi::Finnhub => {
+            let api_key = s
+                .api_key
+                .clone()
+                .ok_or_else(|| "stock: api_key missing".to_string())?;
+            StockCollector::from_finnhub(FinnhubConfig {
+                api_key,
+                symbol: s.symbol.clone(),
+            })
+            .map_err(|e| e.to_string())?
+        }
+        // CoinGecko's public tier is unauthenticated — `api_key` in the
+        // config is ignored. `symbol` carries the coin id (e.g. "bitcoin").
+        StockApi::Coingecko => StockCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
         })
         .map_err(|e| e.to_string())?,
     };
@@ -299,6 +567,96 @@ async fn build_sport(s: &SportSection) -> Result<Box<dyn DynModule>, String> {
             Ok(Box::new(Module::new(collector, renderer)))
         }
     }
+}
+
+async fn build_iss(s: &IssSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = IssCollector::from_wheretheiss(WhereTheIssConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = IssMatrix::new_async()
+        .await
+        .map_err(|e| format!("iss fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_quake(s: &QuakeSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = QuakeCollector::from_usgs(UsgsConfig { feed: s.feed })
+        .map_err(|e| e.to_string())?;
+    let renderer = QuakeMatrix::new_async()
+        .await
+        .map_err(|e| format!("quake fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_aurora(s: &AuroraSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = AuroraCollector::from_swpc(SwpcConfig {
+        alert_threshold: s.alert_threshold,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = AuroraMatrix::new_async()
+        .await
+        .map_err(|e| format!("aurora fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = FlightsCollector::from_opensky(OpenSkyConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+        radius_km: s.radius_km,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = FlightsMatrix::new_async()
+        .await
+        .map_err(|e| format!("flights fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_launch(s: &LaunchSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = LaunchCollector::from_lldev(LldevConfig {
+        agency_filter: s.agency_filter.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = LaunchMatrix::new_async()
+        .await
+        .map_err(|e| format!("launch fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = HassCollector::from_rest(HassRestConfig {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+        entity_id: s.entity_id.clone(),
+        label_override: s.label.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let display = HassDisplay {
+        nominal_color: ohmyoled_matrix::Color::new(s.nominal_color.0, s.nominal_color.1, s.nominal_color.2),
+        alarm_color: ohmyoled_matrix::Color::new(s.alarm_color.0, s.alarm_color.1, s.alarm_color.2),
+        alarm_state: s.alarm_state.clone(),
+    };
+    let renderer = HassMatrix::with_fonts_async(
+        crate::matrix::hass::HassFonts::default(),
+        display,
+    )
+    .await
+    .map_err(|e| format!("hass fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
+}
+
+async fn build_pihole(s: &PiholeSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = PiholeCollector::from_v5(PiholeV5Config {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = PiholeMatrix::new_async()
+        .await
+        .map_err(|e| format!("pihole fonts: {e}"))?;
+    Ok(Box::new(Module::new(collector, renderer)))
 }
 
 async fn build_team_sport(

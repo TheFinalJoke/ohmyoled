@@ -1,8 +1,11 @@
 # ohmyoled
 
 A pure-Rust driver for a 64×32 RGB LED matrix panel that rotates through
-modules — clock, weather, stock quotes, team sports, golf leaderboards,
-and Formula 1 standings — pulling from free or freemium public APIs.
+modules — clock, weather, stock and crypto quotes, team sports, golf
+leaderboards, Formula 1 standings, a live ISS tracker, recent
+earthquakes, aurora forecasts, nearby flights, orbital launch
+countdowns, any Home Assistant entity, and Pi-hole block stats —
+pulling from free or freemium public APIs.
 
 The legacy Python core has been fully migrated; the runtime is a single
 Rust binary plus a config file. See the wiki at
@@ -22,6 +25,13 @@ backstory.
   - [`weather`](#weather)
   - [`stock`](#stock)
   - [`sport`](#sport)
+  - [`iss`](#iss)
+  - [`quake`](#quake)
+  - [`aurora`](#aurora)
+  - [`flights`](#flights)
+  - [`launch`](#launch)
+  - [`hass`](#hass)
+  - [`pihole`](#pihole)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -244,8 +254,10 @@ identically across providers because NWS strings are mapped to OWM codes.
 
 ### `stock`
 
-A list of symbols. Each entry renders symbol + current price, change,
-high/low, and prev-close. Refresh: 30 s.
+A list of tickers. Each entry renders symbol + current price, change,
+high/low, and prev-close. Two providers share this section: **Finnhub**
+for equities (refresh 30 s) and **CoinGecko** for crypto (refresh 60 s).
+Both normalize into the same on-panel layout.
 
 ```yaml
 stock:
@@ -257,14 +269,22 @@ stock:
     api: finnhub
     api_key: YOUR_FINNHUB_KEY
     symbol: MSFT
+  - run: true
+    api: coingecko
+    api_key: null              # not needed for coingecko's free tier
+    symbol: bitcoin            # coin id, not ticker
+  - run: true
+    api: coingecko
+    api_key: null
+    symbol: ethereum
 ```
 
-| Field     | Type   | Required | Notes                                            |
-| --------- | ------ | -------- | ------------------------------------------------ |
-| `run`     | bool   | yes      |                                                  |
-| `api`     | enum   | yes      | Only `finnhub` is supported today.               |
-| `api_key` | string | yes      | Get one at <https://finnhub.io> (free tier OK).  |
-| `symbol`  | string | yes      | Ticker (e.g. `AAPL`, `MSFT`, `BTC-USD`).         |
+| Field     | Type   | Required | Notes                                                                                                          |
+| --------- | ------ | -------- | -------------------------------------------------------------------------------------------------------------- |
+| `run`     | bool   | yes      |                                                                                                                |
+| `api`     | enum   | yes      | `finnhub` (equities) or `coingecko` (crypto).                                                                  |
+| `api_key` | string | finnhub only | Get a Finnhub key at <https://finnhub.io> (free tier OK). CoinGecko's public tier is keyless — set to `null`. |
+| `symbol`  | string | yes      | For Finnhub: ticker (e.g. `AAPL`). For CoinGecko: coin id (e.g. `bitcoin`, `ethereum`) — display ticker comes from the API. |
 
 Display colors: green for up, red for down.
 
@@ -353,6 +373,214 @@ requests per refresh: `current/next.json` + `current/driverStandings.json`.
 
 ---
 
+### `iss`
+
+Live great-circle distance from your location to the International Space
+Station. Flips to a magenta `OVERHEAD` banner when the ISS is inside
+your visibility footprint (i.e. above your local horizon right now).
+
+```yaml
+iss:
+  run: true
+  lat: 40.7128       # your latitude, decimal degrees
+  lon: -74.0060      # your longitude, decimal degrees
+```
+
+| Field | Type  | Required | Notes                                                                 |
+| ----- | ----- | -------- | --------------------------------------------------------------------- |
+| `run` | bool  | yes      |                                                                       |
+| `lat` | float | yes      | Decimal degrees, `-90..90`. No IP-based fallback for this module.     |
+| `lon` | float | yes      | Decimal degrees, `-180..180`.                                         |
+
+Refresh: 30 s. Data source: <https://api.wheretheiss.at/v1/satellites/25544>
+(public, no auth). The `footprint` field from the API drives the
+overhead check — no hand-rolled elevation math.
+
+---
+
+### `quake`
+
+Top-magnitude earthquake from the last 24h of the USGS feed, or a
+`QUIET / no events 24h` tile when the feed is empty. Magnitude is
+color-coded — green under 4, amber 4–6, red 6 and up.
+
+```yaml
+quake:
+  run: true
+  feed: significant_day   # significant_day | m45_day | m25_day | all_day
+```
+
+| Field  | Type | Required | Notes                                                                                  |
+| ------ | ---- | -------- | -------------------------------------------------------------------------------------- |
+| `run`  | bool | yes      |                                                                                        |
+| `feed` | enum | no       | Defaults to `significant_day` (quietest). The others raise event volume substantially. |
+
+Refresh: 5 min. Data source:
+<https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/> (public,
+no auth). Place names that don't fit the panel word-wrap to two lines;
+the second line marquees when the full text overflows.
+
+---
+
+### `aurora`
+
+NOAA's planetary K-index as a single big digit (0–9) color-coded by
+storm intensity, with a 9-block scale bar showing the gradient. An
+`AURORA LIKELY` cyan banner appears whenever Kp meets the configured
+alert threshold.
+
+```yaml
+aurora:
+  run: true
+  alert_threshold: 5    # 1–9; defaults to 5 (NOAA G1 minor storm)
+```
+
+| Field             | Type | Required | Notes                                                                                |
+| ----------------- | ---- | -------- | ------------------------------------------------------------------------------------ |
+| `run`             | bool | yes      |                                                                                      |
+| `alert_threshold` | int  | no       | Defaults to 5. Lower (3, 4) catches high-latitude viewers; higher (6+) for far-south.|
+
+Color bands match NOAA's G-scale: green Kp 0–3, amber 4, violet 5–6,
+red 7–9. Refresh: 5 min. Data source:
+<https://services.swpc.noaa.gov/json/planetary_k_index_1m.json> (public,
+no auth).
+
+---
+
+### `flights`
+
+Live count of aircraft within a configurable radius, plus a detail row
+for the closest one: cyan callsign (or ICAO24 hex when no callsign is
+broadcast), flight level (`FLnnn` for altitude in hundreds of feet, or
+`GND` when the aircraft is on the ground), distance in km, and
+8-octant bearing (`N`, `NE`, `E`, …). Long callsigns marquee.
+
+```yaml
+flights:
+  run: true
+  lat: 40.7128
+  lon: -74.0060
+  radius_km: 80
+```
+
+| Field       | Type  | Required | Notes                                                            |
+| ----------- | ----- | -------- | ---------------------------------------------------------------- |
+| `run`       | bool  | yes      |                                                                  |
+| `lat`       | float | yes      | Decimal degrees, `-90..90`.                                      |
+| `lon`       | float | yes      | Decimal degrees, `-180..180`.                                    |
+| `radius_km` | float | no       | Defaults to 80; allowed range 1..500.                            |
+
+Refresh: 60 s. Data source: <https://opensky-network.org> (anonymous
+bbox endpoint, no auth). The bbox is computed locally and the result
+is post-filtered by Haversine distance to enforce the circle; only
+aircraft with a usable lat/lon are counted. OpenSky's anonymous tier
+is credit-limited (~400 req/day) — a single flights tile at 60 s
+will exceed that nominal budget, but small bbox queries tend to be
+tolerated past the soft cap. Use a smaller `radius_km` if you start
+seeing 429s.
+
+---
+
+### `launch`
+
+Live countdown to the next upcoming orbital launch. Three visual modes
+by remaining time: **T-far** (`T-2d 14h`, cyan) when more than 24h
+away, **T-near** (`T-03:42:11`, amber) under 24h, and **T-imminent**
+(`T-00:00:08`, flashing red) in the final 60 seconds. After liftoff
+the panel switches to a green `LIFT-OFF` banner and lingers so the
+moment doesn't rotate off the panel mid-launch.
+
+```yaml
+launch:
+  run: true
+  agency_filter: []         # case-insensitive substrings, e.g. ["SpaceX", "Rocket Lab"]
+```
+
+| Field           | Type      | Required | Notes                                                                                                  |
+| --------------- | --------- | -------- | ------------------------------------------------------------------------------------------------------ |
+| `run`           | bool      | yes      |                                                                                                        |
+| `agency_filter` | string[]  | no       | Empty (default) = every upcoming launch worldwide. Otherwise, provider name must contain one of these. |
+
+The countdown ticks at 1 fps and is computed at render time from the
+cached `net` timestamp — the collector polls once per 30 minutes, well
+inside Launch Library 2's anonymous ~15 req/hr limit. Provider, vehicle
+and mission text truncates with `…` when it doesn't fit the 64-px row.
+
+Data source: <https://ll.thespacedevs.com/2.2.0/launch/upcoming/>
+(public, no auth).
+
+---
+
+### `hass`
+
+Display any Home Assistant entity on the panel — sensors, binary
+sensors, switches, anything that has a `state`. Multi-instance: one
+entry per entity. Layout adapts: numeric states render as
+`72.4 °F` (state + unit) in sage green; text states render uppercased
+as `OPEN`/`ON`/`UNAVAILABLE`. When `alarm_state` is set and the
+entity's state matches it, the state row flips to red — useful for
+flagging tripped sensors at a glance.
+
+```yaml
+hass:
+  - run: true
+    base_url: http://homeassistant.local:8123
+    token: YOUR_HASS_LONG_LIVED_TOKEN
+    entity_id: sensor.kitchen_temp
+    label: KITCHEN
+  - run: true
+    base_url: http://homeassistant.local:8123
+    token: YOUR_HASS_LONG_LIVED_TOKEN
+    entity_id: binary_sensor.garage_door
+    label: GARAGE
+    alarm_state: open
+```
+
+| Field           | Type     | Required | Notes                                                                                            |
+| --------------- | -------- | -------- | ------------------------------------------------------------------------------------------------ |
+| `run`           | bool     | yes      |                                                                                                  |
+| `base_url`      | string   | yes      | HASS root, e.g. `http://homeassistant.local:8123` (no trailing slash needed; we strip it).      |
+| `token`         | string   | yes      | Long-lived access token. Generate via Profile → Security → Long-Lived Access Tokens.            |
+| `entity_id`     | string   | yes      | Any HASS entity id, e.g. `sensor.kitchen_temp`, `binary_sensor.front_door`, `switch.lamp_1`.    |
+| `label`         | string   | no       | Display override. Defaults to `attributes.friendly_name`, then the bare entity id.              |
+| `alarm_state`   | string   | no       | Case-insensitive. When the entity's state matches, the state row renders in `alarm_color`.      |
+| `nominal_color` | [u8;3]   | no       | RGB for the steady-state row. Defaults to `[120, 220, 120]` (sage green).                       |
+| `alarm_color`   | [u8;3]   | no       | RGB for the alarm-tripped row. Defaults to `[255, 60, 60]` (red).                               |
+
+Refresh: 30 s. Data source: bearer-auth GET against your local HASS
+REST API at `<base_url>/api/states/<entity_id>`. Footer shows
+"updated Ns ago" for numeric entities, "since Nm ago" for text/binary
+entities — both computed live from `last_changed`.
+
+---
+
+### `pihole`
+
+DNS-blocking summary from a local Pi-hole instance — today's percent
+blocked as a big intensity-colored number, with `Nk Q  Nk BLK` totals
+across the bottom. Color tier reflects how aggressively Pi-hole is
+filtering today: bright emerald above 30%, medium 10–30%, dim below.
+
+```yaml
+pihole:
+  run: true
+  base_url: http://pi.hole
+  token: null               # optional v5 admin token; null = unauth
+```
+
+| Field      | Type    | Required | Notes                                                                                          |
+| ---------- | ------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `run`      | bool    | yes      |                                                                                                |
+| `base_url` | string  | yes      | Pi-hole root URL, e.g. `http://pi.hole` or `http://192.168.1.2`. Trailing slash is stripped.   |
+| `token`    | string  | no       | Optional v5 admin token (Settings → API/Web interface → Show API token). Required only if your install has restricted API access. |
+
+Refresh: 30 s. Data source: Pi-hole v5 `admin/api.php?summaryRaw`
+endpoint. The Pi-hole v6 API moves auth to a session-token model and
+isn't implemented yet — the `PiholeSource` enum has a slot for it
+when the v6 ergonomics settle.
+
+---
+
 ## Environment variables
 
 | Variable               | Effect                                                                                                |
@@ -373,15 +601,15 @@ requests per refresh: `current/next.json` + `current/driverStandings.json`.
 | File                | Used by                                  |
 | ------------------- | ---------------------------------------- |
 | `4x6.bdf`           | `time` (BDF bitmap)                      |
-| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1` (body text) |
-| `04b24.otf`         | `sport` (big score numerals)             |
+| `04B_03B_.TTF`      | `weather`, `stock`, `sport`, `golf`, `f1`, `iss`, `quake`, `aurora`, `flights`, `launch`, `hass`, `pihole` (body text + iss big number) |
+| `04b24.otf`         | `sport` (big score numerals), `aurora` (big Kp digit), `pihole` (big percent) |
 | `weathericons.ttf`  | `weather`, `stock` (icon glyphs)         |
 | `retro_computer.ttf`| `weather` (accent text)                  |
 
 If any of these are missing the module will fail to construct and skip
 itself at startup with a `font: ...` error in the log. Custom paths can
-be wired via the `*Fonts` builders (`WeatherFonts`, `StockFonts`, etc.)
-but there's no on-disk config knob for that yet.
+be wired via the `*Fonts` builders (`WeatherFonts`, `StockFonts`,
+`IssFonts`, etc.) but there's no on-disk config knob for that yet.
 
 ---
 

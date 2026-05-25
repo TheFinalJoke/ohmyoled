@@ -25,8 +25,55 @@
     }
   ],
   "stock": [
-    { "run": true, "api": "finnhub", "api_key": "YOUR_FINNHUB_KEY", "symbol": "AAPL" },
-    { "run": true, "api": "finnhub", "api_key": "YOUR_FINNHUB_KEY", "symbol": "MSFT" }
+    { "run": true, "api": "finnhub",   "api_key": "YOUR_FINNHUB_KEY", "symbol": "AAPL", "chart": true },
+    { "run": true, "api": "finnhub",   "api_key": "YOUR_FINNHUB_KEY", "symbol": "MSFT" },
+    { "run": true, "api": "coingecko", "api_key": null,               "symbol": "bitcoin" },
+    { "run": true, "api": "coingecko", "api_key": null,               "symbol": "ethereum" }
+  ],
+  "iss": {
+    "run": true,
+    "lat": 40.7128,
+    "lon": -74.0060
+  },
+  "quake": {
+    "run": true,
+    "feed": "significant_day"
+  },
+  "aurora": {
+    "run": true,
+    "alert_threshold": 5
+  },
+  "flights": {
+    "run": true,
+    "lat": 40.7128,
+    "lon": -74.0060,
+    "radius_km": 80
+  },
+  "launch": {
+    "run": true,
+    "agency_filter": []
+  },
+  "pihole": {
+    "run": true,
+    "base_url": "http://pi.hole",
+    "token": null
+  },
+  "hass": [
+    {
+      "run": true,
+      "base_url": "http://homeassistant.local:8123",
+      "token": "YOUR_HASS_LONG_LIVED_TOKEN",
+      "entity_id": "sensor.kitchen_temp",
+      "label": "KITCHEN"
+    },
+    {
+      "run": true,
+      "base_url": "http://homeassistant.local:8123",
+      "token": "YOUR_HASS_LONG_LIVED_TOKEN",
+      "entity_id": "binary_sensor.garage_door",
+      "label": "GARAGE",
+      "alarm_state": "open"
+    }
   ],
   "sport": [
     {

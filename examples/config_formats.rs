@@ -40,11 +40,18 @@ fn summarize(cfg: &RegistryConfig) -> String {
         })
         .collect();
     format!(
-        "time={} weather={} stock={} sport={:?}",
+        "time={} weather={} stock={} sport={:?} iss={} quake={} aurora={} flights={} launch={} hass={} pihole={}",
         cfg.time.len(),
         cfg.weather.len(),
         cfg.stock.len(),
-        sport_kinds
+        sport_kinds,
+        cfg.iss.len(),
+        cfg.quake.len(),
+        cfg.aurora.len(),
+        cfg.flights.len(),
+        cfg.launch.len(),
+        cfg.hass.len(),
+        cfg.pihole.len()
     )
 }
 

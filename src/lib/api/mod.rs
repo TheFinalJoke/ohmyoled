@@ -3,11 +3,18 @@
 //! See [`collector::Collector`] for the contract, [`http::get_json`] for the
 //! shared HTTP helper, and [`error::ApiError`] for the error type.
 
+pub mod aurora;
 pub mod collector;
 pub mod error;
 pub mod f1;
+pub mod flights;
 pub mod golf;
+pub mod hass;
 pub mod http;
+pub mod iss;
+pub mod launch;
+pub mod pihole;
+pub mod quake;
 pub mod sport;
 pub mod stock;
 pub mod weather;
@@ -51,16 +58,19 @@ pub struct WeatherApiType {
 #[serde(rename_all = "lowercase")]
 pub enum StockApi {
     Finnhub,
+    Coingecko,
 }
 impl StockApi {
     pub fn get_api(&self) -> String {
         match self {
             StockApi::Finnhub => "finnhub".to_string(),
+            StockApi::Coingecko => "coingecko".to_string(),
         }
     }
     pub fn str_to_api(api_str: String) -> Self {
         match api_str.as_str() {
             "finnhub" => Self::Finnhub,
+            "coingecko" => Self::Coingecko,
             _ => Self::Finnhub,
         }
     }

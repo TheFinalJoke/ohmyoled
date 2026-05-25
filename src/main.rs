@@ -2,6 +2,7 @@ mod config_io;
 mod createjson;
 mod filelib;
 mod logger;
+mod preview;
 extern crate log;
 use clap::{Arg, ArgAction, Command};
 use oledlib::modules::{registry, scheduler};
@@ -102,6 +103,10 @@ async fn main() {
             .long("dev")
             .help("creates a dev enviornment")
             .action(ArgAction::SetTrue),
+        Arg::new("preview")
+            .long("preview")
+            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, sport, golf, f1, iss")
+            .value_name("NAME"),
         Arg::new("verbose")
             .short('v')
             .long("verbose")
@@ -125,6 +130,19 @@ async fn main() {
         .get_one::<String>("json_file")
         .cloned()
         .unwrap_or_else(|| "/etc/ohmyoled/ohmyoled.json".to_string());
+
+    // Preview mode — render one screen with fake data and loop. Bypasses
+    // config loading entirely so it works on a fresh clone with no setup.
+    if let Some(name) = matches.get_one::<String>("preview") {
+        let dev = std::env::var("DEV").is_ok();
+        let matrix = build_matrix(&createjson::MatrixOptions::default(), dev);
+        install_sigint_handler();
+        if let Err(e) = preview::run(name, matrix).await {
+            eprintln!("preview: {e}");
+            std::process::exit(2);
+        }
+        return;
+    }
 
     if matches.get_flag("dev_mode") {
         println!("Building a dev environment, replacing {target_path} with a dev config");
