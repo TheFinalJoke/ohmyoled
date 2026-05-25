@@ -345,15 +345,32 @@ async fn preview_flights(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Str
         ground_speed_kt: Some(440),
         country: "United States".into(),
     };
-    let snap = |count: usize, closest: Option<FlightInfo>| FlightSnapshot { count, closest };
-    // Cycle through: typical airliner, on-ground taxiing flight, long
-    // callsign (triggers the marquee), and an empty-airspace tile so the
-    // QUIET SKIES path gets airtime too.
+    let snap = |radius_km: f32, flights: Vec<FlightInfo>| FlightSnapshot {
+        count: flights.len(),
+        closest: flights.first().cloned(),
+        nearby: flights,
+        radius_km,
+    };
+    // Cycle through: a busy airspace (full radar with assorted bearings
+    // and ranges), a single taxiing aircraft (GND footer), a single
+    // long-callsign airliner (corner truncation), and an empty
+    // airspace tile so the NO AC badge gets airtime too.
     let cycle = [
-        snap(7, Some(flight("DAL2451", 32_000, 12.4, 225.0, false))),
-        snap(3, Some(flight("UAL899", 0, 1.2, 90.0, true))),
-        snap(12, Some(flight("LUFTHANSA404", 38_000, 47.0, 315.0, false))),
-        snap(0, None),
+        snap(
+            80.0,
+            vec![
+                flight("DAL2451", 32_000, 12.4, 225.0, false),
+                flight("UAL989", 38_000, 28.0, 5.0, false),
+                flight("JBU42", 30_000, 44.0, 88.0, false),
+                flight("AAL117", 36_000, 55.0, 145.0, false),
+                flight("FDX1338", 34_000, 62.0, 200.0, false),
+                flight("SWA2210", 31_000, 71.0, 305.0, false),
+                flight("N123AB", 4_500, 18.0, 340.0, false),
+            ],
+        ),
+        snap(80.0, vec![flight("UAL899", 0, 1.2, 90.0, true)]),
+        snap(80.0, vec![flight("LUFTHANSA404", 38_000, 47.0, 315.0, false)]),
+        snap(80.0, vec![]),
     ];
     let mut i = 0usize;
     loop {

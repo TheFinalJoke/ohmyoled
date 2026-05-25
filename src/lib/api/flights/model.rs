@@ -4,10 +4,22 @@
 #[derive(Debug, Clone)]
 pub struct FlightSnapshot {
     /// Number of aircraft inside the configured radius (after filtering
-    /// out states with no usable position).
+    /// out states with no usable position). Equal to `nearby.len()`.
     pub count: usize,
     /// Closest aircraft, or `None` when the airspace is empty.
+    /// Equivalent to `nearby.first().cloned()` — kept as a separate
+    /// field so the renderer's corner overlays read it without an
+    /// `Option`-chained `.first()`.
     pub closest: Option<FlightInfo>,
+    /// All aircraft inside the configured radius, sorted ascending by
+    /// distance. The radar renderer plots one dot per entry; the
+    /// text-mode renderer historically only used `closest` and ignores
+    /// this. Capped at 32 to keep the plot legible on the 64×32 panel.
+    pub nearby: Vec<FlightInfo>,
+    /// The search radius the collector was configured with, km. The
+    /// renderer scales dot positions against this so a flight at the
+    /// edge of the radius lands at the edge of the radar circle.
+    pub radius_km: f32,
 }
 
 /// One aircraft's display-ready state, relative to the user.

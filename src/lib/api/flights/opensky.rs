@@ -140,9 +140,18 @@ fn snapshot_from_raw(
             .partial_cmp(&b.distance_km)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    // Cap at 32 — the 64×32 panel can't legibly show more dots than
+    // that, and OpenSky bbox queries over busy regions can return
+    // hundreds. The cap is on the radar input; `count` still reflects
+    // the true filtered total so the "AC N" overlay stays honest.
+    let count = nearby.len();
+    let closest = nearby.first().cloned();
+    nearby.truncate(32);
     FlightSnapshot {
-        count: nearby.len(),
-        closest: nearby.into_iter().next(),
+        count,
+        closest,
+        nearby,
+        radius_km: radius_km as f32,
     }
 }
 
