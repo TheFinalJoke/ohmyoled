@@ -1,0 +1,55 @@
+name: CI
+
+# Fast feedback for branch work: tests + lint + native build on every
+# push to dev and on PRs targeting main. No artifact uploads, no docker
+# — that's release.yml's job (tags + pushes to main).
+on:
+  push:
+    branches:
+      - dev
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Tests + clippy + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry + build dir
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-
+
+      # --no-default-features skips the hardware backend (rpi-led-matrix-sys
+      # refuses to build off-Pi); CI doesn't drive panels.
+      - name: cargo build
+        run: cargo build --no-default-features
+
+      - name: cargo test --lib
+        run: cargo test --lib --no-default-features
+
+      - name: cargo test --bin ohmyoled
+        run: cargo test --bin ohmyoled --no-default-features
+
+      - name: cargo clippy
+        run: cargo clippy --lib --bin ohmyoled --no-default-features --examples -- -D warnings
+
+      # Sanity-check the example configs still parse after any registry
+      # field additions. The cross-format equivalence catches typos in
+      # one format that the others would tolerate.
+      - name: example configs round-trip
+        run: cargo run --no-default-features --example config_formats
