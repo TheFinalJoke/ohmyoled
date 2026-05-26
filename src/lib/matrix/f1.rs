@@ -314,13 +314,19 @@ impl F1Matrix {
             Color::new(180, 180, 180)
         };
 
-        draw_text(img, font, 0, bl, phase.color(), &label);
         let label_w = font.text_width(&label);
         let time_x = label_w + 3;
-        draw_text(img, font, time_x, bl, Color::WHITE, &time_str);
-
         let countdown_w = font.text_width(&countdown);
         let countdown_x = PANEL_W as i32 - countdown_w;
+
+        // Countdown is the priority on the right; clip the time so it
+        // slides behind the countdown when the two overlap (leave a 1px
+        // gap between them when they're close).
+        let time_clip_max = (countdown_x - 1).max(time_x);
+        draw_text(img, font, 0, bl, phase.color(), &label);
+        draw_text_in_window(
+            img, font, time_x, bl, Color::WHITE, &time_str, time_x, time_clip_max,
+        );
         draw_text(img, font, countdown_x, bl, countdown_color, &countdown);
     }
 
@@ -516,6 +522,41 @@ mod tests {
         let img_22 = m.draw_frame(&sample(true, 22), 0);
         let img_50 = m.draw_frame(&sample(true, 50), 0);
         assert_eq!(lb_pixels(&img_22), lb_pixels(&img_50));
+    }
+
+    #[test]
+    fn time_clipped_behind_countdown() {
+        // A "LIVE" phase + "16:00" time + "LIVE" countdown is the
+        // tightest case and used to bleed glyphs into each other.
+        // After the fix, the column the countdown occupies must contain
+        // only countdown pixels (no leftover time glyph stragglers).
+        let m = F1Matrix::with_fonts(repo_fonts()).expect("fonts");
+        let mut img = RgbImage::new(PANEL_W, PANEL_H);
+        let data = sample(true, 22);
+        // Pin "now" past start so phase = Live and countdown = "LIVE".
+        let now =
+            Local.with_ymd_and_hms(2026, 5, 24, 16, 30, 0).unwrap();
+        m.draw_phase_line(&mut img, &data, now);
+
+        let countdown = "LIVE";
+        let countdown_w = m.body_font.text_width(countdown);
+        let countdown_x = PANEL_W as i32 - countdown_w;
+        // Time "16:00" is white (255,255,255); countdown LIVE is F1_RED
+        // (225, 6, 0). A bled-through time pixel would have a high green
+        // channel (anything near r); a red-only countdown pixel has g
+        // far below r.
+        for y in 0..PANEL_H {
+            for x in countdown_x as u32..PANEL_W {
+                let [r, g, b] = img.get_pixel(x, y).0;
+                if r == 0 && g == 0 && b == 0 {
+                    continue;
+                }
+                assert!(
+                    g + 50 < r,
+                    "white time bled into countdown at ({x},{y}) = ({r},{g},{b})"
+                );
+            }
+        }
     }
 
     #[test]

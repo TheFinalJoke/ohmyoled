@@ -38,6 +38,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
 
+/// Upper bound on how long a Cached slot will block waiting for its
+/// first background poll before skipping the cycle. Only consulted on
+/// cold start (no value in the watch channel *and* no last-good
+/// fallback). Once any poll has succeeded, every subsequent render
+/// returns immediately from the channel.
+const FIRST_POLL_WAIT: Duration = Duration::from_secs(10);
+
 /// Where this module gets its data each render:
 /// - `Cached`: a background tokio task owns the collector and writes the
 ///   latest value into a `watch::channel`; this slot reads from the other
@@ -170,7 +177,33 @@ where
         let id = self.id;
         // Pick up the latest snapshot (background or inline).
         let snapshot: Option<Arc<C::Output>> = match &mut self.source {
-            PollSource::Cached(rx) => rx.borrow().clone(),
+            PollSource::Cached(rx) => {
+                let current = rx.borrow().clone();
+                if current.is_some() || self.last_good.is_some() {
+                    current
+                } else {
+                    // Cold start: the background task hasn't returned its
+                    // first poll yet (e.g. ISS / weather over a slow link).
+                    // Block this slot briefly so the tile doesn't silently
+                    // skip its first cycle. Bounded so a dead API can't
+                    // wedge the scheduler.
+                    log::debug!(
+                        "[{id}] no cached value yet; waiting up to {:?} for first poll",
+                        FIRST_POLL_WAIT
+                    );
+                    match tokio::time::timeout(FIRST_POLL_WAIT, rx.changed()).await {
+                        Ok(Ok(())) => rx.borrow_and_update().clone(),
+                        Ok(Err(_)) => None, // sender dropped — shutdown
+                        Err(_) => {
+                            log::warn!(
+                                "[{id}] first poll didn't arrive within {:?}; skipping cycle",
+                                FIRST_POLL_WAIT
+                            );
+                            None
+                        }
+                    }
+                }
+            }
             PollSource::Inline(collector) => {
                 let started = std::time::Instant::now();
                 match collector.poll().await {
@@ -323,6 +356,55 @@ mod tests {
             "expected >=3 polls in 250ms with ttl=60ms; got {n} \
              (cache may not be refreshing on TTL boundaries)"
         );
+    }
+
+    /// Collector that sleeps before returning, to simulate a slow API.
+    struct SlowCollector {
+        delay: Duration,
+        polls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Collector for SlowCollector {
+        type Output = u32;
+        fn id(&self) -> &'static str {
+            "slow"
+        }
+        fn refresh_interval(&self) -> Duration {
+            Duration::from_secs(60)
+        }
+        async fn poll(&self) -> Result<Self::Output, ApiError> {
+            tokio::time::sleep(self.delay).await;
+            Ok(self.polls.fetch_add(1, Ordering::SeqCst) as u32)
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cached_module_waits_for_first_poll_on_cold_start() {
+        // If the background poll takes a few hundred ms to land (e.g.
+        // the ISS API), the very first scheduler tick used to find an
+        // empty watch channel and silently skip the slot. Verify the
+        // cold-start wait gives the poll time to land so the renderer
+        // actually fires on cycle 1.
+        let polls = Arc::new(AtomicUsize::new(0));
+        let renders = Arc::new(AtomicUsize::new(0));
+        let mut module = Module::new(
+            SlowCollector {
+                delay: Duration::from_millis(300),
+                polls: polls.clone(),
+            },
+            CountingRenderer {
+                renders: renders.clone(),
+            },
+            Duration::from_secs(60),
+        );
+        let mut matrix = RGBMatrix::test(MatrixOptions::default());
+        // First render hits the watch channel while the background poll
+        // is mid-sleep; the cold-start wait should keep us alive until
+        // the value lands.
+        module.render_cached(&mut matrix).await.unwrap();
+        assert_eq!(polls.load(Ordering::SeqCst), 1);
+        assert_eq!(renders.load(Ordering::SeqCst), 1, "cold-start render should not be skipped");
     }
 
     #[tokio::test(flavor = "current_thread")]

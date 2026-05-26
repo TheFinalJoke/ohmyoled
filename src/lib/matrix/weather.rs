@@ -51,6 +51,7 @@
 use crate::api::weather::model::{
     DailyForecast, HourlyForecast, Weather, WeatherIcon, WindDirection,
 };
+use crate::matrix::cells::draw_text_in_window;
 use crate::matrix::error::RenderError;
 use crate::matrix::renderer::Renderer;
 use async_trait::async_trait;
@@ -481,18 +482,18 @@ impl WeatherMatrix {
         let hum = data.current.humidity.min(100);
         self.draw_comfort_bar(
             &mut img, 0, "Humidity", &format!("{hum}%"),
-            hum as f32 / 100.0, fill_t, Color::new(7, 250, 246),
+            hum as f32 / 100.0, fill_t, Color::new(7, 250, 246), entry_frame,
         );
         let uv = data.current.uv.unwrap_or(0.0).max(0.0);
         let uv_t = (uv / 11.0).min(1.0);
         self.draw_comfort_bar(
             &mut img, 8, "UV", &format!("{}", uv.round() as i32),
-            uv_t, fill_t, uv_color(uv),
+            uv_t, fill_t, uv_color(uv), entry_frame,
         );
         let pr = data.current.precipitation_chance.min(100);
         self.draw_comfort_bar(
             &mut img, 16, "Rain", &format!("{pr}%"),
-            pr as f32 / 100.0, fill_t, Color::new(120, 200, 255),
+            pr as f32 / 100.0, fill_t, Color::new(120, 200, 255), entry_frame,
         );
         // Wind: bar fills relative to a 30 mph reference (typical strong wind).
         let wind = data.current.wind_speed.max(0.0);
@@ -504,7 +505,7 @@ impl WeatherMatrix {
         let wind_t = (wind / 30.0).min(1.0);
         self.draw_comfort_bar(
             &mut img, 24, "Wind", &format!("{} mph {wind_dir}", wind.round() as i32),
-            wind_t, fill_t, Color::new(201, 1, 253),
+            wind_t, fill_t, Color::new(201, 1, 253), entry_frame,
         );
 
         img
@@ -520,6 +521,7 @@ impl WeatherMatrix {
         fraction: f32,
         entry_t: f32,
         color: Color,
+        entry_frame: u32,
     ) {
         let body = &self.body_font;
         let baseline = top_to_baseline(y_top, body.ascent());
@@ -528,7 +530,37 @@ impl WeatherMatrix {
         // value" which looked washed out on the panel).
         let label_w = body.text_width(label);
         draw_text(img, body, 2, baseline, color, label);
-        draw_text(img, body, 2 + label_w + 3, baseline, color, value);
+        let value_x = 2 + label_w + 3;
+        let value_w = body.text_width(value);
+        let value_area_end = PANEL_W as i32;
+        let value_area_w = value_area_end - value_x;
+        if value_w <= value_area_w {
+            draw_text(img, body, value_x, baseline, color, value);
+        } else {
+            // Value overflows the right edge (typically the wind row at
+            // 3-digit speeds or 3-letter cardinal directions). Hold the
+            // value static until the bar entry animation settles, then
+            // scroll it leftward with a wrap copy so the full reading is
+            // readable across the screen's dwell.
+            const SCROLL_DELAY: u32 = 16; // ~800 ms — bar fill completes
+            const SCROLL_TICKS_PER_PX: u32 = 2;
+            let gap = 6; // blank pixels between wrap copies
+            let period = value_w + gap;
+            let scroll = if entry_frame < SCROLL_DELAY {
+                0
+            } else {
+                (((entry_frame - SCROLL_DELAY) / SCROLL_TICKS_PER_PX) as i32)
+                    .rem_euclid(period)
+            };
+            draw_text_in_window(
+                img, body, value_x - scroll, baseline, color, value,
+                value_x, value_area_end,
+            );
+            draw_text_in_window(
+                img, body, value_x - scroll + period, baseline, color, value,
+                value_x, value_area_end,
+            );
+        }
 
         // Full-panel-width 2 px bar tucked right under the baseline so the
         // bar sits at the bottom of its 8 px cell — at the old `+1` gap
@@ -1359,6 +1391,74 @@ mod tests {
         let early = m.frame_comfort(&sample_weather(), 0);
         let late = m.frame_comfort(&sample_weather(), 20);
         assert!(brightness(&late) > brightness(&early));
+    }
+
+    #[test]
+    fn comfort_wind_overflow_scrolls_and_does_not_clip() {
+        // A 3-digit wind speed plus a 3-letter cardinal pushes the value
+        // past the right edge ("100 mph WSW"). The value must (a) appear
+        // *inside* the value area, including pixels close to the right
+        // edge, and (b) move between frames after the scroll delay so
+        // the cut-off portion becomes readable.
+        let m = matrix_subtle();
+        let mut w = sample_weather();
+        w.current.wind_speed = 100.0;
+        w.current.wind_direction_deg = Some(247.5); // WSW
+
+        let right_strip_lit = |img: &RgbImage| -> u32 {
+            let mut n = 0;
+            for y in 24..32u32 {
+                for x in 56..64u32 {
+                    if img.get_pixel(x, y).0 != [0, 0, 0] {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+
+        let still = m.frame_comfort(&w, 0); // bar fill, value pinned
+        let moved = m.frame_comfort(&w, 80); // well past SCROLL_DELAY
+        // Far-right column must have ink in *some* frame — the scrolled
+        // text walks the value through the right edge.
+        let any_lit = right_strip_lit(&still) + right_strip_lit(&moved);
+        assert!(any_lit > 0, "scrolling wind value never reaches the right edge");
+
+        // Scroll progresses between frames: comparing two post-delay
+        // frames should yield different pixel layouts in the wind row.
+        let a = m.frame_comfort(&w, 40);
+        let b = m.frame_comfort(&w, 80);
+        let mut changed = 0usize;
+        for y in 24..32u32 {
+            for x in 0..64u32 {
+                if a.get_pixel(x, y).0 != b.get_pixel(x, y).0 {
+                    changed += 1;
+                }
+            }
+        }
+        assert!(changed > 0, "wind text didn't move between two scroll frames");
+    }
+
+    #[test]
+    fn comfort_short_wind_value_does_not_scroll() {
+        // 8 mph N fits in the value area — must stay static so we don't
+        // gratuitously scroll readable values.
+        let m = matrix_subtle();
+        let mut w = sample_weather();
+        w.current.wind_speed = 8.0;
+        w.current.wind_direction_deg = Some(0.0); // N
+        let a = m.frame_comfort(&w, 40);
+        let b = m.frame_comfort(&w, 80);
+        // Wind row pixels must be identical between two later frames.
+        for y in 24..32u32 {
+            for x in 0..64u32 {
+                assert_eq!(
+                    a.get_pixel(x, y).0,
+                    b.get_pixel(x, y).0,
+                    "short wind value scrolled unexpectedly at ({x},{y})"
+                );
+            }
+        }
     }
 
     #[test]
