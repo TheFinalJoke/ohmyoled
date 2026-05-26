@@ -8,6 +8,8 @@ pub struct PiholeOptions {
     pub base_url: String,
     #[serde(default, deserialize_with = "null_string_as_none")]
     pub token: Option<String>,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for PiholeOptions {
@@ -16,6 +18,7 @@ impl Default for PiholeOptions {
             run: true,
             base_url: "http://pi.hole".to_owned(),
             token: None,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -34,12 +37,14 @@ pub fn configure() -> Result<PiholeOptions, String> {
     } else {
         Some(token_raw.trim().to_string())
     };
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     ui::success(&format!("Pi-hole — {}", base_url));
     Ok(PiholeOptions {
         run: true,
         base_url: base_url.trim().to_string(),
         token,
+        cache_ttl_secs,
     })
 }
 

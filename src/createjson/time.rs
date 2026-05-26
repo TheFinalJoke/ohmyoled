@@ -10,6 +10,8 @@ pub struct TimeOptions {
     pub time_format: Option<String>,
     #[serde(default, deserialize_with = "null_string_as_none")]
     pub timezone: Option<String>,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for TimeOptions {
@@ -19,6 +21,7 @@ impl Default for TimeOptions {
             color: (255, 255, 255),
             time_format: None,
             timezone: None,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -73,6 +76,7 @@ pub fn configure() -> TimeOptions {
         "",
     );
     let timezone = if tz_raw.trim().is_empty() { None } else { Some(tz_raw) };
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
     ui::success("Time configured");
     TimeOptions {
@@ -80,6 +84,7 @@ pub fn configure() -> TimeOptions {
         color,
         time_format,
         timezone,
+        cache_ttl_secs,
     }
 }
 

@@ -17,11 +17,13 @@ pub fn configure() -> Result<Value, String> {
         "pga",
     );
 
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
     ui::success(&format!("Golf — {} tour configured", tour.to_uppercase()));
     Ok(json!({
         "run": true,
         "sport": "golf",
         "tour": tour,
+        "cache_ttl_secs": cache_ttl_secs,
     }))
 }
 

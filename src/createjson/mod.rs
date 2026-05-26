@@ -81,7 +81,15 @@ fn print_menu(entries: &[Entry]) {
     println!();
     println!("  {}", ui::bold(&ui::cyan("Actions")));
     println!("    {} Matrix panel options", ui::bold("[m]"));
-    println!("    {} Undo last entry", ui::bold("[u]"));
+    println!("    {} Undo last entry, or `u N` to remove entry #N", ui::bold("[u]"));
+    println!(
+        "    {} `e N` to edit entry #N in place (re-runs that module's prompts)",
+        ui::bold("[e]")
+    );
+    println!(
+        "    {} `s N` to show entry #N's full JSON (so you can copy api_keys etc.)",
+        ui::bold("[s]")
+    );
     println!("    {} Continue and write config", ui::bold("[c]"));
     println!("    {} Quit without saving", ui::bold("[q]"));
     println!();
@@ -127,6 +135,127 @@ fn configure_matrix(current: &mut MatrixOptions) {
     ui::success("Matrix options updated");
 }
 
+/// Pretty-print one entry's JSON so the user can read off api_keys /
+/// tokens / urls without having to look them up elsewhere. Falls back
+/// to compact form if pretty-printing somehow fails (shouldn't, but
+/// belt-and-braces — we never want this helper to swallow content).
+fn print_entry_json(entry: &Entry) {
+    let pretty = serde_json::to_string_pretty(&entry.value)
+        .unwrap_or_else(|_| entry.value.to_string());
+    println!();
+    for line in pretty.lines() {
+        println!("    {line}");
+    }
+    println!();
+}
+
+/// Re-run the prompts for an existing entry, returning a fresh
+/// `Entry` to insert in its place. Dispatches on `entry.section`
+/// (plus the inner `sport` tag when the section is `sport`) so the
+/// caller doesn't need to remember which module number maps to which
+/// configure() function.
+///
+/// Returns `None` if the underlying configure() reported an error or
+/// the section is unrecognised. The caller is responsible for
+/// restoring the original entry in that case — `e N` should never
+/// silently delete user data.
+fn re_configure_entry(entry: &Entry) -> Option<Entry> {
+    macro_rules! run_typed {
+        ($section:expr, $module:ident, $expect:expr) => {
+            match $module::configure() {
+                Ok(opts) => Some(Entry {
+                    section: $section,
+                    label: $module::summary_line(&opts),
+                    value: serde_json::to_value(opts).expect($expect),
+                }),
+                Err(e) => {
+                    ui::error(&format!("{}: {e}", $section));
+                    None
+                }
+            }
+        };
+    }
+    macro_rules! run_value {
+        ($section:expr, $module:ident) => {
+            match $module::configure() {
+                Ok(value) => Some(Entry {
+                    section: $section,
+                    label: $module::summary_line(&value),
+                    value,
+                }),
+                Err(e) => {
+                    ui::error(&format!("{}: {e}", $section));
+                    None
+                }
+            }
+        };
+    }
+    match entry.section {
+        "time" => {
+            let opts = time::configure();
+            Some(Entry {
+                section: "time",
+                label: time::summary_line(&opts),
+                value: serde_json::to_value(opts).expect("TimeOptions serializes"),
+            })
+        }
+        "weather" => run_typed!("weather", weather, "WeatherOptions serializes"),
+        "stock" => run_typed!("stock", stock, "StockOptions serializes"),
+        "sport" => {
+            // The "sport" section is the umbrella for three different
+            // configure() flows; pick the one matching the original's
+            // tag so editing a golf entry doesn't drop the user into
+            // a basketball prompt.
+            let kind = entry
+                .value
+                .get("sport")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            match kind {
+                "basketball" | "baseball" | "football" | "hockey" => {
+                    run_value!("sport", sport)
+                }
+                "golf" => run_value!("sport", golf),
+                "f1" => run_value!("sport", f1),
+                other => {
+                    ui::error(&format!("unknown sport variant `{other}` — can't edit"));
+                    None
+                }
+            }
+        }
+        "iss" => run_typed!("iss", iss, "IssOptions serializes"),
+        "quake" => run_typed!("quake", quake, "QuakeOptions serializes"),
+        "aurora" => run_typed!("aurora", aurora, "AuroraOptions serializes"),
+        "flights" => run_typed!("flights", flights, "FlightsOptions serializes"),
+        "launch" => run_typed!("launch", launch, "LaunchOptions serializes"),
+        "hass" => run_typed!("hass", hass, "HassOptions serializes"),
+        "pihole" => run_typed!("pihole", pihole, "PiholeOptions serializes"),
+        other => {
+            ui::error(&format!("unknown section `{other}` — can't edit"));
+            None
+        }
+    }
+}
+
+/// Parse a 1-based entry index from a user-supplied string. Returns
+/// the 0-based vec position on success, a user-facing error message
+/// otherwise. Used by the `u N` / `e N` action arms.
+fn parse_entry_index(s: &str, len: usize) -> Result<usize, String> {
+    let n: usize = s
+        .parse()
+        .map_err(|_| format!("`{s}` is not a positive integer"))?;
+    if n == 0 || n > len {
+        if len == 0 {
+            return Err("Nothing to remove — entry list is empty".into());
+        }
+        return Err(format!(
+            "No entry #{n} — valid range is 1..={}",
+            len
+        ));
+    }
+    Ok(n - 1)
+}
+
 /// Collapse repeated section entries into either a single object (count == 1)
 /// or a JSON array (count > 1). Sections registry deserializes either shape via
 /// `one_or_many`, so this just keeps the on-disk file shape natural.
@@ -148,24 +277,100 @@ fn fold_section(values: Vec<Value>) -> Option<Value> {
 pub fn default_config() -> Value {
     let json = r#"{
         "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
-        "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null"},
-        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle"},
-        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL","chart":false},
+        "time": {"run":true,"color":[255,255,255],"time_format":"null","timezone":"null","cache_ttl_secs":null},
+        "weather": {"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle","cache_ttl_secs":null},
+        "stock": {"run":false,"api":"finnhub","api_key":"REPLACE_ME_FINNHUB_API_KEY","symbol":"AAPL","chart":false,"cache_ttl_secs":null},
         "sport": [],
-        "iss": {"run":false,"lat":40.7128,"lon":-74.0060},
-        "quake": {"run":false,"feed":"significant_day"},
-        "aurora": {"run":false,"alert_threshold":5},
-        "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0},
-        "launch": {"run":false,"agency_filter":[]},
-        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60]},
-        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null"}
+        "iss": {"run":false,"lat":40.7128,"lon":-74.0060,"cache_ttl_secs":null},
+        "quake": {"run":false,"feed":"significant_day","cache_ttl_secs":null},
+        "aurora": {"run":false,"alert_threshold":5,"cache_ttl_secs":null},
+        "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0,"cache_ttl_secs":null},
+        "launch": {"run":false,"agency_filter":[],"cache_ttl_secs":null},
+        "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60],"display_mode":"state","cache_ttl_secs":null},
+        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null","cache_ttl_secs":null}
     }"#;
     serde_json::from_str(json).expect("starter config must parse")
 }
 
+/// Section names recognised when merging an existing config back in.
+const KNOWN_SECTIONS: &[&str] = &[
+    "time", "weather", "stock", "sport", "iss", "quake", "aurora",
+    "flights", "launch", "hass", "pihole",
+];
+
+/// Pull existing entries out of a previously-written config so the
+/// builder can pre-populate them and let the user append / undo rather
+/// than starting blank. A section that's an array becomes one entry
+/// per array element; a single object becomes one entry. Unknown or
+/// malformed sections are skipped (the builder rewrites them faithfully
+/// because the JSON `Value` survives round-trip).
+fn load_existing_entries(existing: &Value) -> (Vec<Entry>, MatrixOptions) {
+    let mut entries = Vec::new();
+    let matrix_opts = existing
+        .get("matrix_options")
+        .and_then(|mo| serde_json::from_value::<MatrixOptions>(mo.clone()).ok())
+        .unwrap_or_default();
+
+    for &section in KNOWN_SECTIONS {
+        let Some(v) = existing.get(section) else { continue };
+        let items: Vec<Value> = match v {
+            Value::Array(arr) => arr.clone(),
+            Value::Object(_) => vec![v.clone()],
+            _ => continue,
+        };
+        for item in items {
+            let label = describe_existing_entry(section, &item);
+            entries.push(Entry { section, label, value: item });
+        }
+    }
+    (entries, matrix_opts)
+}
+
+/// One-line summary for a pre-loaded entry. Pulls the obvious
+/// identifier per section (symbol / city / entity / team) so the user
+/// can recognise what's already there without re-running each module's
+/// `configure()` to regenerate the summary.
+fn describe_existing_entry(section: &'static str, value: &Value) -> String {
+    let str_field = |key: &str| -> Option<String> {
+        value.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    };
+    let suffix = match section {
+        "weather" => str_field("api").map(|s| format!(" ({s})")),
+        "stock" => str_field("symbol").map(|s| format!(" ({s})")),
+        "sport" => {
+            let kind = str_field("sport").unwrap_or_else(|| "?".into());
+            let team = value
+                .get("team_logo")
+                .and_then(|t| t.get("name"))
+                .and_then(|n| n.as_str());
+            match team {
+                Some(name) => Some(format!(": {kind} ({name})")),
+                None => Some(format!(": {kind}")),
+            }
+        }
+        "hass" => str_field("entity_id").map(|s| format!(" ({s})")),
+        "iss" | "flights" => {
+            match (value.get("lat").and_then(|v| v.as_f64()), value.get("lon").and_then(|v| v.as_f64())) {
+                (Some(lat), Some(lon)) => Some(format!(" ({lat:.2}, {lon:.2})")),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    format!(
+        "{section}{} — existing",
+        suffix.unwrap_or_default()
+    )
+}
+
 /// Build the on-disk config interactively (or with `dev_mode = true` for the
 /// canned dev config).
-pub fn create_json(dev_mode: bool) -> Value {
+///
+/// When `existing` is `Some`, pre-load its entries + matrix options so
+/// the user can append to / undo from the current config instead of
+/// starting blank. Passing `None` (overwrite mode) yields the legacy
+/// fresh-start behavior.
+pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
     if dev_mode {
         let dev_json = r#"{
             "matrix_options": {"chain_length":1,"parallel":1,"brightness":50,"oled_slowdown":3,"fail_on_error":false,"hardware_mapping":"adafruit-hat"},
@@ -185,8 +390,20 @@ pub fn create_json(dev_mode: bool) -> Value {
     ui::info("Pick the modules you want on the panel. Most options have sane defaults.");
     ui::hint("Selections are accumulated below — sport entries can mix team sports, golf, and F1.");
 
-    let mut entries: Vec<Entry> = Vec::new();
-    let mut matrix_opts = MatrixOptions::default();
+    let (mut entries, mut matrix_opts): (Vec<Entry>, MatrixOptions) = match existing {
+        Some(v) => {
+            let (entries, opts) = load_existing_entries(&v);
+            if !entries.is_empty() {
+                ui::success(&format!(
+                    "Loaded {} entr{} from existing config — append or `u` to remove",
+                    entries.len(),
+                    if entries.len() == 1 { "y" } else { "ies" }
+                ));
+            }
+            (entries, opts)
+        }
+        None => (Vec::new(), MatrixOptions::default()),
+    };
 
     loop {
         print_menu(&entries);
@@ -194,7 +411,13 @@ pub fn create_json(dev_mode: bool) -> Value {
             Some(s) => s,
             None => continue,
         };
-        match raw.trim().to_lowercase().as_str() {
+        // Split into head + optional index arg — supports `u`, `u 3`, `e 2`.
+        let lowered = raw.trim().to_lowercase();
+        let (head, arg) = match lowered.split_once(char::is_whitespace) {
+            Some((h, rest)) => (h, rest.trim()),
+            None => (lowered.as_str(), ""),
+        };
+        match head {
             "1" => {
                 let opts = time::configure();
                 let label = time::summary_line(&opts);
@@ -295,10 +518,77 @@ pub fn create_json(dev_mode: bool) -> Value {
                 Err(e) => ui::error(&format!("pihole config failed: {e}")),
             },
             "m" => configure_matrix(&mut matrix_opts),
-            "u" => match entries.pop() {
-                Some(e) => ui::success(&format!("Removed: {}", e.label)),
-                None => ui::warn("Nothing to undo"),
-            },
+            "u" => {
+                if arg.is_empty() {
+                    match entries.pop() {
+                        Some(e) => ui::success(&format!("Removed: {}", e.label)),
+                        None => ui::warn("Nothing to undo"),
+                    }
+                } else {
+                    match parse_entry_index(arg, entries.len()) {
+                        Ok(idx) => {
+                            let removed = entries.remove(idx);
+                            ui::success(&format!("Removed #{}: {}", idx + 1, removed.label));
+                        }
+                        Err(e) => ui::warn(&e),
+                    }
+                }
+            }
+            "e" => {
+                if arg.is_empty() {
+                    ui::warn("Usage: `e N` — pick entry # from the summary above to edit");
+                } else {
+                    match parse_entry_index(arg, entries.len()) {
+                        Ok(idx) => {
+                            // Pull the entry out, hand it to the matching
+                            // module's `configure()` for a fresh prompt run,
+                            // then insert the new value at the original
+                            // index. On error or unrecognised section the
+                            // original entry is restored — `e N` never
+                            // silently destroys data.
+                            let original = entries.remove(idx);
+                            ui::info(&format!("Editing #{}: {}", idx + 1, original.label));
+                            // Print the entry's current JSON so the user
+                            // can read off api_keys / tokens / urls
+                            // without leaving the prompt. Prompts still
+                            // default to the module's hard-coded values,
+                            // so this is the "look it up here" affordance.
+                            print_entry_json(&original);
+                            match re_configure_entry(&original) {
+                                Some(new) => {
+                                    let new_label = new.label.clone();
+                                    entries.insert(idx, new);
+                                    ui::success(&format!(
+                                        "Replaced #{}: {new_label}", idx + 1
+                                    ));
+                                }
+                                None => {
+                                    ui::warn(
+                                        "Edit cancelled or failed — restoring original entry"
+                                    );
+                                    entries.insert(idx, original);
+                                }
+                            }
+                        }
+                        Err(e) => ui::warn(&e),
+                    }
+                }
+            }
+            "s" => {
+                if arg.is_empty() {
+                    ui::warn("Usage: `s N` — pick entry # from the summary above to show");
+                } else {
+                    match parse_entry_index(arg, entries.len()) {
+                        Ok(idx) => {
+                            ui::info(&format!(
+                                "Entry #{}: {}", idx + 1, entries[idx].label
+                            ));
+                            print_entry_json(&entries[idx]);
+                        }
+                        Err(e) => ui::warn(&e),
+                    }
+                }
+            }
             "c" => {
                 if entries.is_empty() {
                     ui::warn("No modules selected — add at least one before continuing");
@@ -341,4 +631,97 @@ pub fn create_json(dev_mode: bool) -> Value {
     }
 
     Value::Object(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_existing_expands_arrays_and_objects() {
+        // Mixed shape: stock is an array, weather is a single object,
+        // sport carries a team_logo with a name, hass is an array.
+        // Each item should land as its own Entry.
+        let existing = serde_json::json!({
+            "matrix_options": {
+                "chain_length": 2, "parallel": 1, "brightness": 70,
+                "oled_slowdown": 3, "fail_on_error": false,
+                "hardware_mapping": "adafruit-hat"
+            },
+            "time": {"run": true, "color": [255, 255, 255]},
+            "weather": {"run": true, "api": "nws"},
+            "stock": [
+                {"run": true, "api": "finnhub", "symbol": "AAPL"},
+                {"run": true, "api": "finnhub", "symbol": "MSFT"}
+            ],
+            "sport": [
+                {"run": true, "sport": "basketball", "team_logo": {"name": "Boston Celtics"}},
+                {"run": true, "sport": "f1"}
+            ],
+            "iss": {"run": true, "lat": 40.7128, "lon": -74.0060},
+            "hass": [{"run": true, "entity_id": "sensor.kitchen_temp"}]
+        });
+        let (entries, opts) = load_existing_entries(&existing);
+        let sections: Vec<&str> = entries.iter().map(|e| e.section).collect();
+        // 1 time + 1 weather + 2 stock + 2 sport + 1 iss + 1 hass = 8
+        assert_eq!(entries.len(), 8);
+        assert!(sections.contains(&"time"));
+        assert!(sections.contains(&"weather"));
+        assert_eq!(sections.iter().filter(|s| **s == "stock").count(), 2);
+        assert_eq!(sections.iter().filter(|s| **s == "sport").count(), 2);
+        assert!(sections.contains(&"hass"));
+        // Matrix options carried through.
+        assert_eq!(opts.chain_length, 2);
+        assert_eq!(opts.brightness, 70);
+    }
+
+    #[test]
+    fn describe_picks_up_identifying_fields() {
+        let stock = serde_json::json!({"symbol": "AAPL", "api": "finnhub"});
+        assert!(describe_existing_entry("stock", &stock).contains("AAPL"));
+
+        let weather = serde_json::json!({"api": "nws"});
+        assert!(describe_existing_entry("weather", &weather).contains("nws"));
+
+        let hass = serde_json::json!({"entity_id": "sensor.kitchen_temp"});
+        assert!(describe_existing_entry("hass", &hass).contains("sensor.kitchen_temp"));
+
+        let sport = serde_json::json!({
+            "sport": "basketball",
+            "team_logo": {"name": "Boston Celtics"}
+        });
+        let s = describe_existing_entry("sport", &sport);
+        assert!(s.contains("basketball"));
+        assert!(s.contains("Boston Celtics"));
+
+        let iss = serde_json::json!({"lat": 40.7128, "lon": -74.0060});
+        let s = describe_existing_entry("iss", &iss);
+        assert!(s.contains("40.71"));
+        assert!(s.contains("-74.01"));
+    }
+
+    #[test]
+    fn parse_entry_index_accepts_valid_one_based() {
+        assert_eq!(parse_entry_index("1", 3).unwrap(), 0);
+        assert_eq!(parse_entry_index("3", 3).unwrap(), 2);
+    }
+
+    #[test]
+    fn parse_entry_index_rejects_out_of_range_and_zero() {
+        assert!(parse_entry_index("0", 3).is_err());
+        assert!(parse_entry_index("4", 3).is_err());
+        assert!(parse_entry_index("abc", 3).is_err());
+        assert!(parse_entry_index("1", 0).is_err());
+    }
+
+    #[test]
+    fn load_existing_skips_unknown_sections_cleanly() {
+        let existing = serde_json::json!({
+            "time": {"run": true, "color": [255, 255, 255]},
+            "made_up_section": {"foo": "bar"}
+        });
+        let (entries, _) = load_existing_entries(&existing);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].section, "time");
+    }
 }

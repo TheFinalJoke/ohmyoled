@@ -503,7 +503,7 @@ impl WeatherMatrix {
             .unwrap_or("---");
         let wind_t = (wind / 30.0).min(1.0);
         self.draw_comfort_bar(
-            &mut img, 24, "Wind", &format!("{} {wind_dir}", wind.round() as i32),
+            &mut img, 24, "Wind", &format!("{} mph {wind_dir}", wind.round() as i32),
             wind_t, fill_t, Color::new(201, 1, 253),
         );
 
@@ -572,7 +572,11 @@ impl WeatherMatrix {
         let color = uv_color(uv);
         draw_text(&mut img, &self.mid_font, left, baseline, color, &label);
         let cx = left + num_w / 2;
-        let cy = NUM_TOP + self.mid_font.ascent() / 2;
+        // Orbit center tracks the *visual* midpoint of the digit's ink,
+        // not the font's ascent-box midpoint — BMmini's ascent box sits
+        // ~1 px above the actual rasterized digit, so the legacy
+        // `NUM_TOP + ascent / 2` rays appeared slightly off-axis.
+        let cy = baseline + self.mid_font.text_v_center_from_baseline(&label);
         let num_y0 = NUM_TOP;
         let num_y1 = NUM_TOP + self.mid_font.ascent();
         let num_x0 = left;
@@ -593,8 +597,12 @@ impl WeatherMatrix {
             }
         }
 
-        // y=22..23 — color band scale with marker.
-        const BAND_Y: i32 = 22;
+        // Color band scale with marker. The band sits 2 rows below the
+        // digit so the rotating-ray orbit's bottom half (at y=cy+r ~ 22..23
+        // for the BMmini 14pt digit) stays visible instead of being
+        // overpainted — without this, the rays read as a top-only halo
+        // instead of orbiting the digit.
+        const BAND_Y: i32 = 24;
         const BAND_L: i32 = 4;
         const BAND_R: i32 = PANEL_W as i32 - 4;
         let band_w = (BAND_R - BAND_L) as f32;
@@ -1210,6 +1218,75 @@ mod tests {
         let m = matrix_subtle();
         let img = m.frame_uv(&sample_weather(), 5);
         assert!(lit_pixel_count(&img) > 60);
+    }
+
+    #[test]
+    fn uv_rays_visible_below_digit() {
+        // Regression: the band+marker used to sit immediately below
+        // the digit (BAND_Y=22), overpainting the bottom half of the
+        // ray orbit (cy=15 + r=7..8 lands at y=22..23). The user saw
+        // rays only above the digit, reading as a halo not an orbit.
+        // BAND_Y=24 leaves room for the orbit's bottom rays at y=21..22.
+        let m = matrix_subtle();
+        let w = sample_weather();
+        // Sweep a full rotation to be sure SOME frame draws a bottom
+        // ray in the gap between digit ink and marker.
+        let mut bottom_lit = 0u32;
+        for frame in 0..80u32 {
+            let img = m.frame_uv(&w, frame);
+            // Below the digit's ascent box (y >= 21), above the marker
+            // row (y < 23). Exclude the digit's own column footprint
+            // so we count rays, not the digit's tail.
+            for y in 21..23u32 {
+                for x in 0..PANEL_W {
+                    let p = img.get_pixel(x, y).0;
+                    if p == [0, 0, 0] || p == [255, 255, 255] {
+                        continue;
+                    }
+                    bottom_lit += 1;
+                }
+            }
+        }
+        assert!(
+            bottom_lit > 20,
+            "expected visible ray pixels below the digit across a full rotation, got {bottom_lit}"
+        );
+    }
+
+    #[test]
+    fn uv_ray_orbit_is_centered_on_digit_ink() {
+        // Regression: the orbit used to anchor at `NUM_TOP + ascent/2`
+        // — BMmini's ascent box sits ~1 px above the actual rendered
+        // digit ink, so the rays appeared off-axis. Verify the helper
+        // that frame_uv now uses (`text_v_center_from_baseline`)
+        // tracks the digit's *rendered* vertical centroid within 1 px.
+        let m = matrix_subtle();
+
+        for label in ["0", "5", "9", "11"] {
+            // Render the digit in isolation at a known baseline and
+            // measure the vertical centroid of its non-black pixels.
+            let baseline = 20i32;
+            let mut img = RgbImage::new(PANEL_W, PANEL_H);
+            draw_text(&mut img, &m.mid_font, 24, baseline, Color::WHITE, label);
+
+            let (mut sum_y, mut count) = (0.0f64, 0u32);
+            for y in 0..PANEL_H as i32 {
+                for x in 0..PANEL_W as i32 {
+                    if img.get_pixel(x as u32, y as u32).0 != [0, 0, 0] {
+                        sum_y += y as f64;
+                        count += 1;
+                    }
+                }
+            }
+            assert!(count > 0, "digit `{label}` must render some pixels");
+            let ink_centroid = sum_y / count as f64;
+            let helper_cy =
+                baseline as f64 + m.mid_font.text_v_center_from_baseline(label) as f64;
+            assert!(
+                (helper_cy - ink_centroid).abs() <= 1.0,
+                "for `{label}`: helper returned cy={helper_cy:.2}, ink centroid {ink_centroid:.2}"
+            );
+        }
     }
 
     #[test]

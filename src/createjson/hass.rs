@@ -14,6 +14,16 @@ pub struct HassOptions {
     pub alarm_state: Option<String>,
     pub nominal_color: (u8, u8, u8),
     pub alarm_color: (u8, u8, u8),
+    /// `"state"` (current), `"historical"` (recent list), or `"graph"`
+    /// (sparkline). Falls back to `"state"` if history isn't available.
+    #[serde(default = "default_display_mode")]
+    pub display_mode: String,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
+}
+
+fn default_display_mode() -> String {
+    "state".to_owned()
 }
 
 impl Default for HassOptions {
@@ -27,6 +37,8 @@ impl Default for HassOptions {
             alarm_state: None,
             nominal_color: (120, 220, 120),
             alarm_color: (255, 60, 60),
+            display_mode: default_display_mode(),
+            cache_ttl_secs: None,
         }
     }
 }
@@ -61,8 +73,10 @@ pub fn configure() -> Result<HassOptions, String> {
 
     let nominal_color = read_rgb("Nominal-state RGB", (120, 220, 120));
     let alarm_color = read_rgb("Alarm-state RGB", (255, 60, 60));
+    let display_mode = read_display_mode();
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
 
-    ui::success(&format!("HASS — {entity_id} @ {base_url}"));
+    ui::success(&format!("HASS — {entity_id} @ {base_url} ({display_mode})"));
     Ok(HassOptions {
         run: true,
         base_url: base_url.trim().to_string(),
@@ -72,7 +86,25 @@ pub fn configure() -> Result<HassOptions, String> {
         alarm_state,
         nominal_color,
         alarm_color,
+        display_mode,
+        cache_ttl_secs,
     })
+}
+
+/// Re-prompt until the user enters one of the three known display
+/// modes. Lower-cased on parse so configs stay normalised.
+fn read_display_mode() -> String {
+    loop {
+        let raw = ui::read_line_default(
+            "Display mode: state / historical / graph",
+            "state",
+        );
+        let normalised = raw.trim().to_lowercase();
+        match normalised.as_str() {
+            "state" | "historical" | "graph" => return normalised,
+            _ => ui::warn("Expected one of: state, historical, graph"),
+        }
+    }
 }
 
 pub fn summary_line(opts: &HassOptions) -> String {

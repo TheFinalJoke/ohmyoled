@@ -96,6 +96,11 @@ fn entity_from_raw(raw: RawState, label_override: Option<&str>, entity_id: &str)
         unit,
         label,
         last_changed,
+        // The /api/states endpoint only returns the current snapshot;
+        // populating `history` requires a separate /api/history call
+        // that's not yet wired up. The renderer falls back to State
+        // mode when history is empty.
+        history: vec![],
     }
 }
 

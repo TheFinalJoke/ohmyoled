@@ -8,7 +8,7 @@ use std::time::Duration;
 pub mod model;
 pub mod rest;
 
-pub use model::HassEntity;
+pub use model::{HassEntity, HassSample};
 
 use rest::{RestConfig, RestProvider};
 

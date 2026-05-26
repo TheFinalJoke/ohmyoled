@@ -113,6 +113,34 @@ pub fn choose(label: &str, choices: &[(&str, &str)], default: &str) -> String {
     }
 }
 
+/// Prompt for an optional `cache_ttl_secs`. Shared across every
+/// module's `configure()` so the override is available everywhere
+/// without each module rewriting the prompt.
+///
+/// - Blank input ⇒ `None`: use the collector's built-in
+///   `refresh_interval()` (the per-API default).
+/// - `0` ⇒ `Some(0)`: disable background polling — the renderer will
+///   call `collector.poll()` inline on every render. Always fresh,
+///   panel briefly stalls during the round-trip.
+/// - `N > 0` ⇒ `Some(N)`: background task polls every N seconds.
+pub fn read_cache_ttl_secs() -> Option<u64> {
+    hint("Override the background poll cadence? Leave blank for the API's default.");
+    loop {
+        let raw = read_line_default(
+            "cache_ttl_secs (blank | 0 = always fresh | N = every N seconds)",
+            "",
+        );
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        match trimmed.parse::<u64>() {
+            Ok(n) => return Some(n),
+            Err(_) => warn(&format!("`{trimmed}` isn't a non-negative integer")),
+        }
+    }
+}
+
 /// Render the running summary of selected entries above the menu.
 pub fn summary(entries: &[String]) {
     println!("  {}", bold(&magenta("Pending configuration")));

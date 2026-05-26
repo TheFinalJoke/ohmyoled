@@ -31,7 +31,7 @@ pub async fn run(mut matrix: RGBMatrix, mut modules: Vec<Box<dyn DynModule>>) ->
         let started = std::time::Instant::now();
         for module in modules.iter_mut() {
             log::debug!("scheduler: cycle {cycle} -> [{}]", module.id());
-            if let Err(e) = module.poll_and_render(&mut matrix).await {
+            if let Err(e) = module.render_cached(&mut matrix).await {
                 log::error!("[{}] cycle failed: {e}", module.id());
             }
         }

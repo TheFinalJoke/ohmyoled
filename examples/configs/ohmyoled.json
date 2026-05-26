@@ -25,7 +25,7 @@
     }
   ],
   "stock": [
-    { "run": true, "api": "finnhub",   "api_key": "YOUR_FINNHUB_KEY", "symbol": "AAPL", "chart": true },
+    { "run": true, "api": "finnhub",   "api_key": "YOUR_FINNHUB_KEY", "symbol": "AAPL", "chart": true, "cache_ttl_secs": 0 },
     { "run": true, "api": "finnhub",   "api_key": "YOUR_FINNHUB_KEY", "symbol": "MSFT" },
     { "run": true, "api": "coingecko", "api_key": null,               "symbol": "bitcoin" },
     { "run": true, "api": "coingecko", "api_key": null,               "symbol": "ethereum" }
@@ -33,7 +33,8 @@
   "iss": {
     "run": true,
     "lat": 40.7128,
-    "lon": -74.0060
+    "lon": -74.0060,
+    "cache_ttl_secs": 30
   },
   "quake": {
     "run": true,

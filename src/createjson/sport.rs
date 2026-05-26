@@ -17,6 +17,7 @@ fn default_entry() -> Value {
             sportsdbid: 135269,
             sportsipyid: None,
         },
+        "cache_ttl_secs": serde_json::Value::Null,
     })
 }
 
@@ -58,10 +59,12 @@ pub fn configure() -> Result<Value, String> {
     }
     let sport_kind = pick_sport();
     let logo = pick_team(&sport_kind);
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
     let entry = json!({
         "run": true,
         "sport": sport_kind.get_sport_str(),
         "team_logo": logo,
+        "cache_ttl_secs": cache_ttl_secs,
     });
     ui::success(&format!(
         "Sport — {} ({}) added",

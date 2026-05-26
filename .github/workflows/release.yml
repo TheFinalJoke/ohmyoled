@@ -1,11 +1,21 @@
 name: Release
 
-# Fires on semver-style version tags (v1.2.3) — not on the separate
-# fonts-vN tags used for the runtime fonts tarball.
+# Two trigger shapes:
+#  - Semver tag (v1.2.3): full release — cross-compiled binaries,
+#    starter config, GitHub Release page, versioned Docker images
+#    (`:v1.2.3`, `:latest`).
+#  - Push to main: rolling `:main` / `:latest` Docker images only;
+#    no GitHub Release (releases need unique tags) and no binary
+#    artifacts uploaded.
+#
+# Branch CI (tests, clippy) lives in ci.yml — fires on dev pushes
+# and PRs to main.
 on:
   push:
     tags:
       - 'v*.*.*'
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -67,9 +77,11 @@ jobs:
   # Run a native build of the just-tagged commit and use the binary itself
   # to emit the starter config. Keeps the JSON in lockstep with the
   # `default_config()` Rust source — no risk of a hand-maintained sample
-  # drifting from the code.
+  # drifting from the code. Only needed for the GitHub Release upload, so
+  # skipped on plain `main` pushes.
   starter:
     name: Generate starter config
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +104,8 @@ jobs:
 
   release:
     name: Publish release
+    # GitHub Releases need a unique tag; only run on semver tag pushes.
+    if: github.ref_type == 'tag'
     needs: [build, starter]
     runs-on: ubuntu-latest
     steps:
@@ -162,13 +176,22 @@ jobs:
       - name: Stage binary
         run: mv ${{ matrix.artifact }} ohmyoled && chmod +x ohmyoled
 
+      # Tag/branch dispatch — semver tag becomes the image tag verbatim
+      # (`v3.6.1-aarch64-…`); pushes to main become `main-aarch64-…`.
+      # The manifest job aliases those into `:v3.6.1` + `:latest` (tag)
+      # or `:main` + `:latest` (branch).
       - name: Compute image tags
         id: tags
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           GHCR="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-          TAG="${{ github.ref_name }}-${{ matrix.target }}"
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="main"
+          fi
+          TAG="$VERSION-${{ matrix.target }}"
           TAGS="$GHCR:$TAG"
           if [ -n "$DOCKERHUB_USERNAME" ]; then
             TAGS="$TAGS"$'\n'"docker.io/${DOCKERHUB_USERNAME}/ohmyoled:$TAG"
@@ -178,6 +201,7 @@ jobs:
             echo "$TAGS"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v3
 
@@ -207,7 +231,7 @@ jobs:
           push: true
           provenance: false
           build-args: |
-            OHMYOLED_VERSION=${{ github.ref_name }}
+            OHMYOLED_VERSION=${{ steps.tags.outputs.version }}
           tags: ${{ steps.tags.outputs.list }}
 
   # Glue the per-arch images into a multi-arch manifest, on each
@@ -242,19 +266,25 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           GHCR="ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
-          TAG="${{ github.ref_name }}"
-          # GHCR
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="main"
+          fi
+          # GHCR — versioned alias (`:v3.6.1` or `:main`) plus `:latest`.
+          # The version alias is stable; `:latest` always points at the
+          # most recent push (whether tag or main).
           docker buildx imagetools create \
-            --tag "$GHCR:$TAG" \
+            --tag "$GHCR:$VERSION" \
             --tag "$GHCR:latest" \
-            "$GHCR:$TAG-aarch64-unknown-linux-gnu" \
-            "$GHCR:$TAG-armv7-unknown-linux-gnueabihf"
+            "$GHCR:$VERSION-aarch64-unknown-linux-gnu" \
+            "$GHCR:$VERSION-armv7-unknown-linux-gnueabihf"
           # Docker Hub (only if the secret is set)
           if [ -n "$DOCKERHUB_USERNAME" ]; then
             HUB="docker.io/${DOCKERHUB_USERNAME}/ohmyoled"
             docker buildx imagetools create \
-              --tag "$HUB:$TAG" \
+              --tag "$HUB:$VERSION" \
               --tag "$HUB:latest" \
-              "$HUB:$TAG-aarch64-unknown-linux-gnu" \
-              "$HUB:$TAG-armv7-unknown-linux-gnueabihf"
+              "$HUB:$VERSION-aarch64-unknown-linux-gnu" \
+              "$HUB:$VERSION-armv7-unknown-linux-gnueabihf"
           fi

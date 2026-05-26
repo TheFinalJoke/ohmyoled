@@ -54,7 +54,7 @@ use crate::matrix::f1::F1Matrix;
 use crate::matrix::golf::GolfMatrix;
 use crate::matrix::aurora::AuroraMatrix;
 use crate::matrix::flights::FlightsMatrix;
-use crate::matrix::hass::{HassDisplay, HassMatrix};
+use crate::matrix::hass::{HassDisplay, HassDisplayMode, HassMatrix};
 use crate::matrix::iss::IssMatrix;
 use crate::matrix::launch::LaunchMatrix;
 use crate::matrix::pihole::PiholeMatrix;
@@ -108,6 +108,11 @@ pub struct TimeSection {
     pub time_format: Option<String>,
     #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
     pub timezone: Option<String>,
+    /// Seconds between background polls. `0` ⇒ inline poll every
+    /// render cycle (slow but always fresh). Omitted ⇒ use the
+    /// collector's default `refresh_interval()`.
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -126,6 +131,10 @@ pub struct WeatherSection {
     pub current_location_api_key: Option<String>,
     #[serde(default)]
     pub animation: crate::matrix::weather::WeatherAnimationMode,
+    /// Seconds between background polls. `0` ⇒ inline poll. Omitted ⇒
+    /// use the collector default.
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +142,8 @@ pub struct IssSection {
     pub run: bool,
     pub lat: f64,
     pub lon: f64,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,6 +151,8 @@ pub struct QuakeSection {
     pub run: bool,
     #[serde(default)]
     pub feed: QuakeFeed,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,6 +163,8 @@ pub struct AuroraSection {
     /// mid-latitude observers can typically see aurora.
     #[serde(default = "default_aurora_threshold")]
     pub alert_threshold: u8,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 fn default_aurora_threshold() -> u8 {
@@ -165,6 +180,8 @@ pub struct FlightsSection {
     /// bbox query = more credits/req against OpenSky's anonymous tier.
     #[serde(default = "default_flights_radius_km")]
     pub radius_km: f32,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 fn default_flights_radius_km() -> f32 {
@@ -179,6 +196,8 @@ pub struct LaunchSection {
     /// upcoming launch regardless of provider.
     #[serde(default)]
     pub agency_filter: Vec<String>,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -206,6 +225,13 @@ pub struct HassSection {
     /// RGB color for the alarm state row. Defaults to red.
     #[serde(default = "default_hass_alarm_color")]
     pub alarm_color: (u8, u8, u8),
+    /// Which layout to use: `"state"` (default), `"historical"`, or
+    /// `"graph"`. Historical and graph fall back to state for
+    /// non-numeric entities or until history has been fetched.
+    #[serde(default)]
+    pub display_mode: HassDisplayMode,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 fn default_hass_nominal_color() -> (u8, u8, u8) {
@@ -225,6 +251,8 @@ pub struct PiholeSection {
     /// interface → Show API token). `null`/omitted = unauth.
     #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
     pub token: Option<String>,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -242,6 +270,8 @@ pub struct StockSection {
     /// from CoinGecko's own `/market_chart` endpoint.
     #[serde(default)]
     pub chart: bool,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 /// One entry in the `sport` array. The `sport` field selects which renderer
@@ -249,16 +279,42 @@ pub struct StockSection {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "sport", rename_all = "lowercase")]
 pub enum SportSection {
-    Basketball { run: bool, team_logo: crate::teams::Logo },
-    Baseball { run: bool, team_logo: crate::teams::Logo },
-    Football { run: bool, team_logo: crate::teams::Logo },
-    Hockey { run: bool, team_logo: crate::teams::Logo },
+    Basketball {
+        run: bool,
+        team_logo: crate::teams::Logo,
+        #[serde(default)]
+        cache_ttl_secs: Option<u64>,
+    },
+    Baseball {
+        run: bool,
+        team_logo: crate::teams::Logo,
+        #[serde(default)]
+        cache_ttl_secs: Option<u64>,
+    },
+    Football {
+        run: bool,
+        team_logo: crate::teams::Logo,
+        #[serde(default)]
+        cache_ttl_secs: Option<u64>,
+    },
+    Hockey {
+        run: bool,
+        team_logo: crate::teams::Logo,
+        #[serde(default)]
+        cache_ttl_secs: Option<u64>,
+    },
     Golf {
         run: bool,
         #[serde(default = "default_golf_tour")]
         tour: GolfTour,
+        #[serde(default)]
+        cache_ttl_secs: Option<u64>,
     },
-    F1 { run: bool },
+    F1 {
+        run: bool,
+        #[serde(default)]
+        cache_ttl_secs: Option<u64>,
+    },
 }
 
 impl SportSection {
@@ -269,7 +325,18 @@ impl SportSection {
             | Self::Football { run, .. }
             | Self::Hockey { run, .. }
             | Self::Golf { run, .. }
-            | Self::F1 { run } => *run,
+            | Self::F1 { run, .. } => *run,
+        }
+    }
+
+    fn cache_ttl_secs(&self) -> Option<u64> {
+        match self {
+            Self::Basketball { cache_ttl_secs, .. }
+            | Self::Baseball { cache_ttl_secs, .. }
+            | Self::Football { cache_ttl_secs, .. }
+            | Self::Hockey { cache_ttl_secs, .. }
+            | Self::Golf { cache_ttl_secs, .. }
+            | Self::F1 { cache_ttl_secs, .. } => *cache_ttl_secs,
         }
     }
 }
@@ -444,7 +511,7 @@ async fn build_time(t: &TimeSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = TimeMatrix::new_async(color, None)
         .await
         .map_err(|e| format!("font: {e}"))?;
-    Ok(Box::new(Module::new(TimeCollector::new(), renderer)))
+    Ok(module_with_ttl(TimeCollector::new(), renderer, t.cache_ttl_secs))
 }
 
 async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String> {
@@ -487,7 +554,7 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
     let renderer = WeatherMatrix::new_with_animation_async(w.animation)
         .await
         .map_err(|e| format!("weather fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, w.cache_ttl_secs))
 }
 
 /// Build the chart-mode (historical) module for one stock entry. For
@@ -509,7 +576,7 @@ async fn build_stock_chart(s: &StockSection) -> Result<Box<dyn DynModule>, Strin
     let renderer = StockChartMatrix::new_async()
         .await
         .map_err(|e| format!("stock_chart fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
@@ -535,36 +602,37 @@ async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = StockMatrix::new_async()
         .await
         .map_err(|e| format!("stock fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_sport(s: &SportSection) -> Result<Box<dyn DynModule>, String> {
+    let ttl = s.cache_ttl_secs();
     match s {
         SportSection::Basketball { team_logo, .. } => {
-            build_team_sport(SportKind::Basketball, team_logo).await
+            build_team_sport(SportKind::Basketball, team_logo, ttl).await
         }
         SportSection::Baseball { team_logo, .. } => {
-            build_team_sport(SportKind::Baseball, team_logo).await
+            build_team_sport(SportKind::Baseball, team_logo, ttl).await
         }
         SportSection::Football { team_logo, .. } => {
-            build_team_sport(SportKind::Football, team_logo).await
+            build_team_sport(SportKind::Football, team_logo, ttl).await
         }
         SportSection::Hockey { team_logo, .. } => {
-            build_team_sport(SportKind::Hockey, team_logo).await
+            build_team_sport(SportKind::Hockey, team_logo, ttl).await
         }
         SportSection::Golf { tour, .. } => {
             let collector = GolfCollector::from_espn(*tour);
             let renderer = GolfMatrix::new_async()
                 .await
                 .map_err(|e| format!("golf fonts: {e}"))?;
-            Ok(Box::new(Module::new(collector, renderer)))
+            Ok(module_with_ttl(collector, renderer, ttl))
         }
         SportSection::F1 { .. } => {
             let collector = F1Collector::from_jolpica();
             let renderer = F1Matrix::new_async()
                 .await
                 .map_err(|e| format!("f1 fonts: {e}"))?;
-            Ok(Box::new(Module::new(collector, renderer)))
+            Ok(module_with_ttl(collector, renderer, ttl))
         }
     }
 }
@@ -578,7 +646,7 @@ async fn build_iss(s: &IssSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = IssMatrix::new_async()
         .await
         .map_err(|e| format!("iss fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_quake(s: &QuakeSection) -> Result<Box<dyn DynModule>, String> {
@@ -587,7 +655,7 @@ async fn build_quake(s: &QuakeSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = QuakeMatrix::new_async()
         .await
         .map_err(|e| format!("quake fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_aurora(s: &AuroraSection) -> Result<Box<dyn DynModule>, String> {
@@ -598,7 +666,7 @@ async fn build_aurora(s: &AuroraSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = AuroraMatrix::new_async()
         .await
         .map_err(|e| format!("aurora fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String> {
@@ -611,7 +679,7 @@ async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String>
     let renderer = FlightsMatrix::new_async()
         .await
         .map_err(|e| format!("flights fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_launch(s: &LaunchSection) -> Result<Box<dyn DynModule>, String> {
@@ -622,7 +690,7 @@ async fn build_launch(s: &LaunchSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = LaunchMatrix::new_async()
         .await
         .map_err(|e| format!("launch fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
@@ -637,6 +705,7 @@ async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
         nominal_color: ohmyoled_matrix::Color::new(s.nominal_color.0, s.nominal_color.1, s.nominal_color.2),
         alarm_color: ohmyoled_matrix::Color::new(s.alarm_color.0, s.alarm_color.1, s.alarm_color.2),
         alarm_state: s.alarm_state.clone(),
+        mode: s.display_mode,
     };
     let renderer = HassMatrix::with_fonts_async(
         crate::matrix::hass::HassFonts::default(),
@@ -644,7 +713,7 @@ async fn build_hass(s: &HassSection) -> Result<Box<dyn DynModule>, String> {
     )
     .await
     .map_err(|e| format!("hass fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_pihole(s: &PiholeSection) -> Result<Box<dyn DynModule>, String> {
@@ -656,12 +725,13 @@ async fn build_pihole(s: &PiholeSection) -> Result<Box<dyn DynModule>, String> {
     let renderer = PiholeMatrix::new_async()
         .await
         .map_err(|e| format!("pihole fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 async fn build_team_sport(
     kind: SportKind,
     team_logo: &crate::teams::Logo,
+    cache_ttl_secs: Option<u64>,
 ) -> Result<Box<dyn DynModule>, String> {
     let collector = SportCollector::from_espn(EspnConfig {
         sport: kind,
@@ -671,5 +741,29 @@ async fn build_team_sport(
     let renderer = SportMatrix::new_async()
         .await
         .map_err(|e| format!("sport fonts: {e}"))?;
-    Ok(Box::new(Module::new(collector, renderer)))
+    Ok(module_with_ttl(collector, renderer, cache_ttl_secs))
+}
+
+/// Wrap a `(collector, renderer)` pair into a boxed `DynModule`,
+/// resolving the cache TTL from config (`cache_ttl_secs`) or the
+/// collector's own `refresh_interval()` if unset.
+///
+/// - `Some(0)` ⇒ inline polling — the renderer calls `collector.poll()`
+///   on every render. Always fresh; panel stalls during slow API calls.
+/// - `Some(n > 0)` ⇒ background task polls every `n` seconds.
+/// - `None` ⇒ background task polls at `collector.refresh_interval()`.
+fn module_with_ttl<C, R>(
+    collector: C,
+    renderer: R,
+    cache_ttl_secs: Option<u64>,
+) -> Box<dyn DynModule>
+where
+    C: crate::api::Collector + 'static,
+    R: crate::matrix::Renderer<Data = C::Output> + 'static,
+    C::Output: Send + Sync + 'static,
+{
+    let ttl = cache_ttl_secs
+        .map(std::time::Duration::from_secs)
+        .unwrap_or_else(|| collector.refresh_interval());
+    Box::new(Module::new(collector, renderer, ttl))
 }

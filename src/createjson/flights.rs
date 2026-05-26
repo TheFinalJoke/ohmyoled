@@ -8,6 +8,8 @@ pub struct FlightsOptions {
     pub lat: f64,
     pub lon: f64,
     pub radius_km: f32,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for FlightsOptions {
@@ -17,6 +19,7 @@ impl Default for FlightsOptions {
             lat: 40.7128,
             lon: -74.0060,
             radius_km: 80.0,
+            cache_ttl_secs: None,
         }
     }
 }
@@ -35,12 +38,14 @@ pub fn configure() -> Result<FlightsOptions, String> {
         }
     };
 
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
     ui::success(&format!("Flights — lat={lat:.4}, lon={lon:.4}, radius={radius_km}km"));
     Ok(FlightsOptions {
         run: true,
         lat,
         lon,
         radius_km,
+        cache_ttl_secs,
     })
 }
 

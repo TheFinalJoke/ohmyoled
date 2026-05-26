@@ -70,4 +70,29 @@ impl TtfFont {
         }
         w.round() as i32
     }
+
+    /// Y-offset (relative to baseline) of the visual midpoint of the
+    /// rendered glyph bounding box for `text`. Negative = above the
+    /// baseline (typical for digits and uppercase letters).
+    ///
+    /// Returns `-ascent / 2` when no glyphs in `text` have an outline
+    /// (e.g., the string is empty or all whitespace).
+    pub fn text_v_center_from_baseline(&self, text: &str) -> i32 {
+        let scaled = self.font.as_scaled(self.scale);
+        let mut min_y: Option<f32> = None;
+        let mut max_y: Option<f32> = None;
+        for ch in text.chars() {
+            let glyph_id = scaled.glyph_id(ch);
+            let glyph = glyph_id.with_scale_and_position(self.scale, ab_glyph::point(0.0, 0.0));
+            if let Some(outlined) = scaled.outline_glyph(glyph) {
+                let b = outlined.px_bounds();
+                min_y = Some(min_y.map_or(b.min.y, |y| y.min(b.min.y)));
+                max_y = Some(max_y.map_or(b.max.y, |y| y.max(b.max.y)));
+            }
+        }
+        match (min_y, max_y) {
+            (Some(lo), Some(hi)) => ((lo + hi) / 2.0).round() as i32,
+            _ => -self.ascent() / 2,
+        }
+    }
 }

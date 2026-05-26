@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub struct QuakeOptions {
     pub run: bool,
     pub feed: QuakeFeed,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for QuakeOptions {
@@ -13,6 +15,7 @@ impl Default for QuakeOptions {
         Self {
             run: true,
             feed: QuakeFeed::default(),
+            cache_ttl_secs: None,
         }
     }
 }
@@ -38,8 +41,9 @@ pub fn configure() -> Result<QuakeOptions, String> {
         _ => QuakeFeed::SignificantDay,
     };
 
+    let cache_ttl_secs = ui::read_cache_ttl_secs();
     ui::success(&format!("Earthquake — feed={}", feed.slug()));
-    Ok(QuakeOptions { run: true, feed })
+    Ok(QuakeOptions { run: true, feed, cache_ttl_secs })
 }
 
 pub fn summary_line(opts: &QuakeOptions) -> String {

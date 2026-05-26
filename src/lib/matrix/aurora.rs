@@ -57,6 +57,7 @@ const STORM: Color = Color { r: 200, g: 60, b: 255 };
 const SEVERE: Color = Color { r: 255, g: 30, b: 30 };
 const LABEL: Color = Color { r: 200, g: 200, b: 200 };
 const ALERT_BANNER: Color = Color { r: 0, g: 220, b: 255 };
+const CALM_BANNER: Color = Color { r: 140, g: 140, b: 160 };
 const BAR_OFF: Color = Color { r: 40, g: 40, b: 40 };
 
 /// Frame interval for the pulse animation — ~12 fps. Fine-grained enough
@@ -168,16 +169,21 @@ impl AuroraMatrix {
         // increasing phase offset so the shimmer reads as a wave.
         draw_kp_bar(&mut img, data.kp, 22, tick);
 
-        // Alert banner — same pulse driver as the digit, slightly subdued so
-        // the digit stays the dominant element.
-        if data.alert {
-            let banner = "AURORA LIKELY";
-            let banner_w = self.label_font.text_width(banner);
-            let banner_x = ((PANEL_W as i32 - banner_w) / 2).max(0);
-            let banner_y = (PANEL_H as i32) - 1;
-            let banner_color = scale_color(ALERT_BANNER, pulse_factor(data.kp, tick, 0.5));
-            draw_text(&mut img, &self.label_font, banner_x, banner_y, banner_color, banner);
-        }
+        // Bottom-row banner. Alert state pulses with the digit; calm state
+        // shows a static "CALM SKIES" label in dim grey so the tile reads
+        // as complete instead of half-empty next to the alert variant.
+        let (banner, banner_color) = if data.alert {
+            (
+                "AURORA LIKELY",
+                scale_color(ALERT_BANNER, pulse_factor(data.kp, tick, 0.5)),
+            )
+        } else {
+            ("CALM SKIES", CALM_BANNER)
+        };
+        let banner_w = self.label_font.text_width(banner);
+        let banner_x = ((PANEL_W as i32 - banner_w) / 2).max(0);
+        let banner_y = (PANEL_H as i32) - 1;
+        draw_text(&mut img, &self.label_font, banner_x, banner_y, banner_color, banner);
 
         img
     }
@@ -464,6 +470,28 @@ mod tests {
         assert_eq!(img.height(), 32);
         let lit = img.pixels().filter(|p| p.0 != [0, 0, 0]).count();
         assert!(lit > 80, "expected substantial lit pixels, got {lit}");
+    }
+
+    #[test]
+    fn low_kp_renders_calm_banner() {
+        // Regression: the low-Kp (alert: false) tile used to leave the
+        // bottom row entirely dark, making it read as half-drawn next
+        // to the alert variant. It should now show "CALM SKIES" in
+        // dim grey across the bottom rows.
+        let m = AuroraMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let img = m.frame(&sample(2, false));
+        let mut lit_in_bottom = 0u32;
+        for y in (PANEL_H - 6)..PANEL_H {
+            for x in 0..PANEL_W {
+                if img.get_pixel(x, y).0 != [0, 0, 0] {
+                    lit_in_bottom += 1;
+                }
+            }
+        }
+        assert!(
+            lit_in_bottom > 10,
+            "calm-state banner should light bottom rows; got {lit_in_bottom} pixels"
+        );
     }
 
     #[test]

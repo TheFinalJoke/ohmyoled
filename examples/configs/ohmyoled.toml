@@ -34,6 +34,11 @@ symbol = "AAPL"
 # Finance (Finnhub's /candle is paid-only); coingecko configs source
 # it from coingecko's own market_chart endpoint.
 chart = true
+# cache_ttl_secs controls how often the background tokio task re-polls
+# the upstream API: omit = collector default (30 s for live equities),
+# any positive integer = poll every N seconds, 0 = inline-poll on every
+# render (always fresh; the panel briefly stalls during the round-trip).
+cache_ttl_secs = 0
 
 [[stock]]
 run = true
@@ -124,6 +129,7 @@ feed = "significant_day"
 run = true
 lat = 40.7128
 lon = -74.0060
+cache_ttl_secs = 30           # poll wheretheiss.at every 30 s
 
 # Team sports + golf + F1 all live under [[sport]]. Each entry is
 # discriminated by its `sport` field. Team sports require `team_logo`;

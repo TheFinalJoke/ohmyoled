@@ -107,6 +107,20 @@ impl Font {
         }
     }
 
+    /// Y-offset (relative to baseline) of the visual midpoint of the
+    /// rendered glyph bounding box for `text`. Used when an animation
+    /// needs to orbit a glyph's *visual* center, not the font's ascent-
+    /// box center — the ascent box can sit noticeably above the actual
+    /// ink for digits and uppercase letters.
+    ///
+    /// Negative values are above the baseline (typical).
+    pub fn text_v_center_from_baseline(&self, text: &str) -> i32 {
+        match self {
+            Self::Bdf(_) => -self.ascent() / 2,
+            Self::Ttf(t) => t.text_v_center_from_baseline(text),
+        }
+    }
+
     pub(crate) fn bdf(&self) -> Option<&BdfFont> {
         match self {
             Self::Bdf(b) => b.inner.as_ref(),
