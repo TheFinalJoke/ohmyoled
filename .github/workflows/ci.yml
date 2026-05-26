@@ -34,6 +34,12 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-
 
+      # Matrix renderers + their tests load TTF/BDF fonts at runtime.
+      # The font files aren't tracked in git (per CLAUDE.md); the script
+      # fetches them from the `fonts-vN` release tarball.
+      - name: Fetch fonts
+        run: bash scripts/fetch-fonts.sh
+
       # --no-default-features skips the hardware backend (rpi-led-matrix-sys
       # refuses to build off-Pi); CI doesn't drive panels.
       - name: cargo build
