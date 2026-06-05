@@ -726,7 +726,7 @@ cargo run --example multi_instance_check
 
 ### Devcontainer
 
-A devcontainer is provided under `.devcontainer/` with Rust + Python 3.11
+A devcontainer is provided under `.devcontainer/` with Rust
 preinstalled. Note: linking the full test binary inside the devcontainer
 can OOM the linker — run `cargo test --lib` rather than `cargo test` to
 avoid building the bin-test artifact. This isn't an issue on the Pi.
