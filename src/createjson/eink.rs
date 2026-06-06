@@ -5,7 +5,7 @@
 //! selection (currently the weather tile — the one with an e-ink renderer).
 //! Produces the full `eink` config object.
 
-use crate::createjson::{aurora, hass, iss, launch, pihole, quake, stock, time, ui, weather};
+use crate::createjson::{aurora, flights, hass, iss, launch, pihole, quake, stock, time, ui, weather};
 use serde_json::{json, Map, Value};
 
 pub fn configure() -> Result<Value, String> {
@@ -119,6 +119,14 @@ pub fn configure() -> Result<Value, String> {
                 modules.insert("hass".to_string(), serde_json::to_value(opts).expect("HassOptions serializes"));
             }
             Err(e) => ui::warn(&format!("hass tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the flight-radar tile to the e-paper display?", false) {
+        match flights::configure() {
+            Ok(opts) => {
+                modules.insert("flights".to_string(), serde_json::to_value(opts).expect("FlightsOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("flights tile skipped: {e}")),
         }
     }
 

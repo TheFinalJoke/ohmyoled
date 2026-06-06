@@ -59,10 +59,11 @@ use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::eink::{
-    EinkAuroraFonts, EinkAuroraMatrix, EinkHassFonts, EinkHassMatrix, EinkIssFonts, EinkIssMatrix,
-    EinkLaunchFonts, EinkLaunchMatrix, EinkPiholeFonts, EinkPiholeMatrix, EinkQuakeFonts,
-    EinkQuakeMatrix, EinkStockFonts, EinkStockMatrix, EinkTimeFonts, EinkTimeMatrix,
-    EinkWeatherFonts, EinkWeatherMatrix,
+    EinkAuroraFonts, EinkAuroraMatrix, EinkFlightsFonts, EinkFlightsMatrix, EinkHassFonts,
+    EinkHassMatrix, EinkIssFonts, EinkIssMatrix, EinkLaunchFonts, EinkLaunchMatrix, EinkPiholeFonts,
+    EinkPiholeMatrix, EinkQuakeFonts, EinkQuakeMatrix, EinkStockChartFonts, EinkStockChartMatrix,
+    EinkStockFonts, EinkStockMatrix, EinkTimeFonts, EinkTimeMatrix, EinkWeatherFonts,
+    EinkWeatherMatrix,
 };
 use oledlib::matrix::{Renderer, TimeMatrix};
 
@@ -114,8 +115,10 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
 }
 
 /// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
-pub const EINK_NAMES: &[&str] =
-    &["time", "weather", "pihole", "iss", "aurora", "quake", "stock", "launch", "hass"];
+pub const EINK_NAMES: &[&str] = &[
+    "time", "weather", "pihole", "iss", "aurora", "quake", "stock", "launch", "hass", "flights",
+    "stock_chart",
+];
 
 /// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
 /// Backend is whatever `EinkDisplay` resolves to — the terminal inline-image
@@ -140,6 +143,8 @@ pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String
         "stock" => preview_eink_stock(&mut display, &fonts).await,
         "launch" => preview_eink_launch(&mut display, &fonts).await,
         "hass" => preview_eink_hass(&mut display, &fonts).await,
+        "flights" => preview_eink_flights(&mut display, &fonts).await,
+        "stock_chart" => preview_eink_stock_chart(&mut display, &fonts).await,
         other => Err(format!(
             "unknown eink preview '{other}'. Available: {}",
             EINK_NAMES.join(", ")
@@ -372,6 +377,59 @@ async fn preview_eink_hass(display: &mut EinkDisplay, fonts: &Path) -> Result<()
         let img = renderers[i % renderers.len()].frame(&entity, display.width(), display.height());
         display.show(&img);
         i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_flights(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkFlightsMatrix::with_fonts_async(EinkFlightsFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let f = |callsign: &str, dist: f32, bearing: f32| FlightInfo {
+        callsign: callsign.into(),
+        icao24: "a1b2c3".into(),
+        altitude_ft: 34_000,
+        on_ground: false,
+        distance_km: dist,
+        bearing_deg: bearing,
+        ground_speed_kt: Some(440),
+        country: "United States".into(),
+    };
+    let nearby = vec![
+        f("UAL123", 8.0, 45.0),
+        f("DAL456", 22.0, 200.0),
+        f("SWA789", 41.0, 300.0),
+        f("JBU221", 63.0, 120.0),
+    ];
+    let busy = FlightSnapshot { count: nearby.len(), closest: Some(nearby[0].clone()), nearby, radius_km: 80.0 };
+    let empty = FlightSnapshot { count: 0, closest: None, nearby: vec![], radius_km: 80.0 };
+    let mut toggle = 0usize;
+    loop {
+        let data = if toggle % 3 == 2 { &empty } else { &busy };
+        toggle = toggle.wrapping_add(1);
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_stock_chart(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkStockChartMatrix::with_fonts_async(EinkStockChartFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let series = |n: usize, base: f64, slope: f64| {
+        HistorySeries::from_closes((0..n).map(|i| base + (i as f64 * slope) + ((i % 5) as f64 - 2.0)).collect())
+    };
+    let data = StockHistory {
+        api: StockApiSource::Yahoo,
+        symbol: "AAPL".into(),
+        current: 191.2,
+        previous_close: 190.0,
+        day: series(24, 188.0, 0.2),
+        month: series(30, 180.0, 0.5),
+        year: series(52, 150.0, 0.9),
+    };
+    loop {
+        let img = r.frame(&data, display.width(), display.height());
+        display.show(&img);
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 }

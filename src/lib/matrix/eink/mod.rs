@@ -7,6 +7,7 @@
 //! thresholds to black-ink-on-white and pushes to the panel.
 
 pub mod aurora;
+pub mod flights;
 pub mod hass;
 pub mod iss;
 pub mod launch;
@@ -14,15 +15,18 @@ pub mod layout;
 pub mod pihole;
 pub mod quake;
 pub mod stock;
+pub mod stock_chart;
 pub mod time;
 pub mod weather;
 
 pub use aurora::{EinkAuroraFonts, EinkAuroraMatrix};
+pub use flights::{EinkFlightsFonts, EinkFlightsMatrix};
 pub use hass::{EinkHassFonts, EinkHassMatrix};
 pub use iss::{EinkIssFonts, EinkIssMatrix};
 pub use launch::{EinkLaunchFonts, EinkLaunchMatrix};
 pub use pihole::{EinkPiholeFonts, EinkPiholeMatrix};
 pub use quake::{EinkQuakeFonts, EinkQuakeMatrix};
 pub use stock::{EinkStockFonts, EinkStockMatrix};
+pub use stock_chart::{EinkStockChartFonts, EinkStockChartMatrix};
 pub use time::{EinkTimeFonts, EinkTimeMatrix};
 pub use weather::{EinkWeatherFonts, EinkWeatherMatrix};

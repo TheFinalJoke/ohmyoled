@@ -65,8 +65,9 @@ use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
 use crate::matrix::eink::{
-    EinkAuroraMatrix, EinkHassMatrix, EinkIssMatrix, EinkLaunchMatrix, EinkPiholeMatrix,
-    EinkQuakeMatrix, EinkStockMatrix, EinkTimeMatrix, EinkWeatherMatrix,
+    EinkAuroraMatrix, EinkFlightsMatrix, EinkHassMatrix, EinkIssMatrix, EinkLaunchMatrix,
+    EinkPiholeMatrix, EinkQuakeMatrix, EinkStockChartMatrix, EinkStockMatrix, EinkTimeMatrix,
+    EinkWeatherMatrix,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::modules::eink_module::{DynEinkModule, EinkModule};
@@ -923,6 +924,24 @@ pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn D
             }
             Err(e) => log::error!("eink stock: skipping module: {e}"),
         }
+        if s.chart {
+            match build_eink_stock_chart(s, dims).await {
+                Ok(m) => {
+                    log::info!("eink registry: stock_chart loaded");
+                    modules.push(m);
+                }
+                Err(e) => log::error!("eink stock_chart: skipping module: {e}"),
+            }
+        }
+    }
+    for s in cfg.flights.iter().filter(|s| s.run) {
+        match build_eink_flights(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: flights loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink flights: skipping module: {e}"),
+        }
     }
     for s in cfg.launch.iter().filter(|s| s.run) {
         match build_eink_launch(s, dims).await {
@@ -945,8 +964,7 @@ pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn D
 
     // Anything else enabled in the eink block is configured but not yet
     // renderable on e-paper — report it so the tile isn't silently ignored.
-    let pending = cfg.sport.iter().filter(|s| s.run()).count()
-        + cfg.flights.iter().filter(|s| s.run).count();
+    let pending = cfg.sport.iter().filter(|s| s.run()).count();
     if pending > 0 {
         log::info!(
             "eink registry: {pending} enabled tile(s) have no e-ink renderer yet"
@@ -1076,6 +1094,36 @@ async fn build_eink_hass(s: &HassSection, dims: (u32, u32)) -> Result<Box<dyn Dy
     let renderer = EinkHassMatrix::new_async(display, dims)
         .await
         .map_err(|e| format!("eink hass fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_stock_chart(s: &StockSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = match s.api {
+        StockApi::Finnhub => StockHistoryCollector::from_yahoo(YahooConfig {
+            symbol: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+        StockApi::Coingecko => StockHistoryCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+    };
+    let renderer = EinkStockChartMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink stock_chart fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_flights(s: &FlightsSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = FlightsCollector::from_opensky(OpenSkyConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+        radius_km: s.radius_km,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkFlightsMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink flights fonts: {e}"))?;
     Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
