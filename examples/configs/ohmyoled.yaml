@@ -173,11 +173,11 @@ sport:
 # set your panel model to switch the process to the e-paper output.
 eink:
   enabled: false
-  model: "4in2"               # 4in2 | 2in13 | 2in9 | 7in5_v2 | ...
+  model: "7in5_v2"            # 7in5_v2 (800x480, recommended) | 4in2 | 2in13 | ...
   rotation: 0
   threshold: 128              # luma cut for black/white (0–255)
-  # width: 400                # optional: set BOTH to override the model's
-  # height: 300               # native resolution (unlisted/custom panels)
+  # width: 800                # optional: set BOTH to override the model's
+  # height: 480               # native resolution (unlisted/custom panels)
   modules:                    # this display's own content (its own RegistryConfig)
     time:                     # the e-paper display rotates through its tiles
       run: true

@@ -25,6 +25,7 @@
 //!       time_format: "12h"         # "12h" | "24h"
 //! ```
 
+use crate::matrix::eink::layout::{center_text, scaled_px};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use crate::matrix::time::{TimeFormat, TimeSnapshot};
@@ -54,8 +55,8 @@ impl Default for EinkTimeFonts {
 
 /// Static e-paper clock renderer.
 ///
-/// Font sizes are tuned for a 4.2" (400×300) panel; positions derive from the
-/// live `display.width()/height()` so larger panels fill correctly.
+/// Fonts are sized for the panel passed at construction (see [`scaled_px`]),
+/// so the clock reads the same on a 400×300 4.2" or an 800×480 7.5" sheet.
 pub struct EinkTimeMatrix {
     clock: Font,
     meridiem: Font,
@@ -65,28 +66,29 @@ pub struct EinkTimeMatrix {
 }
 
 impl EinkTimeMatrix {
-    /// Sync constructor (useful for tests).
-    pub fn new() -> Result<Self, String> {
-        Self::with_fonts(EinkTimeFonts::default())
+    /// Sync constructor (useful for tests). `dims` is the target panel size.
+    pub fn new(dims: (u32, u32)) -> Result<Self, String> {
+        Self::with_fonts(EinkTimeFonts::default(), dims)
     }
 
     /// Async constructor used by the registry.
-    pub async fn new_async() -> Result<Self, String> {
-        Self::with_fonts_async(EinkTimeFonts::default()).await
+    pub async fn new_async(dims: (u32, u32)) -> Result<Self, String> {
+        Self::with_fonts_async(EinkTimeFonts::default(), dims).await
     }
 
-    pub fn with_fonts(paths: EinkTimeFonts) -> Result<Self, String> {
+    pub fn with_fonts(paths: EinkTimeFonts, dims: (u32, u32)) -> Result<Self, String> {
+        let h = dims.1;
         Ok(Self {
-            clock: Font::load_ttf(&paths.body, 92.0)?,
-            meridiem: Font::load_ttf(&paths.body, 22.0)?,
-            date: Font::load_ttf(&paths.body, 22.0)?,
-            weekday: Font::load_ttf(&paths.body, 18.0)?,
+            clock: Font::load_ttf(&paths.body, scaled_px(150.0, h))?,
+            meridiem: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
+            date: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
+            weekday: Font::load_ttf(&paths.body, scaled_px(28.0, h))?,
             format: TimeFormat::default(),
         })
     }
 
-    pub async fn with_fonts_async(paths: EinkTimeFonts) -> Result<Self, String> {
-        tokio::task::spawn_blocking(move || Self::with_fonts(paths))
+    pub async fn with_fonts_async(paths: EinkTimeFonts, dims: (u32, u32)) -> Result<Self, String> {
+        tokio::task::spawn_blocking(move || Self::with_fonts(paths, dims))
             .await
             .map_err(|e| format!("font load task panicked: {e}"))?
     }
@@ -142,12 +144,6 @@ impl EinkTimeMatrix {
     }
 }
 
-/// Center `text` horizontally on `cx` at baseline `y`.
-fn center_text(img: &mut RgbImage, font: &Font, cx: i32, y: i32, color: Color, text: &str) {
-    let tw = font.text_width(text);
-    draw_text(img, font, cx - tw / 2, y, color, text);
-}
-
 #[async_trait]
 impl EinkRenderer for EinkTimeMatrix {
     type Data = TimeSnapshot;
@@ -194,9 +190,9 @@ mod tests {
 
     #[test]
     fn frame_has_dimensions_and_lit_pixels() {
-        let r = EinkTimeMatrix::with_fonts(repo_fonts()).expect("fonts load");
-        let img = r.frame(at(20, 42), 400, 300);
-        assert_eq!(img.dimensions(), (400, 300));
+        let r = EinkTimeMatrix::with_fonts(repo_fonts(), (800, 480)).expect("fonts load");
+        let img = r.frame(at(20, 42), 800, 480);
+        assert_eq!(img.dimensions(), (800, 480));
         let lit = img.pixels().filter(|p| p.0 != [0, 0, 0]).count();
         assert!(lit > 200, "expected a populated clock, got {lit} lit px");
     }
@@ -205,24 +201,25 @@ mod tests {
     fn format_changes_the_rendered_clock() {
         // 12h ("8:42 PM") and 24h ("20:42") must produce visibly different
         // frames at the same instant — proves the format is actually applied.
-        let twelve = EinkTimeMatrix::with_fonts(repo_fonts())
+        let twelve = EinkTimeMatrix::with_fonts(repo_fonts(), (800, 480))
             .unwrap()
             .with_format(TimeFormat::Twelve);
-        let twentyfour = EinkTimeMatrix::with_fonts(repo_fonts())
+        let twentyfour = EinkTimeMatrix::with_fonts(repo_fonts(), (800, 480))
             .unwrap()
             .with_format(TimeFormat::TwentyFour);
         let n = at(20, 42);
-        let f12 = twelve.frame(n, 400, 300);
-        let f24 = twentyfour.frame(n, 400, 300);
+        let f12 = twelve.frame(n, 800, 480);
+        let f24 = twentyfour.frame(n, 800, 480);
         assert!(f12.pixels().any(|p| p.0 != [0, 0, 0]));
         assert!(f24.pixels().any(|p| p.0 != [0, 0, 0]));
         assert_ne!(f12.into_raw(), f24.into_raw(), "12h vs 24h should differ");
     }
 
     #[test]
-    fn adapts_to_larger_panel() {
-        let r = EinkTimeMatrix::with_fonts(repo_fonts()).expect("fonts load");
-        let img = r.frame(at(9, 5), 800, 480);
-        assert_eq!(img.dimensions(), (800, 480));
+    fn adapts_to_smaller_panel() {
+        let r = EinkTimeMatrix::with_fonts(repo_fonts(), (400, 300)).expect("fonts load");
+        let img = r.frame(at(9, 5), 400, 300);
+        assert_eq!(img.dimensions(), (400, 300));
+        assert!(img.pixels().any(|p| p.0 != [0, 0, 0]));
     }
 }

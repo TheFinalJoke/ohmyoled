@@ -293,7 +293,8 @@ async fn main() {
             eink_top.eink.threshold
         );
         let display = build_eink_display(&eink_top.eink, dev);
-        let modules = registry::build_eink(&eink_top.eink.modules).await;
+        let dims = (display.width(), display.height());
+        let modules = registry::build_eink(&eink_top.eink.modules, dims).await;
         log::info!("eink registry built: {} module(s) active", modules.len());
         install_sigint_handler();
         if let Err(e) = scheduler::run_eink(display, modules).await {

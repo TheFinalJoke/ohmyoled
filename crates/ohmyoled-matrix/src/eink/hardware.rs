@@ -22,8 +22,8 @@
 
 use embedded_hal::digital::{ErrorType, OutputPin};
 use embedded_hal_bus::spi::ExclusiveDevice;
-use epd_waveshare::{epd4in2::Epd4in2, prelude::*};
-use rppal::gpio::Gpio;
+use epd_waveshare::{epd4in2::Epd4in2, epd7in5_v2::Epd7in5, prelude::*};
+use rppal::gpio::{InputPin, OutputPin as Out};
 use rppal::hal::Delay;
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 
@@ -55,11 +55,19 @@ impl OutputPin for NoCs {
 
 type EpdSpi = ExclusiveDevice<Spi, NoCs, Delay>;
 
-/// Hardware e-paper backend. Currently wires the 4.2" B/W panel; other models
-/// fall back to terminal mode via the `Err` path in [`Self::init`].
+/// The concrete `epd-waveshare` driver for the selected panel. Each model is a
+/// distinct type, so they're held in an enum and dispatched per call.
+enum Panel {
+    FourIn2(Epd4in2<EpdSpi, InputPin, Out, Out, Delay>),
+    SevenIn5(Epd7in5<EpdSpi, InputPin, Out, Out, Delay>),
+}
+
+/// Hardware e-paper backend for the Waveshare 4.2" (400×300) and 7.5" V2
+/// (800×480) B/W panels. Other models fall back to terminal mode via the
+/// `Err` path in [`Self::init`].
 pub struct EinkHardwareBackend {
     spi: EpdSpi,
-    epd: Epd4in2<EpdSpi, rppal::gpio::InputPin, rppal::gpio::OutputPin, rppal::gpio::OutputPin, Delay>,
+    panel: Panel,
     delay: Delay,
 }
 
@@ -67,15 +75,7 @@ impl EinkHardwareBackend {
     /// Try to initialise the panel. Returns `Err` (→ terminal fallback) when
     /// GPIO/SPI is unavailable or the model isn't wired up here yet.
     pub fn init(options: &EinkOptions) -> Result<Self, String> {
-        // Only the 4.2" panel is wired up for the first cut; everything else
-        // cleanly falls back to terminal mode (a follow-up adds more models).
         let model = options.model.to_lowercase().replace(['-', '.', ' '], "_");
-        if !(model == "4in2" || model == "4in2_v2") {
-            return Err(format!(
-                "eink hardware: model '{}' not wired yet (only 4in2 so far)",
-                options.model
-            ));
-        }
 
         let gpio = Gpio::new().map_err(|e| format!("gpio open failed: {e}"))?;
         let rst = gpio
@@ -97,11 +97,27 @@ impl EinkHardwareBackend {
             .map_err(|e| format!("spi device init failed: {e:?}"))?;
 
         let mut delay = Delay;
-        let epd = Epd4in2::new(&mut spi, busy, dc, rst, &mut delay, None)
-            .map_err(|e| format!("epd init failed: {e:?}"))?;
+        let panel = match model.as_str() {
+            "4in2" | "4in2_v2" => {
+                let epd = Epd4in2::new(&mut spi, busy, dc, rst, &mut delay, None)
+                    .map_err(|e| format!("epd 4in2 init failed: {e:?}"))?;
+                log::info!("eink: Waveshare 4in2 (400x300) initialised on SPI0");
+                Panel::FourIn2(epd)
+            }
+            "7in5" | "7in5_v2" => {
+                let epd = Epd7in5::new(&mut spi, busy, dc, rst, &mut delay, None)
+                    .map_err(|e| format!("epd 7in5_v2 init failed: {e:?}"))?;
+                log::info!("eink: Waveshare 7in5 V2 (800x480) initialised on SPI0");
+                Panel::SevenIn5(epd)
+            }
+            other => {
+                return Err(format!(
+                    "eink hardware: model '{other}' not wired yet (4in2, 7in5_v2 supported)"
+                ))
+            }
+        };
 
-        log::info!("eink: Waveshare 4in2 panel initialised on SPI0");
-        Ok(Self { spi, epd, delay })
+        Ok(Self { spi, panel, delay })
     }
 }
 
@@ -109,16 +125,21 @@ impl EinkBackend for EinkHardwareBackend {
     fn flush(&mut self, packed: &[u8], _width: u32, _height: u32) {
         // Our packed buffer matches epd-waveshare's expected layout (MSB-first,
         // row-major, 1 = white), so it goes straight to the panel.
-        if let Err(e) = self
-            .epd
-            .update_and_display_frame(&mut self.spi, packed, &mut self.delay)
-        {
+        let r = match &mut self.panel {
+            Panel::FourIn2(epd) => epd.update_and_display_frame(&mut self.spi, packed, &mut self.delay),
+            Panel::SevenIn5(epd) => epd.update_and_display_frame(&mut self.spi, packed, &mut self.delay),
+        };
+        if let Err(e) = r {
             log::error!("eink: frame update failed: {e:?}");
         }
     }
 
     fn clear(&mut self) {
-        if let Err(e) = self.epd.clear_frame(&mut self.spi, &mut self.delay) {
+        let r = match &mut self.panel {
+            Panel::FourIn2(epd) => epd.clear_frame(&mut self.spi, &mut self.delay),
+            Panel::SevenIn5(epd) => epd.clear_frame(&mut self.spi, &mut self.delay),
+        };
+        if let Err(e) = r {
             log::error!("eink: clear failed: {e:?}");
         }
     }

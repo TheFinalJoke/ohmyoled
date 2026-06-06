@@ -90,17 +90,21 @@ async fn main() {
     // Fonts: prefer the repo checkout so this runs without `install.sh`.
     let fonts = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fonts");
     std::env::set_var("OHMYOLED_FONTS_DIR", &fonts);
-    let renderer = EinkWeatherMatrix::with_fonts_async(EinkWeatherFonts {
-        body: fonts.join("04B_03B_.TTF"),
-        icon: fonts.join("weathericons.ttf"),
-    })
+    let mut display = EinkDisplay::test(EinkOptions::default());
+    let dims = (display.width(), display.height());
+    let renderer = EinkWeatherMatrix::with_fonts_async(
+        EinkWeatherFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            icon: fonts.join("weathericons.ttf"),
+        },
+        dims,
+    )
     .await
     .expect("load eink fonts");
 
     // Inline polling (ttl = 0) so render_cached polls the stub on every cycle.
     let mut module: Box<dyn DynEinkModule> =
         Box::new(EinkModule::new(StubWeather, renderer, Duration::ZERO));
-    let mut display = EinkDisplay::test(EinkOptions::default());
     println!(
         "e2e: display {}x{} ({:?} backend)",
         display.width(),
@@ -120,7 +124,7 @@ async fn main() {
     let (w, h) = img.dimensions();
     let ink = img.pixels().filter(|p| p.0[0] < 128).count();
     println!("e2e: flushed {w}x{h} frame, {ink} inked pixels -> {png_path}");
-    assert_eq!((w, h), (400, 300), "frame should match the 4in2 panel");
+    assert_eq!((w, h), dims, "frame should match the panel resolution");
     assert!(ink > 200, "expected a populated dashboard, got {ink} inked px");
     println!("e2e: PASS — real data rendered end-to-end through EinkModule + EinkDisplay");
 }

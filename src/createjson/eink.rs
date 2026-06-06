@@ -22,12 +22,12 @@ pub fn configure() -> Result<Value, String> {
     let model = ui::choose(
         "Panel model",
         &[
-            ("4in2", "4.2\" — 400x300 (default)"),
-            ("2in13", "2.13\" — 250x122"),
+            ("7in5_v2", "7.5\" — 800x480 (recommended)"),
+            ("4in2", "4.2\" — 400x300"),
             ("2in9", "2.9\" — 296x128"),
-            ("7in5_v2", "7.5\" — 800x480"),
+            ("2in13", "2.13\" — 250x122"),
         ],
-        "4in2",
+        "7in5_v2",
     );
     let threshold = read_threshold();
 

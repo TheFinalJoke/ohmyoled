@@ -110,7 +110,7 @@
   ],
   "eink": {
     "enabled": false,
-    "model": "4in2",
+    "model": "7in5_v2",
     "rotation": 0,
     "threshold": 128,
     "modules": {

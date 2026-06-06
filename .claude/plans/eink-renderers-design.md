@@ -13,10 +13,16 @@ fakes). Only a new `EinkRenderer` + a `build_eink_*` arm is needed per tile.
 
 ## Shared principles
 
-**Canvas.** Designs target a 4.2" panel (400×300) but read live
-`display.width()/height()`; positions are fractions of `w/h`, font sizes fixed
-(tuned for 400×300, still correct on bigger panels). Compose white-on-black
-(the `draw_*` convention); the display inverts to black-ink-on-white.
+**Canvas.** The recommended/default panel is the 7.5" **800×480** (`7in5_v2`);
+designs are authored against it. Renderers read live `display.width()/height()`
+for positions (fractions of `w/h`) and size fonts via `layout::scaled_px`
+(base sizes authored for 480px height, scaled to the actual panel), so a tile
+reads the same on 800×480 or a 400×300 4.2". Compose white-on-black (the
+`draw_*` convention); the display inverts to black-ink-on-white.
+
+**Status:** the shared toolkit (`src/lib/matrix/eink/layout.rs`) and the
+adaptive font sizing exist; time + weather are built on them. The remaining 12
+tiles below follow the same pattern.
 
 **Static, not scrolling.** E-paper holds its image and refreshes slowly, so
 every tile shows its data *all at once* — the extra resolution (400×300 vs

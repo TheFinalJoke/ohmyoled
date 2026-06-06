@@ -134,9 +134,13 @@ pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String
 }
 
 async fn preview_eink_time(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
-    let r = EinkTimeMatrix::with_fonts_async(EinkTimeFonts {
-        body: fonts.join("04B_03B_.TTF"),
-    })
+    let dims = (display.width(), display.height());
+    let r = EinkTimeMatrix::with_fonts_async(
+        EinkTimeFonts {
+            body: fonts.join("04B_03B_.TTF"),
+        },
+        dims,
+    )
     .await?;
     loop {
         let img = r.frame(Local::now(), display.width(), display.height());
@@ -146,10 +150,14 @@ async fn preview_eink_time(display: &mut EinkDisplay, fonts: &Path) -> Result<()
 }
 
 async fn preview_eink_weather(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
-    let r = EinkWeatherMatrix::with_fonts_async(EinkWeatherFonts {
-        body: fonts.join("04B_03B_.TTF"),
-        icon: fonts.join("weathericons.ttf"),
-    })
+    let dims = (display.width(), display.height());
+    let r = EinkWeatherMatrix::with_fonts_async(
+        EinkWeatherFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            icon: fonts.join("weathericons.ttf"),
+        },
+        dims,
+    )
     .await?;
     let data = fake_weather();
     loop {

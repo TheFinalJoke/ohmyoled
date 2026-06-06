@@ -29,6 +29,7 @@
 //! collectors as the LED tile).
 
 use crate::api::weather::model::{Weather, WindDirection};
+use crate::matrix::eink::layout::{center_text, scaled_px, stat_row};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
@@ -60,10 +61,8 @@ impl Default for EinkWeatherFonts {
 
 /// Static e-paper weather dashboard renderer.
 ///
-/// Font sizes are tuned for a 4.2" (400×300) panel — the default Waveshare
-/// B/W HAT. On larger panels the layout still fills correctly (positions are
-/// derived from the live `display.width()/height()`); text simply reads a
-/// touch smaller relative to the sheet.
+/// Fonts are sized for the panel passed at construction (see [`scaled_px`]),
+/// so the dashboard reads the same on a 400×300 4.2" or an 800×480 7.5" sheet.
 pub struct EinkWeatherMatrix {
     big: Font,
     title: Font,
@@ -74,30 +73,31 @@ pub struct EinkWeatherMatrix {
 }
 
 impl EinkWeatherMatrix {
-    /// Sync constructor (useful for tests). Loads every font size.
-    pub fn new() -> Result<Self, String> {
-        Self::with_fonts(EinkWeatherFonts::default())
+    /// Sync constructor (useful for tests). `dims` is the target panel size.
+    pub fn new(dims: (u32, u32)) -> Result<Self, String> {
+        Self::with_fonts(EinkWeatherFonts::default(), dims)
     }
 
     /// Async constructor used by the registry — font I/O runs on a worker
     /// thread so the executor isn't blocked.
-    pub async fn new_async() -> Result<Self, String> {
-        Self::with_fonts_async(EinkWeatherFonts::default()).await
+    pub async fn new_async(dims: (u32, u32)) -> Result<Self, String> {
+        Self::with_fonts_async(EinkWeatherFonts::default(), dims).await
     }
 
-    pub fn with_fonts(paths: EinkWeatherFonts) -> Result<Self, String> {
+    pub fn with_fonts(paths: EinkWeatherFonts, dims: (u32, u32)) -> Result<Self, String> {
+        let h = dims.1;
         Ok(Self {
-            big: Font::load_ttf(&paths.body, 44.0)?,
-            title: Font::load_ttf(&paths.body, 16.0)?,
-            label: Font::load_ttf(&paths.body, 11.0)?,
-            small: Font::load_ttf(&paths.body, 9.0)?,
-            icon_big: Font::load_ttf(&paths.icon, 56.0)?,
-            icon_small: Font::load_ttf(&paths.icon, 18.0)?,
+            big: Font::load_ttf(&paths.body, scaled_px(70.0, h))?,
+            title: Font::load_ttf(&paths.body, scaled_px(26.0, h))?,
+            label: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
+            small: Font::load_ttf(&paths.body, scaled_px(14.0, h))?,
+            icon_big: Font::load_ttf(&paths.icon, scaled_px(90.0, h))?,
+            icon_small: Font::load_ttf(&paths.icon, scaled_px(29.0, h))?,
         })
     }
 
-    pub async fn with_fonts_async(paths: EinkWeatherFonts) -> Result<Self, String> {
-        tokio::task::spawn_blocking(move || Self::with_fonts(paths))
+    pub async fn with_fonts_async(paths: EinkWeatherFonts, dims: (u32, u32)) -> Result<Self, String> {
+        tokio::task::spawn_blocking(move || Self::with_fonts(paths, dims))
             .await
             .map_err(|e| format!("font load task panicked: {e}"))?
     }
@@ -131,11 +131,13 @@ impl EinkWeatherMatrix {
         let temp_base = rule_y + (hi - rule_y) * 38 / 100;
         draw_text(&mut img, &self.big, margin, temp_base, fg, &temp_str);
         let temp_w = self.big.text_width(&temp_str);
-        // Degree ring just past the digits, near the top of the glyph.
-        let deg_cx = margin + temp_w + 8;
+        // Degree ring just past the digits, near the top of the glyph. Radius
+        // scales with the big font so it reads right on any panel.
+        let deg_r = (self.big.height() / 14).max(2);
+        let deg_cx = margin + temp_w + deg_r * 3;
         let deg_cy = temp_base + self.big.text_v_center_from_baseline(&temp_str) - self.big.ascent() / 4;
-        degree_ring(&mut img, deg_cx, deg_cy.max(margin + 3), 3, fg);
-        draw_text(&mut img, &self.label, deg_cx + 8, temp_base, fg, "F");
+        degree_ring(&mut img, deg_cx, deg_cy.max(margin + deg_r), deg_r, fg);
+        draw_text(&mut img, &self.label, deg_cx + deg_r * 3, temp_base, fg, "F");
 
         // Condition icon, right-aligned on the same band.
         let icon_glyph = data.current.icon.glyph.to_string();
@@ -158,7 +160,7 @@ impl EinkWeatherMatrix {
             stats.push(format!("UV {uv:.0}"));
         }
         let stats_y = temp_base + self.label.height() + margin;
-        draw_columns(&mut img, &self.label, margin, stats_y, wi - margin, fg, &stats);
+        stat_row(&mut img, &self.label, stats_y, fg, &stats);
 
         // ── Today high / low ────────────────────────────────────────────
         let hilo = format!(
@@ -210,32 +212,6 @@ impl EinkWeatherMatrix {
 fn degree_ring(img: &mut RgbImage, cx: i32, cy: i32, r: i32, color: Color) {
     draw_circle(img, cx, cy, r, color);
     draw_circle(img, cx, cy, r - 1, color);
-}
-
-/// Center `text` horizontally on `cx` at baseline `y`.
-fn center_text(img: &mut RgbImage, font: &Font, cx: i32, y: i32, color: Color, text: &str) {
-    let tw = font.text_width(text);
-    draw_text(img, font, cx - tw / 2, y, color, text);
-}
-
-/// Lay `cells` out as evenly spaced columns between `left` and `right`.
-fn draw_columns(
-    img: &mut RgbImage,
-    font: &Font,
-    left: i32,
-    y: i32,
-    right: i32,
-    color: Color,
-    cells: &[String],
-) {
-    if cells.is_empty() {
-        return;
-    }
-    let span = right - left;
-    let step = span / cells.len() as i32;
-    for (i, cell) in cells.iter().enumerate() {
-        draw_text(img, font, left + step * i as i32, y, color, cell);
-    }
 }
 
 #[async_trait]
@@ -318,18 +294,18 @@ mod tests {
 
     #[test]
     fn frame_has_dimensions_and_lit_pixels() {
-        let r = EinkWeatherMatrix::with_fonts(repo_fonts()).expect("fonts load");
-        let img = r.frame(&sample(), 400, 300);
-        assert_eq!(img.dimensions(), (400, 300));
+        let r = EinkWeatherMatrix::with_fonts(repo_fonts(), (800, 480)).expect("fonts load");
+        let img = r.frame(&sample(), 800, 480);
+        assert_eq!(img.dimensions(), (800, 480));
         let lit = img.pixels().filter(|p| p.0 != [0, 0, 0]).count();
         assert!(lit > 200, "expected a populated dashboard, got {lit} lit px");
     }
 
     #[test]
-    fn frame_adapts_to_larger_panel() {
-        let r = EinkWeatherMatrix::with_fonts(repo_fonts()).expect("fonts load");
-        let img = r.frame(&sample(), 800, 480);
-        assert_eq!(img.dimensions(), (800, 480));
+    fn frame_adapts_to_smaller_panel() {
+        let r = EinkWeatherMatrix::with_fonts(repo_fonts(), (400, 300)).expect("fonts load");
+        let img = r.frame(&sample(), 400, 300);
+        assert_eq!(img.dimensions(), (400, 300));
         let lit = img.pixels().filter(|p| p.0 != [0, 0, 0]).count();
         assert!(lit > 200);
     }

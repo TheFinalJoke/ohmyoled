@@ -79,9 +79,9 @@ pub struct EinkOptions {
 impl Default for EinkOptions {
     fn default() -> Self {
         Self {
-            // 4.2" B/W (400×300) — a common Waveshare HAT and a good default
-            // size for a data dashboard.
-            model: "4in2".to_string(),
+            // 7.5" B/W V2 (800×480) — the recommended panel: lots of room for a
+            // data dashboard.
+            model: "7in5_v2".to_string(),
             rotation: 0,
             threshold: 128,
             width: None,
@@ -292,7 +292,8 @@ mod tests {
     fn test_constructor_is_terminal() {
         let d = EinkDisplay::test(EinkOptions::default());
         assert_eq!(d.mode, EinkMode::Terminal);
-        assert_eq!((d.width(), d.height()), (400, 300));
+        // Default is the 7.5" panel.
+        assert_eq!((d.width(), d.height()), (800, 480));
     }
 
     #[test]

@@ -802,7 +802,7 @@ pub struct EinkRegistryConfig {
 }
 
 fn default_eink_model() -> String {
-    "4in2".to_string()
+    "7in5_v2".to_string()
 }
 
 fn default_eink_threshold() -> u8 {
@@ -827,11 +827,11 @@ impl EinkRegistryConfig {
 /// Mirrors [`build`] but emits `DynEinkModule`s. For the first cut only the
 /// weather tile has an e-ink renderer; any other enabled section is counted
 /// and reported (a follow-up ports the rest), never silently dropped.
-pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
+pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn DynEinkModule>> {
     let mut modules: Vec<Box<dyn DynEinkModule>> = Vec::new();
 
     for t in cfg.time.iter().filter(|t| t.run) {
-        match build_eink_time(t).await {
+        match build_eink_time(t, dims).await {
             Ok(m) => {
                 log::info!("eink registry: time loaded");
                 modules.push(m);
@@ -840,7 +840,7 @@ pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
         }
     }
     for w in cfg.weather.iter().filter(|w| w.run) {
-        match build_eink_weather(w).await {
+        match build_eink_weather(w, dims).await {
             Ok(m) => {
                 log::info!("eink registry: weather loaded (provider={})", w.api.get_api());
                 modules.push(m);
@@ -870,9 +870,9 @@ pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
     modules
 }
 
-async fn build_eink_time(t: &TimeSection) -> Result<Box<dyn DynEinkModule>, String> {
+async fn build_eink_time(t: &TimeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
     let format = parse_time_format(t.time_format.as_deref());
-    let renderer = EinkTimeMatrix::new_async()
+    let renderer = EinkTimeMatrix::new_async(dims)
         .await
         .map_err(|e| format!("eink time fonts: {e}"))?
         .with_format(format);
@@ -889,9 +889,9 @@ fn parse_time_format(s: Option<&str>) -> crate::matrix::time::TimeFormat {
     }
 }
 
-async fn build_eink_weather(w: &WeatherSection) -> Result<Box<dyn DynEinkModule>, String> {
+async fn build_eink_weather(w: &WeatherSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
     let collector = weather_collector(w)?;
-    let renderer = EinkWeatherMatrix::new_async()
+    let renderer = EinkWeatherMatrix::new_async(dims)
         .await
         .map_err(|e| format!("eink weather fonts: {e}"))?;
     Ok(eink_module_with_ttl(collector, renderer, w.cache_ttl_secs))

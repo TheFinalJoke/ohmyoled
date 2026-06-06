@@ -6,6 +6,7 @@
 //! black, the usual convention) that [`ohmyoled_matrix::EinkDisplay`]
 //! thresholds to black-ink-on-white and pushes to the panel.
 
+pub mod layout;
 pub mod time;
 pub mod weather;
 
