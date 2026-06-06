@@ -65,8 +65,8 @@ use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
 use crate::matrix::eink::{
-    EinkAuroraMatrix, EinkIssMatrix, EinkPiholeMatrix, EinkQuakeMatrix, EinkTimeMatrix,
-    EinkWeatherMatrix,
+    EinkAuroraMatrix, EinkHassMatrix, EinkIssMatrix, EinkLaunchMatrix, EinkPiholeMatrix,
+    EinkQuakeMatrix, EinkStockMatrix, EinkTimeMatrix, EinkWeatherMatrix,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::modules::eink_module::{DynEinkModule, EinkModule};
@@ -915,14 +915,38 @@ pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn D
             Err(e) => log::error!("eink pihole: skipping module: {e}"),
         }
     }
+    for s in cfg.stock.iter().filter(|s| s.run) {
+        match build_eink_stock(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: stock loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink stock: skipping module: {e}"),
+        }
+    }
+    for s in cfg.launch.iter().filter(|s| s.run) {
+        match build_eink_launch(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: launch loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink launch: skipping module: {e}"),
+        }
+    }
+    for s in cfg.hass.iter().filter(|s| s.run) {
+        match build_eink_hass(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: hass loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink hass: skipping module: {e}"),
+        }
+    }
 
     // Anything else enabled in the eink block is configured but not yet
     // renderable on e-paper — report it so the tile isn't silently ignored.
-    let pending = cfg.stock.iter().filter(|s| s.run).count()
-        + cfg.sport.iter().filter(|s| s.run()).count()
-        + cfg.flights.iter().filter(|s| s.run).count()
-        + cfg.launch.iter().filter(|s| s.run).count()
-        + cfg.hass.iter().filter(|s| s.run).count();
+    let pending = cfg.sport.iter().filter(|s| s.run()).count()
+        + cfg.flights.iter().filter(|s| s.run).count();
     if pending > 0 {
         log::info!(
             "eink registry: {pending} enabled tile(s) have no e-ink renderer yet"
@@ -1000,6 +1024,58 @@ async fn build_eink_pihole(s: &PiholeSection, dims: (u32, u32)) -> Result<Box<dy
     let renderer = EinkPiholeMatrix::new_async(dims)
         .await
         .map_err(|e| format!("eink pihole fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_stock(s: &StockSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = match s.api {
+        StockApi::Finnhub => {
+            let api_key = s.api_key.clone().ok_or_else(|| "stock: api_key missing".to_string())?;
+            StockCollector::from_finnhub(FinnhubConfig {
+                api_key,
+                symbol: s.symbol.clone(),
+            })
+            .map_err(|e| e.to_string())?
+        }
+        StockApi::Coingecko => StockCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+    };
+    let renderer = EinkStockMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink stock fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_launch(s: &LaunchSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = LaunchCollector::from_lldev(LldevConfig {
+        agency_filter: s.agency_filter.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkLaunchMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink launch fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_hass(s: &HassSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = HassCollector::from_rest(HassRestConfig {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+        entity_id: s.entity_id.clone(),
+        label_override: s.label.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let display = crate::matrix::hass::HassDisplay {
+        nominal_color: ohmyoled_matrix::Color::new(s.nominal_color.0, s.nominal_color.1, s.nominal_color.2),
+        alarm_color: ohmyoled_matrix::Color::new(s.alarm_color.0, s.alarm_color.1, s.alarm_color.2),
+        alarm_state: s.alarm_state.clone(),
+        mode: s.display_mode,
+    };
+    let renderer = EinkHassMatrix::new_async(display, dims)
+        .await
+        .map_err(|e| format!("eink hass fonts: {e}"))?;
     Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 

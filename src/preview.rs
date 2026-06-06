@@ -59,8 +59,9 @@ use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::eink::{
-    EinkAuroraFonts, EinkAuroraMatrix, EinkIssFonts, EinkIssMatrix, EinkPiholeFonts,
-    EinkPiholeMatrix, EinkQuakeFonts, EinkQuakeMatrix, EinkTimeFonts, EinkTimeMatrix,
+    EinkAuroraFonts, EinkAuroraMatrix, EinkHassFonts, EinkHassMatrix, EinkIssFonts, EinkIssMatrix,
+    EinkLaunchFonts, EinkLaunchMatrix, EinkPiholeFonts, EinkPiholeMatrix, EinkQuakeFonts,
+    EinkQuakeMatrix, EinkStockFonts, EinkStockMatrix, EinkTimeFonts, EinkTimeMatrix,
     EinkWeatherFonts, EinkWeatherMatrix,
 };
 use oledlib::matrix::{Renderer, TimeMatrix};
@@ -113,7 +114,8 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
 }
 
 /// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
-pub const EINK_NAMES: &[&str] = &["time", "weather", "pihole", "iss", "aurora", "quake"];
+pub const EINK_NAMES: &[&str] =
+    &["time", "weather", "pihole", "iss", "aurora", "quake", "stock", "launch", "hass"];
 
 /// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
 /// Backend is whatever `EinkDisplay` resolves to — the terminal inline-image
@@ -135,6 +137,9 @@ pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String
         "iss" => preview_eink_iss(&mut display, &fonts).await,
         "aurora" => preview_eink_aurora(&mut display, &fonts).await,
         "quake" => preview_eink_quake(&mut display, &fonts).await,
+        "stock" => preview_eink_stock(&mut display, &fonts).await,
+        "launch" => preview_eink_launch(&mut display, &fonts).await,
+        "hass" => preview_eink_hass(&mut display, &fonts).await,
         other => Err(format!(
             "unknown eink preview '{other}'. Available: {}",
             EINK_NAMES.join(", ")
@@ -277,6 +282,94 @@ async fn preview_eink_quake(display: &mut EinkDisplay, fonts: &Path) -> Result<(
     let mut i = 0usize;
     loop {
         let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_stock(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkStockMatrix::with_fonts_async(EinkStockFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let q = |current: f64| StockQuote {
+        api: StockApiSource::Finnhub,
+        symbol: "AAPL".into(),
+        name: "Apple Inc".into(),
+        open: 188.0,
+        current,
+        high: 192.4,
+        low: 187.1,
+        previous_close: 190.0,
+    };
+    let cycle = [q(195.2), q(185.4), q(190.0)];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_launch(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkLaunchMatrix::with_fonts_async(EinkLaunchFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let l = |offset_secs: i64, status: LaunchStatus| UpcomingLaunch {
+        provider: "SpaceX".into(),
+        vehicle: "Falcon 9".into(),
+        mission: "Starlink Group 8-1".into(),
+        launch_at: chrono::Utc::now() + ChDuration::seconds(offset_secs),
+        status,
+        country_code: "USA".into(),
+    };
+    // Far → near → imminent → liftoff, so each countdown phase/badge shows.
+    let cycle = [
+        l(3 * 86_400, LaunchStatus::Go),
+        l(2 * 3600, LaunchStatus::Go),
+        l(42, LaunchStatus::Go),
+        l(-30, LaunchStatus::InFlight),
+    ];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], chrono::Utc::now(), display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_hass(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let f = || EinkHassFonts { body: fonts.join("04B_03B_.TTF") };
+    let disp = |mode: HassDisplayMode, alarm: Option<&str>| HassDisplay {
+        alarm_state: alarm.map(|s| s.to_string()),
+        mode,
+        ..HassDisplay::default()
+    };
+    // One renderer per mode so all three layouts (state/historical/graph) and
+    // the alarm badge get airtime.
+    let renderers = [
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::State, None), dims).await?,
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::Graph, None), dims).await?,
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::Historical, None), dims).await?,
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::State, Some("72.4")), dims).await?,
+    ];
+    let now = chrono::Utc::now();
+    let entity = HassEntity {
+        state: "72.4".into(),
+        unit: Some("F".into()),
+        label: "Kitchen Temp".into(),
+        last_changed: now - ChDuration::seconds(8),
+        history: (0..16)
+            .map(|i| HassSample {
+                at: now - ChDuration::minutes(16 - i),
+                value: 68.0 + (i as f64 * 0.4),
+            })
+            .collect(),
+    };
+    let mut i = 0usize;
+    loop {
+        let img = renderers[i % renderers.len()].frame(&entity, display.width(), display.height());
         display.show(&img);
         i = i.wrapping_add(1);
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;

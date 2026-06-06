@@ -165,10 +165,69 @@ pub fn hbar(img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, frac: f32, ticks
     }
 }
 
+/// Truncate `text` to the widest prefix that fits `max_px` in `font`, adding
+/// an `…` when it was cut. Returns `text` unchanged when it already fits.
+pub fn fit_text(font: &Font, text: &str, max_px: i32) -> String {
+    if font.text_width(text) <= max_px {
+        return text.to_string();
+    }
+    let ell_w = font.text_width("…");
+    let mut out = String::new();
+    let mut w = 0;
+    for ch in text.chars() {
+        let cw = font.text_width(&ch.to_string());
+        if w + cw + ell_w > max_px {
+            break;
+        }
+        out.push(ch);
+        w += cw;
+    }
+    out.push('…');
+    out
+}
+
 /// Total width a [`badge`] occupies for `text` (box + horizontal padding).
 /// Use it to center a badge: `badge(img, font, cx - badge_width(font, text)/2, …)`.
 pub fn badge_width(font: &Font, text: &str) -> i32 {
     font.text_width(text) + 2 * (font.height() / 3).max(3)
+}
+
+/// Draw a sparkline of `series` filling the box `[x, x+w] × [y, y+h]`.
+///
+/// Autoscales the value range to the box height (larger values draw higher),
+/// connects consecutive points with line segments, and marks the newest
+/// (rightmost) point with a small filled square — the "you are here" dot. Draws
+/// nothing for fewer than two finite points (the caller shows a NO-DATA badge);
+/// a flat series draws a centered horizontal line.
+pub fn sparkline(img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, series: &[f32], color: Color) {
+    let pts: Vec<f32> = series.iter().copied().filter(|v| v.is_finite()).collect();
+    if pts.len() < 2 || w < 2 || h < 1 {
+        return;
+    }
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for &v in &pts {
+        lo = lo.min(v);
+        hi = hi.max(v);
+    }
+    let span = hi - lo;
+    // Map index i and value v to a screen point inside the box.
+    let n = pts.len() as i32;
+    let sx = |i: i32| x + (w - 1) * i / (n - 1);
+    let sy = |v: f32| {
+        if span <= f32::EPSILON {
+            y + h / 2
+        } else {
+            // Invert: larger value → smaller y (higher on screen).
+            y + h - 1 - ((v - lo) / span * (h - 1) as f32).round() as i32
+        }
+    };
+    for i in 1..n {
+        draw_line(img, sx(i - 1), sy(pts[(i - 1) as usize]), sx(i), sy(pts[i as usize]), color);
+    }
+    // Newest-point marker.
+    let mx = sx(n - 1);
+    let my = sy(pts[(n - 1) as usize]);
+    fill_rect(img, mx - 1, my - 1, 3, 3, color);
 }
 
 /// Draw a badge — a small boxed label. `filled` inverts it (solid box with the
@@ -222,6 +281,32 @@ mod tests {
         assert_eq!(scaled_px(48.0, 240), 24.0);
         // Floor prevents collapse on tiny panels.
         assert_eq!(scaled_px(4.0, 60), 6.0);
+    }
+
+    #[test]
+    fn sparkline_rises_left_to_right() {
+        // A monotonically increasing series should light more pixels in the
+        // upper rows on the right half than the left half.
+        let mut img = RgbImage::new(40, 20);
+        let series: Vec<f32> = (0..20).map(|i| i as f32).collect();
+        sparkline(&mut img, 0, 0, 40, 20, &series, Color::WHITE);
+        let lit_in = |x0: u32, x1: u32, y0: u32, y1: u32| {
+            let mut c = 0;
+            for yy in y0..y1 {
+                for xx in x0..x1 {
+                    if img.get_pixel(xx, yy).0 != [0, 0, 0] {
+                        c += 1;
+                    }
+                }
+            }
+            c
+        };
+        // Top-right quadrant lit, bottom-right less so (line ends high on the right).
+        assert!(lit_in(20, 40, 0, 10) > 0, "rising series should reach the top-right");
+        // Empty / single-point series draws nothing.
+        let mut blank = RgbImage::new(40, 20);
+        sparkline(&mut blank, 0, 0, 40, 20, &[1.0], Color::WHITE);
+        assert!(blank.pixels().all(|p| p.0 == [0, 0, 0]), "single point draws nothing");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! selection (currently the weather tile — the one with an e-ink renderer).
 //! Produces the full `eink` config object.
 
-use crate::createjson::{aurora, iss, pihole, quake, time, ui, weather};
+use crate::createjson::{aurora, hass, iss, launch, pihole, quake, stock, time, ui, weather};
 use serde_json::{json, Map, Value};
 
 pub fn configure() -> Result<Value, String> {
@@ -95,6 +95,30 @@ pub fn configure() -> Result<Value, String> {
                 modules.insert("pihole".to_string(), serde_json::to_value(opts).expect("PiholeOptions serializes"));
             }
             Err(e) => ui::warn(&format!("pihole tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the stock tile to the e-paper display?", false) {
+        match stock::configure() {
+            Ok(opts) => {
+                modules.insert("stock".to_string(), serde_json::to_value(opts).expect("StockOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("stock tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the rocket-launch tile to the e-paper display?", false) {
+        match launch::configure() {
+            Ok(opts) => {
+                modules.insert("launch".to_string(), serde_json::to_value(opts).expect("LaunchOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("launch tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the Home Assistant tile to the e-paper display?", false) {
+        match hass::configure() {
+            Ok(opts) => {
+                modules.insert("hass".to_string(), serde_json::to_value(opts).expect("HassOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("hass tile skipped: {e}")),
         }
     }
 
