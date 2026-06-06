@@ -359,6 +359,14 @@ fn describe_existing_entry(section: &'static str, value: &Value) -> String {
                 _ => None,
             }
         }
+        "eink" => {
+            let model = str_field("model").unwrap_or_else(|| "?".into());
+            let enabled = value.get("enabled").and_then(|b| b.as_bool()).unwrap_or(false);
+            Some(format!(
+                " ({model}, {})",
+                if enabled { "enabled" } else { "disabled" }
+            ))
+        }
         _ => None,
     };
     format!(
@@ -385,7 +393,8 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
                 {"run":true,"sport":"basketball","team_logo":{"name":"Dallas Mavericks","sportsdb_leagueid":4387,"url":"https://www.thesportsdb.com/images/media/team/badge/yqrxrs1420568796.png","sport":"basketball","shorthand":"DAL","apisportsid":138,"sportsdbid":134875,"sportsipyid":0}},
                 {"run":true,"sport":"golf","tour":"pga"},
                 {"run":true,"sport":"f1"}
-            ]
+            ],
+            "eink": {"enabled":false,"model":"4in2","rotation":0,"threshold":128,"modules":{"weather":{"run":true,"api":"nws","current_location":true,"current_location_api_key":"null","weather_format":"imperial","animation":"subtle"}}}
         }"#;
         return serde_json::from_str(dev_json).expect("dev json must parse");
     }
