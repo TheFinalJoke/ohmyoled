@@ -639,7 +639,7 @@ hardware backend.
 | `OHMYOLED_MATRIX_MODE` | `auto` (default), `test` (force terminal renderer), `hardware` (force GPIO; fall back to terminal).   |
 | `OHMYOLED_EINK_MODE`   | `auto` (default), `terminal` (force the hardware-free half-block renderer), `hardware` (force the Waveshare panel; fall back to terminal). |
 | `OHMYOLED_EINK_PNG`    | If set to a path, each e-paper frame is also written there as a pixel-exact, full-resolution PNG. |
-| `OHMYOLED_EINK_COLS`   | Terminal width (columns) the e-paper preview is downscaled to fit. Defaults to `COLUMNS`, else 80. Raise it (e.g. 160) for finer detail. |
+| `OHMYOLED_EINK_COLS`   | Terminal width (columns) the e-paper preview is downscaled to fit. Auto-detected from the terminal (ioctl), falling back to `COLUMNS`, then 80. Set it (e.g. 200) to force finer/coarser detail. |
 | `RUST_LOG`             | `error` (default), `warn`, `info`, `debug`, `trace`. Or `module=level` (e.g. `oledlib::api=debug`).   |
 | `RUST_LOG_STYLE`       | `always` (default), `never`, `auto`. Controls ANSI color in logs.                                     |
 | `DEV`                  | If set (any value), `RGBMatrix::test` / `EinkDisplay::test` is forced. Equivalent to `*_MODE=test` but coarser. |

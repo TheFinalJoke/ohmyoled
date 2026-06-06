@@ -1332,6 +1332,7 @@ dependencies = [
  "embedded-hal-bus",
  "epd-waveshare",
  "image",
+ "libc",
  "log",
  "rpi-led-matrix",
  "rppal",

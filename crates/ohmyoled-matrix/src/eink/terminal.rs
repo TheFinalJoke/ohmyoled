@@ -48,43 +48,54 @@ impl EinkTerminalBackend {
         // Out-of-range bytes read as white (no ink).
         packed.get(byte).map(|b| b & mask == 0).unwrap_or(false)
     }
+}
 
-    /// Any inked pixel in the source rectangle `[x0,x1) × [y0,y1)`? Used by the
-    /// downscaler so thin strokes don't vanish.
-    #[allow(clippy::too_many_arguments)]
-    fn block_has_ink(
-        packed: &[u8],
-        stride: usize,
-        x0: u32,
-        x1: u32,
-        y0: u32,
-        y1: u32,
-    ) -> bool {
-        for y in y0..y1 {
-            for x in x0..x1 {
-                if Self::is_ink(packed, stride, x, y) {
-                    return true;
-                }
-            }
-        }
-        false
+/// Detect the terminal width in columns via `TIOCGWINSZ` on stdout.
+#[cfg(unix)]
+fn tty_cols() -> Option<u32> {
+    use std::os::unix::io::AsRawFd;
+    let fd = std::io::stdout().as_raw_fd();
+    // SAFETY: zeroed winsize is valid; ioctl only writes into it.
+    let mut ws: libc::winsize = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut ws) };
+    if rc == 0 && ws.ws_col > 0 {
+        Some(ws.ws_col as u32)
+    } else {
+        None
     }
 }
 
-/// Target terminal width: `OHMYOLED_EINK_COLS`, else `COLUMNS`, else 80;
-/// never wider than the panel itself.
+#[cfg(not(unix))]
+fn tty_cols() -> Option<u32> {
+    None
+}
+
+/// Target terminal width. Precedence: explicit `OHMYOLED_EINK_COLS`, the real
+/// terminal size (ioctl), `$COLUMNS`, then 80. Never wider than the panel.
 fn target_cols(panel_width: u32) -> u32 {
-    let cap = std::env::var("OHMYOLED_EINK_COLS")
+    let explicit = std::env::var("OHMYOLED_EINK_COLS")
         .ok()
-        .or_else(|| std::env::var("COLUMNS").ok())
         .and_then(|s| s.trim().parse::<u32>().ok())
-        .filter(|&c| c >= 16)
+        .filter(|&c| c >= 16);
+    let cap = explicit
+        .or_else(|| tty_cols().filter(|&c| c >= 16))
+        .or_else(|| {
+            std::env::var("COLUMNS")
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+                .filter(|&c| c >= 16)
+        })
         .unwrap_or(DEFAULT_COLS);
     panel_width.min(cap)
 }
 
 /// Downscale the packed frame to an `out_w × out_h` boolean ink grid,
-/// preserving aspect ratio with square source blocks (`scale` px per cell).
+/// preserving aspect ratio with square source blocks.
+///
+/// A cell is inked when the source block is at least ~40% ink (so the gaps
+/// inside thick glyphs survive instead of merging into solid blocks), OR when
+/// a full row/column of the block is inked (so thin 1px rules and strokes
+/// don't vanish).
 fn downsample(packed: &[u8], stride: usize, width: u32, height: u32) -> (Vec<bool>, u32, u32) {
     let out_w = target_cols(width).max(1);
     let scale = width as f32 / out_w as f32; // source px per output cell
@@ -97,11 +108,36 @@ fn downsample(packed: &[u8], stride: usize, width: u32, height: u32) -> (Vec<boo
         for ox in 0..out_w {
             let x0 = (ox as f32 * scale) as u32;
             let x1 = (((ox + 1) as f32 * scale).ceil() as u32).min(width).max(x0 + 1);
-            grid[(oy * out_w + ox) as usize] =
-                EinkTerminalBackend::block_has_ink(packed, stride, x0, x1, y0, y1);
+            grid[(oy * out_w + ox) as usize] = cell_inked(packed, stride, x0, x1, y0, y1);
         }
     }
     (grid, out_w, out_h)
+}
+
+/// Decide whether one downsample cell reads as ink. Coverage threshold with a
+/// thin-line rescue (any fully-inked row or column).
+fn cell_inked(packed: &[u8], stride: usize, x0: u32, x1: u32, y0: u32, y1: u32) -> bool {
+    let total = ((x1 - x0) * (y1 - y0)).max(1);
+    let mut ink = 0u32;
+    for y in y0..y1 {
+        let mut row_all = true;
+        for x in x0..x1 {
+            if EinkTerminalBackend::is_ink(packed, stride, x, y) {
+                ink += 1;
+            } else {
+                row_all = false;
+            }
+        }
+        if row_all {
+            return true; // a solid horizontal run (e.g. a rule)
+        }
+    }
+    for x in x0..x1 {
+        if (y0..y1).all(|y| EinkTerminalBackend::is_ink(packed, stride, x, y)) {
+            return true; // a solid vertical run
+        }
+    }
+    ink * 100 >= total * 40
 }
 
 impl EinkBackend for EinkTerminalBackend {

@@ -28,6 +28,9 @@ eink = ["dep:rppal", "dep:epd-waveshare", "dep:embedded-hal", "dep:embedded-hal-
 log = "0.4"
 image = "0.25"
 ab_glyph = "0.2"
+# Used only by the e-ink terminal backend to query the real terminal size
+# (TIOCGWINSZ) so the preview fits the window even when $COLUMNS isn't exported.
+libc = "0.2"
 
 # rpi-led-matrix / rppal / epd-waveshare are only declared for ARM targets so
 # that x86_64 builds never pull in rpi-led-matrix-sys (whose build script
