@@ -10,9 +10,10 @@
 //!
 //! # Backends
 //!
-//! - **Terminal** (always compiled): renders the 1-bpp buffer to stdout with
-//!   Unicode half-blocks so you can iterate on layouts with no hardware — the
-//!   e-ink analog of [`crate::terminal`]. This is the default off-Pi.
+//! - **Terminal** (always compiled): renders the 1-bpp buffer to stdout as a
+//!   real inline image (Sixel, with a live-reloading PNG fallback) so you can
+//!   iterate on layouts with no hardware — the e-ink analog of
+//!   [`crate::terminal`]. This is the default off-Pi.
 //! - **Hardware** (feature `eink`, ARM only): drives a real Waveshare panel
 //!   over SPI via `rppal` + `epd-waveshare`. See [`hardware`].
 //!

@@ -112,9 +112,10 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
 pub const EINK_NAMES: &[&str] = &["time", "weather"];
 
 /// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
-/// Backend is whatever `EinkDisplay` resolves to — the terminal half-block
-/// view in the devcontainer (no hardware), the panel on a Pi. Unlike the
-/// module path this refreshes every few seconds so layout iteration is quick.
+/// Backend is whatever `EinkDisplay` resolves to — the terminal inline-image
+/// (Sixel/PNG) view in the devcontainer (no hardware), the panel on a Pi.
+/// Unlike the module path this refreshes every few seconds so layout iteration
+/// is quick.
 pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String> {
     let fonts = font_dir();
     log::info!(

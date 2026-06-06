@@ -625,10 +625,16 @@ eink:
 
 Iterate on layouts with **no hardware**: `--preview eink:time` /
 `--preview eink:weather` (or just `eink`) renders the screen live in the
-terminal via half-blocks, and
-`OHMYOLED_EINK_PNG=/path.png` dumps a pixel-exact PNG. The whole layout
-pipeline runs off-Pi — the physical panel is only touched by the ARM-only
-hardware backend.
+terminal. By default it draws a **real inline image** via the Sixel
+graphics protocol — pixel-exact and font-independent, identical to the
+panel output (in VS Code, enable the `terminal.integrated.enableImages`
+setting). Every frame is also written as a full-resolution PNG (to
+`OHMYOLED_EINK_PNG` or a temp file) that VS Code live-reloads, so the
+preview works even without Sixel — set `OHMYOLED_EINK_RENDER=png` to rely
+on it alone. `OHMYOLED_EINK_RENDER=glyphs` falls back to a Unicode
+block/braille mosaic for terminals with neither. The whole layout pipeline
+runs off-Pi — the physical panel is only touched by the ARM-only hardware
+backend.
 
 ---
 
@@ -637,9 +643,11 @@ hardware backend.
 | Variable               | Effect                                                                                                |
 | ---------------------- | ----------------------------------------------------------------------------------------------------- |
 | `OHMYOLED_MATRIX_MODE` | `auto` (default), `test` (force terminal renderer), `hardware` (force GPIO; fall back to terminal).   |
-| `OHMYOLED_EINK_MODE`   | `auto` (default), `terminal` (force the hardware-free half-block renderer), `hardware` (force the Waveshare panel; fall back to terminal). |
-| `OHMYOLED_EINK_PNG`    | If set to a path, each e-paper frame is also written there as a pixel-exact, full-resolution PNG. |
-| `OHMYOLED_EINK_COLS`   | Terminal width (columns) the e-paper preview is downscaled to fit. Auto-detected from the terminal (ioctl), falling back to `COLUMNS`, then 80. Set it (e.g. 200) to force finer/coarser detail. |
+| `OHMYOLED_EINK_MODE`   | `auto` (default), `terminal` (force the hardware-free preview renderer), `hardware` (force the Waveshare panel; fall back to terminal). |
+| `OHMYOLED_EINK_RENDER` | How the terminal preview draws: `sixel` (default — inline image + PNG), `png` (only refresh the PNG), `glyphs` (Unicode block/braille mosaic). |
+| `OHMYOLED_EINK_PNG`    | Path the preview PNG is refreshed to each frame (defaults to a temp file). Open it in VS Code to watch it live-reload. |
+| `OHMYOLED_EINK_ZOOM`   | Scale factor for the Sixel image (e.g. `1.5` bigger, `0.75` smaller). Default fits the terminal's reported pixel size. |
+| `OHMYOLED_EINK_GLYPHS` | Glyph set for `RENDER=glyphs`: `braille` (default), `sextant`, `quadrant`, `half`. `OHMYOLED_EINK_COLS`/`_ROWS` size that mosaic. |
 | `RUST_LOG`             | `error` (default), `warn`, `info`, `debug`, `trace`. Or `module=level` (e.g. `oledlib::api=debug`).   |
 | `RUST_LOG_STYLE`       | `always` (default), `never`, `auto`. Controls ANSI color in logs.                                     |
 | `DEV`                  | If set (any value), `RGBMatrix::test` / `EinkDisplay::test` is forced. Equivalent to `*_MODE=test` but coarser. |
