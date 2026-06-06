@@ -43,15 +43,21 @@ pub enum EinkMode {
     Hardware,
 }
 
-/// Read `OHMYOLED_EINK_MODE` and parse it into an [`EinkMode`].
-/// Returns `None` when unset/unrecognised so the caller keeps its default.
-pub fn mode_from_env() -> Option<EinkMode> {
-    match std::env::var("OHMYOLED_EINK_MODE").ok()?.to_lowercase().as_str() {
+/// Parse a backend name (e.g. from config or env) into an [`EinkMode`].
+/// Returns `None` for unset/unrecognised so callers can fall back.
+pub fn parse_mode(s: &str) -> Option<EinkMode> {
+    match s.trim().to_lowercase().as_str() {
         "test" | "terminal" => Some(EinkMode::Terminal),
         "hardware" | "hw" => Some(EinkMode::Hardware),
         "auto" => Some(EinkMode::Auto),
         _ => None,
     }
+}
+
+/// Read `OHMYOLED_EINK_MODE` and parse it into an [`EinkMode`].
+/// Returns `None` when unset/unrecognised so the caller keeps its default.
+pub fn mode_from_env() -> Option<EinkMode> {
+    parse_mode(&std::env::var("OHMYOLED_EINK_MODE").ok()?)
 }
 
 /// Configuration for an e-paper panel.
@@ -75,6 +81,17 @@ pub struct EinkOptions {
     pub width: Option<u32>,
     /// Explicit height override (see [`EinkOptions::width`]).
     pub height: Option<u32>,
+    /// Configured backend (`Terminal`/`Hardware`/`Auto`). `None` defers to
+    /// `OHMYOLED_EINK_MODE`, then to [`EinkMode::Auto`]. The env var always
+    /// wins over this, so a config default can be overridden at runtime.
+    pub mode: Option<EinkMode>,
+    /// Configured default for the terminal backend's hardware emulation
+    /// (full-refresh flash + dwell). `OHMYOLED_EINK_EMULATE` overrides it;
+    /// `None` ⇒ off unless the env var enables it.
+    pub emulate: Option<bool>,
+    /// Configured emulated full-refresh duration in ms. `OHMYOLED_EINK_REFRESH_MS`
+    /// overrides it; `None` ⇒ the backend's built-in default.
+    pub refresh_ms: Option<u64>,
 }
 
 impl Default for EinkOptions {
@@ -87,6 +104,9 @@ impl Default for EinkOptions {
             threshold: 128,
             width: None,
             height: None,
+            mode: None,
+            emulate: None,
+            refresh_ms: None,
         }
     }
 }
@@ -148,13 +168,19 @@ pub struct EinkDisplay {
     height: u32,
     threshold: u8,
     pub mode: EinkMode,
+    /// The last packed buffer flushed to the panel. [`EinkDisplay::show`] skips
+    /// the flush when the new frame is byte-identical — e-paper refreshes are
+    /// slow and flashy, so re-pushing an unchanged image is pure waste (and a
+    /// visible flicker on hardware / under emulation).
+    last_packed: Option<Vec<u8>>,
 }
 
 impl EinkDisplay {
     /// Create a display using automatic backend selection
     /// (`OHMYOLED_EINK_MODE` wins, otherwise [`EinkMode::Auto`]).
     pub fn new(options: EinkOptions) -> Self {
-        let mode = mode_from_env().unwrap_or(EinkMode::Auto);
+        // Precedence: env var wins, then the configured mode, then Auto.
+        let mode = mode_from_env().or(options.mode).unwrap_or(EinkMode::Auto);
         Self::with_mode(options, mode)
     }
 
@@ -171,7 +197,7 @@ impl EinkDisplay {
 
         let (backend, actual_mode): (Box<dyn EinkBackend>, EinkMode) = match mode {
             EinkMode::Terminal => (
-                Box::new(terminal::EinkTerminalBackend::new()),
+                Box::new(terminal::EinkTerminalBackend::with_config(options.emulate, options.refresh_ms)),
                 EinkMode::Terminal,
             ),
             EinkMode::Hardware | EinkMode::Auto => {
@@ -185,7 +211,7 @@ impl EinkDisplay {
                             } else {
                                 log::info!("eink hardware unavailable ({e}); using terminal mode");
                             }
-                            (Box::new(terminal::EinkTerminalBackend::new()), EinkMode::Terminal)
+                            (Box::new(terminal::EinkTerminalBackend::with_config(options.emulate, options.refresh_ms)), EinkMode::Terminal)
                         }
                     }
                 }
@@ -194,7 +220,7 @@ impl EinkDisplay {
                     log::info!(
                         "eink hardware backend unavailable on this target/feature set; using terminal mode"
                     );
-                    (Box::new(terminal::EinkTerminalBackend::new()), EinkMode::Terminal)
+                    (Box::new(terminal::EinkTerminalBackend::with_config(options.emulate, options.refresh_ms)), EinkMode::Terminal)
                 }
             }
         };
@@ -205,6 +231,7 @@ impl EinkDisplay {
             height,
             threshold,
             mode: actual_mode,
+            last_packed: None,
         }
     }
 
@@ -222,14 +249,25 @@ impl EinkDisplay {
     ///
     /// `img` should be `width() × height()`; larger/smaller images are packed
     /// against the panel dimensions (extra pixels ignored, missing ones blank).
+    ///
+    /// No-ops when the packed frame is byte-identical to the last one shown, so
+    /// callers can re-render on a timer without forcing a needless refresh — the
+    /// panel only updates when its pixels actually change.
     pub fn show(&mut self, img: &RgbImage) {
         let packed = pack_1bpp(img, self.width, self.height, self.threshold);
+        // Skip the (slow, flashy) panel refresh when nothing changed.
+        if self.last_packed.as_deref() == Some(packed.as_slice()) {
+            return;
+        }
         self.backend.flush(&packed, self.width, self.height);
+        self.last_packed = Some(packed);
     }
 
     /// Blank the panel to white.
     pub fn clear(&mut self) {
         self.backend.clear();
+        // The panel no longer matches any prior frame; force the next show().
+        self.last_packed = None;
     }
 }
 
@@ -268,6 +306,54 @@ pub fn pack_1bpp(img: &RgbImage, width: u32, height: u32, threshold: u8) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// Backend that just counts how many frames it was asked to flush.
+    struct CountingBackend {
+        flushes: Arc<AtomicUsize>,
+    }
+    impl EinkBackend for CountingBackend {
+        fn flush(&mut self, _packed: &[u8], _width: u32, _height: u32) {
+            self.flushes.fetch_add(1, Ordering::SeqCst);
+        }
+        fn clear(&mut self) {}
+    }
+
+    fn white(w: u32, h: u32) -> RgbImage {
+        let mut img = RgbImage::new(w, h);
+        for p in img.pixels_mut() {
+            *p = image::Rgb([255, 255, 255]);
+        }
+        img
+    }
+
+    #[test]
+    fn show_skips_identical_frames_and_clear_resets() {
+        let flushes = Arc::new(AtomicUsize::new(0));
+        let mut d = EinkDisplay {
+            backend: Box::new(CountingBackend { flushes: flushes.clone() }),
+            width: 8,
+            height: 8,
+            threshold: 128,
+            mode: EinkMode::Terminal,
+            last_packed: None,
+        };
+        let black = RgbImage::new(8, 8);
+        let lit = white(8, 8);
+
+        d.show(&black); // first frame always flushes
+        d.show(&black); // identical → skipped
+        assert_eq!(flushes.load(Ordering::SeqCst), 1, "duplicate frame must not refresh");
+
+        d.show(&lit); // changed → flush
+        d.show(&lit); // identical → skipped
+        assert_eq!(flushes.load(Ordering::SeqCst), 2, "only the change refreshes");
+
+        d.clear(); // invalidates the cache
+        d.show(&lit); // same pixels as before, but post-clear → must flush
+        assert_eq!(flushes.load(Ordering::SeqCst), 3, "clear forces the next show to refresh");
+    }
 
     #[test]
     fn dimensions_known_and_unknown() {

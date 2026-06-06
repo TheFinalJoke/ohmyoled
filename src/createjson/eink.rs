@@ -77,6 +77,11 @@ pub fn configure() -> Result<Value, String> {
         "model": model,
         "rotation": 0,
         "threshold": threshold,
+        // Backend + emulation defaults; all overridable by OHMYOLED_EINK_* env
+        // vars. "auto" picks hardware on a Pi and the terminal preview off-Pi.
+        "mode": "auto",
+        "emulate": false,
+        "refresh_ms": 2500,
         "modules": Value::Object(modules),
     });
     // Only emit width/height when overridden, so the common case stays clean.

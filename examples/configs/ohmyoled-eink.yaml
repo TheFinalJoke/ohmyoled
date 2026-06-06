@@ -1,0 +1,34 @@
+# Ready-to-run e-paper (e-ink) config.
+#
+#   cargo run -- -f examples/configs/ohmyoled-eink.yaml
+#
+# `eink.enabled: true` turns on the e-paper display. No `matrix_options` block
+# is needed for an eink-only run — the LED matrix is only built if you add
+# top-level tiles (time:/weather:/… at the root). Add both and they run at the
+# same time (separate panels on hardware).
+
+eink:
+  enabled: true
+  model: "7in5_v2"            # 800x480 7.5" — the recommended panel
+  rotation: 0
+  threshold: 128              # luma cut for black/white (0–255)
+  # width: 800                # optional: set BOTH to override the model size
+  # height: 480
+
+  # Backend + emulation (all overridable by the matching OHMYOLED_EINK_* env
+  # vars, which win at runtime):
+  mode: auto                  # auto (hardware on a Pi, else terminal) | terminal | hardware
+  emulate: false             # terminal preview only: mimic the slow hardware
+                              #   full-refresh flash so the preview is honest
+  refresh_ms: 2500            # emulated full-refresh duration when emulate: true
+
+  modules:                    # the e-paper display's own tiles
+    time:
+      run: true
+      color: [255, 255, 255]  # ignored on B/W; kept for config parity
+      time_format: "12h"
+    weather:
+      run: true               # needs network: NWS (US, no key) + IP geolocation
+      api: nws
+      current_location: true
+      weather_format: imperial

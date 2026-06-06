@@ -183,6 +183,10 @@ rotation = 0
 threshold = 128               # luma cut for black/white (0–255)
 # width = 800                 # optional: set BOTH to override the model's
 # height = 480                # native resolution (unlisted/custom panels)
+mode = "auto"                 # auto (hardware on a Pi, else terminal) | terminal | hardware
+emulate = false               # terminal preview only: mimic the slow hardware full-refresh flash
+refresh_ms = 2500             # emulated full-refresh duration (ms) when emulate = true
+# ↑ all three are overridden by OHMYOLED_EINK_MODE / _EMULATE / _REFRESH_MS at runtime
 
 # This display's own content (its own RegistryConfig). The e-paper display
 # rotates through these tiles.

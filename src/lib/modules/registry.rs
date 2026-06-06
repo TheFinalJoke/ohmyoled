@@ -796,6 +796,21 @@ pub struct EinkRegistryConfig {
     /// Optional explicit height override (see `width`).
     #[serde(default)]
     pub height: Option<u32>,
+    /// Backend to drive: `"auto"` (hardware on a Pi, else terminal preview),
+    /// `"terminal"` (always the dev preview), or `"hardware"`. Omit for `auto`.
+    /// `OHMYOLED_EINK_MODE` overrides this at runtime.
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Make the terminal preview mimic real hardware — play the slow
+    /// full-refresh flash + dwell on every change. Dev/preview only (the
+    /// hardware backend always behaves this way). `OHMYOLED_EINK_EMULATE`
+    /// overrides this.
+    #[serde(default)]
+    pub emulate: Option<bool>,
+    /// Emulated full-refresh duration in ms when `emulate` is on (default
+    /// ~2500). `OHMYOLED_EINK_REFRESH_MS` overrides this.
+    #[serde(default)]
+    pub refresh_ms: Option<u64>,
     /// This display's own tile selection — a full registry config.
     #[serde(default)]
     pub modules: RegistryConfig,
@@ -812,12 +827,24 @@ fn default_eink_threshold() -> u8 {
 impl EinkRegistryConfig {
     /// Convert to the matrix crate's panel options.
     pub fn options(&self) -> ohmyoled_matrix::EinkOptions {
+        // An unrecognised mode string falls back to auto rather than failing —
+        // but warn so a typo isn't silently ignored.
+        let mode = self.mode.as_deref().and_then(|s| {
+            let parsed = ohmyoled_matrix::parse_eink_mode(s);
+            if parsed.is_none() {
+                log::warn!("eink: unknown mode '{s}', using auto (valid: auto|terminal|hardware)");
+            }
+            parsed
+        });
         ohmyoled_matrix::EinkOptions {
             model: self.model.clone(),
             rotation: self.rotation,
             threshold: self.threshold,
             width: self.width,
             height: self.height,
+            mode,
+            emulate: self.emulate,
+            refresh_ms: self.refresh_ms,
         }
     }
 }

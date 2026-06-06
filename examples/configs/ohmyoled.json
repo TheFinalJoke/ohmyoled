@@ -113,6 +113,9 @@
     "model": "7in5_v2",
     "rotation": 0,
     "threshold": 128,
+    "mode": "auto",
+    "emulate": false,
+    "refresh_ms": 2500,
     "modules": {
       "time": {
         "run": true,

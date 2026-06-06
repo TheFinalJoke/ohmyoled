@@ -68,6 +68,7 @@ pub struct EinkWeatherMatrix {
     title: Font,
     label: Font,
     small: Font,
+    unit: Font,
     icon_big: Font,
     icon_small: Font,
 }
@@ -87,12 +88,13 @@ impl EinkWeatherMatrix {
     pub fn with_fonts(paths: EinkWeatherFonts, dims: (u32, u32)) -> Result<Self, String> {
         let h = dims.1;
         Ok(Self {
-            big: Font::load_ttf(&paths.body, scaled_px(70.0, h))?,
-            title: Font::load_ttf(&paths.body, scaled_px(26.0, h))?,
-            label: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
-            small: Font::load_ttf(&paths.body, scaled_px(14.0, h))?,
-            icon_big: Font::load_ttf(&paths.icon, scaled_px(90.0, h))?,
-            icon_small: Font::load_ttf(&paths.icon, scaled_px(29.0, h))?,
+            big: Font::load_ttf(&paths.body, scaled_px(132.0, h))?,
+            title: Font::load_ttf(&paths.body, scaled_px(30.0, h))?,
+            label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
+            small: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
+            unit: Font::load_ttf(&paths.body, scaled_px(42.0, h))?,
+            icon_big: Font::load_ttf(&paths.icon, scaled_px(124.0, h))?,
+            icon_small: Font::load_ttf(&paths.icon, scaled_px(46.0, h))?,
         })
     }
 
@@ -126,26 +128,17 @@ impl EinkWeatherMatrix {
         let rule_y = header_base + margin / 2;
         draw_line(&mut img, margin, rule_y, wi - margin, rule_y, fg);
 
-        // ── Big current temperature + icon ──────────────────────────────
-        let temp_str = format!("{:.0}", data.current.temp);
-        let temp_base = rule_y + (hi - rule_y) * 38 / 100;
-        draw_text(&mut img, &self.big, margin, temp_base, fg, &temp_str);
-        let temp_w = self.big.text_width(&temp_str);
-        // Degree ring just past the digits, near the top of the glyph. Radius
-        // scales with the big font so it reads right on any panel.
-        let deg_r = (self.big.height() / 14).max(2);
-        let deg_cx = margin + temp_w + deg_r * 3;
-        let deg_cy = temp_base + self.big.text_v_center_from_baseline(&temp_str) - self.big.ascent() / 4;
-        degree_ring(&mut img, deg_cx, deg_cy.max(margin + deg_r), deg_r, fg);
-        draw_text(&mut img, &self.label, deg_cx + deg_r * 3, temp_base, fg, "F");
+        // The body below the header splits into three stacked bands that fill
+        // the panel: a tall hero (big temp + icon), a stats band, and a
+        // forecast strip pinned to the bottom edge.
+        let has_forecast = !data.daily.is_empty();
+        let strip_top = if has_forecast {
+            hi - (hi * 38 / 100)
+        } else {
+            hi
+        };
 
-        // Condition icon, right-aligned on the same band.
-        let icon_glyph = data.current.icon.glyph.to_string();
-        let icon_w = self.icon_big.text_width(&icon_glyph);
-        let icon_x = wi - margin - icon_w;
-        draw_text(&mut img, &self.icon_big, icon_x, temp_base, fg, &icon_glyph);
-
-        // ── Stats row: feels / humidity / wind / UV ─────────────────────
+        // ── Stats + hi/lo, stacked just above the forecast strip ─────────
         let wind_dir = data
             .current
             .wind_direction_deg
@@ -159,20 +152,52 @@ impl EinkWeatherMatrix {
         if let Some(uv) = data.current.uv {
             stats.push(format!("UV {uv:.0}"));
         }
-        let stats_y = temp_base + self.label.height() + margin;
-        stat_row(&mut img, &self.label, stats_y, fg, &stats);
-
-        // ── Today high / low ────────────────────────────────────────────
         let hilo = format!(
-            "H {:.0}F   L {:.0}F",
+            "H {:.0}F    L {:.0}F",
             data.forecast.today_high, data.forecast.today_low
         );
-        let hilo_y = stats_y + self.label.height() + margin / 2;
+        // hi/lo sits just above the divider; stats one line above that.
+        let band_bottom = if has_forecast { strip_top } else { hi };
+        let hilo_y = band_bottom - margin - (self.label.height() - self.label.ascent());
+        let stats_y = hilo_y - self.label.height() - margin / 2;
+        stat_row(&mut img, &self.label, stats_y, fg, &stats);
         draw_text(&mut img, &self.label, margin, hilo_y, fg, &hilo);
 
-        // ── Forecast strip across the bottom ────────────────────────────
-        if !data.daily.is_empty() {
-            let strip_top = hilo_y + margin / 2;
+        // ── Big current temperature + icon, centered in the hero band ───
+        let temp_str = format!("{:.0}", data.current.temp);
+        let temp_w = self.big.text_width(&temp_str);
+        // Hero band spans the header rule down to the stats; center the
+        // numerals' visual midpoint in it so the big glyphs feel anchored.
+        let hero_top = rule_y;
+        let hero_bottom = stats_y - self.label.ascent();
+        let hero_cy = (hero_top + hero_bottom) / 2;
+        let temp_base = hero_cy - self.big.text_v_center_from_baseline(&temp_str);
+        draw_text(&mut img, &self.big, margin, temp_base, fg, &temp_str);
+
+        // Degree ring + unit, set tight against the digits as a single "°F"
+        // group. The ring sits at the cap-height shoulder; the unit letter
+        // hangs from the same baseline as the numerals. Radius scales with the
+        // big font so it reads right on any panel.
+        let deg_r = (self.big.height() / 12).max(3);
+        let deg_gap = (self.big.height() / 20).max(2);
+        let deg_cx = margin + temp_w + deg_gap + deg_r;
+        let deg_cy = temp_base - self.big.ascent() + self.big.ascent() / 5 + deg_r;
+        degree_ring(&mut img, deg_cx, deg_cy, deg_r, fg);
+        // Unit letter sits beside the ring (not down at the digit baseline) so
+        // "°F" reads as one compact group at the top-right shoulder.
+        let unit_base = deg_cy + self.unit.ascent() / 2;
+        draw_text(&mut img, &self.unit, deg_cx + deg_r + deg_gap, unit_base, fg, "F");
+
+        // Condition icon, right-aligned and vertically centered on the same
+        // hero midpoint as the numerals.
+        let icon_glyph = data.current.icon.glyph.to_string();
+        let icon_w = self.icon_big.text_width(&icon_glyph);
+        let icon_x = wi - margin - icon_w;
+        let icon_base = hero_cy + self.icon_big.height() / 2 - self.icon_big.height() / 8;
+        draw_text(&mut img, &self.icon_big, icon_x, icon_base, fg, &icon_glyph);
+
+        // ── Forecast strip filling the bottom band ──────────────────────
+        if has_forecast {
             draw_line(&mut img, margin, strip_top, wi - margin, strip_top, fg);
             self.draw_forecast(&mut img, data, margin, strip_top, fg);
         }
@@ -191,19 +216,23 @@ impl EinkWeatherMatrix {
         let hi = img.height() as i32;
         let usable = wi - 2 * margin;
         let col_w = usable / days.len() as i32;
-        let bottom = hi - margin / 2;
+
+        // Spread name (top) / icon (middle) / hi-lo (bottom) across the whole
+        // band so the strip fills the bottom of the panel instead of hugging a
+        // thin centre line.
+        let pad = margin;
+        let name_base = top + pad + self.small.ascent();
+        let hilo_base = hi - pad - (self.small.height() - self.small.ascent());
+        let icon_base = (name_base + hilo_base) / 2 + self.icon_small.height() / 3;
+
         for (i, day) in days.iter().enumerate() {
             let cx = margin + col_w * i as i32 + col_w / 2;
-            // Weekday abbreviation.
             let name = day.date.format("%a").to_string().to_uppercase();
-            center_text(img, &self.small, cx, top + margin / 2 + self.small.ascent(), fg, &name);
-            // Icon.
+            center_text(img, &self.small, cx, name_base, fg, &name);
             let glyph = day.icon.glyph.to_string();
-            let gy = top + margin + self.small.height() + self.icon_small.ascent();
-            center_text(img, &self.icon_small, cx, gy, fg, &glyph);
-            // Hi/Lo stacked.
+            center_text(img, &self.icon_small, cx, icon_base, fg, &glyph);
             let hi_lo = format!("{:.0}/{:.0}", day.high, day.low);
-            center_text(img, &self.small, cx, bottom, fg, &hi_lo);
+            center_text(img, &self.small, cx, hilo_base, fg, &hi_lo);
         }
     }
 }

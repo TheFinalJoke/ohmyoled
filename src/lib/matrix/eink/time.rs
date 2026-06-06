@@ -79,10 +79,10 @@ impl EinkTimeMatrix {
     pub fn with_fonts(paths: EinkTimeFonts, dims: (u32, u32)) -> Result<Self, String> {
         let h = dims.1;
         Ok(Self {
-            clock: Font::load_ttf(&paths.body, scaled_px(150.0, h))?,
-            meridiem: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
-            date: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
-            weekday: Font::load_ttf(&paths.body, scaled_px(28.0, h))?,
+            clock: Font::load_ttf(&paths.body, scaled_px(196.0, h))?,
+            meridiem: Font::load_ttf(&paths.body, scaled_px(44.0, h))?,
+            date: Font::load_ttf(&paths.body, scaled_px(40.0, h))?,
+            weekday: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
             format: TimeFormat::default(),
         })
     }
@@ -118,26 +118,34 @@ impl EinkTimeMatrix {
 
         // ── Weekday across the top ──────────────────────────────────────
         let weekday = now.format("%A").to_string().to_uppercase();
-        let wk_y = hi / 6 + self.weekday.ascent() / 2;
+        let wk_y = hi / 8 + self.weekday.ascent() / 2;
         center_text(&mut img, &self.weekday, cx, wk_y, fg, &weekday);
-        let rule_y = wk_y + self.weekday.height() / 2 + 4;
-        draw_line(&mut img, wi / 4, rule_y, wi - wi / 4, rule_y, fg);
+        let rule_y = wk_y + self.weekday.height() / 2 + 6;
+        draw_line(&mut img, wi / 5, rule_y, wi - wi / 5, rule_y, fg);
 
-        // ── Big clock, vertically centered ──────────────────────────────
+        // ── Big clock, visual center on the panel midline ───────────────
+        // Account for the meridiem so the numerals + AM/PM group sits balanced
+        // rather than letting "PM" push everything left of centre.
         let clock_w = self.clock.text_width(&clock_str);
-        let clock_x = cx - clock_w / 2;
-        let clock_base = hi / 2 + self.clock.ascent() / 2;
+        let mer_gap = self.clock.height() / 16;
+        let mer_w = if meridiem.is_empty() {
+            0
+        } else {
+            mer_gap + self.meridiem.text_width(&meridiem)
+        };
+        let clock_x = cx - (clock_w + mer_w) / 2;
+        let clock_base = hi / 2 - self.clock.text_v_center_from_baseline(&clock_str);
         draw_text(&mut img, &self.clock, clock_x, clock_base, fg, &clock_str);
         // AM/PM tucked to the top-right of the numerals (12h only).
         if !meridiem.is_empty() {
-            let mx = clock_x + clock_w + 6;
-            let my = clock_base - self.clock.ascent() + self.meridiem.ascent();
+            let mx = clock_x + clock_w + mer_gap;
+            let my = clock_base - self.clock.ascent() + self.clock.ascent() / 4 + self.meridiem.ascent();
             draw_text(&mut img, &self.meridiem, mx, my, fg, &meridiem);
         }
 
         // ── Full date across the bottom ─────────────────────────────────
         let date = now.format("%B %-d, %Y").to_string();
-        let date_y = hi - hi / 6;
+        let date_y = hi - hi / 8;
         center_text(&mut img, &self.date, cx, date_y, fg, &date);
 
         img

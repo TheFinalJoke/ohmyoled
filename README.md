@@ -586,12 +586,19 @@ when the v6 ergonomics settle.
 
 ### `eink`
 
-Drive a **Waveshare black/white e-paper HAT** instead of the LED matrix.
-The e-paper display is an independent, opt-in output: it reuses the same
-data collectors but has its **own tile selection** rendered as one large,
-static, high-resolution screen (no scrolling — e-paper refreshes slowly
-and holds the image). When `enabled: true`, the process drives the panel
-with the tiles under `eink.modules` and the LED sections are ignored.
+Drive a **Waveshare black/white e-paper HAT** alongside (or instead of)
+the LED matrix. The e-paper display is an independent, opt-in output: it
+reuses the same data collectors but has its **own tile selection** rendered
+as one large, static, high-resolution screen (no scrolling — e-paper
+refreshes slowly and holds the image). When `enabled: true`, the process
+drives the panel with the tiles under `eink.modules`.
+
+The two outputs are **not** mutually exclusive — they're separate physical
+panels. The LED matrix runs at the same time **if** the config also has
+top-level (LED) tiles; if it has none, only the e-paper display runs. So an
+eink-only config needs **no `matrix_options` block at all** — just an `eink`
+block. (In the dev/terminal backend, running both at once shares one stdout
+and their output interleaves; the program warns when it detects that.)
 
 Pure Rust end to end: `rppal` (SPI/GPIO) + `epd-waveshare` (panel
 protocol), behind the opt-in `eink` Cargo feature (ARM-only deps, like
@@ -599,11 +606,15 @@ the LED `hardware` feature). Build a Pi e-ink binary with
 `cargo build --release --features eink`.
 
 ```yaml
+# An eink-only config — no matrix_options needed.
 eink:
   enabled: true
-  model: "4in2"               # 4in2 (400x300) | 2in13 | 2in9 | 7in5_v2 | ...
+  model: "7in5_v2"            # 7in5_v2 (800x480, recommended) | 4in2 | 2in13 | ...
   rotation: 0
   threshold: 128              # luma cut for black/white (0–255)
+  mode: auto                  # auto (hardware on a Pi, else terminal) | terminal | hardware
+  emulate: false              # terminal preview only: mimic the slow hardware refresh flash
+  refresh_ms: 2500            # emulated full-refresh duration (ms) when emulate: true
   modules:                    # this display's own content (a full config block)
     time:                     # the display rotates through its enabled tiles
       run: true
@@ -614,13 +625,28 @@ eink:
       current_location: true
 ```
 
+A ready-to-run copy lives at
+[`examples/configs/ohmyoled-eink.yaml`](examples/configs/ohmyoled-eink.yaml):
+
+```bash
+cargo run -- -f examples/configs/ohmyoled-eink.yaml
+```
+
+The `mode` / `emulate` / `refresh_ms` fields are config-level defaults; the
+matching `OHMYOLED_EINK_*` env vars **override** them at runtime (env → config
+→ built-in default), so you can flip behavior for one run without editing the
+file.
+
 | Field       | Type   | Required | Notes                                                                            |
 | ----------- | ------ | -------- | -------------------------------------------------------------------------------- |
-| `enabled`   | bool   | no       | Default `false`. When `true`, the e-paper panel is the active display.           |
-| `model`     | string | no       | Panel id → resolution + driver. Default `4in2`. Only `4in2` is wired on hardware so far; others render in the terminal/preview backend. |
+| `enabled`   | bool   | no       | Default `false`. When `true`, the e-paper panel is driven (concurrently with the LED matrix if that also has tiles). |
+| `model`     | string | no       | Panel id → resolution + driver. Default `7in5_v2`. `4in2` and `7in5_v2` are wired on hardware; others render in the terminal/preview backend. |
 | `rotation`  | int    | no       | 0/90/180/270.                                                                    |
 | `threshold` | int    | no       | Luma cutoff 0–255 for the black/white conversion. Default 128.                   |
 | `width` / `height` | int | no  | Explicit resolution override. Set **both** to drive a panel not in the model table (or a custom size); otherwise resolution comes from `model`. On hardware the driver is still chosen by `model`, so an override should match the physical panel. |
+| `mode`      | string | no       | Backend: `auto` (default — hardware on a Pi, else the terminal preview), `terminal` (always the preview), `hardware` (force the panel). Overridden by `OHMYOLED_EINK_MODE`. |
+| `emulate`   | bool   | no       | Default `false`. Terminal preview only: mimic the slow hardware **full-refresh flash + dwell** so the preview is honest about panel timing. Overridden by `OHMYOLED_EINK_EMULATE`. |
+| `refresh_ms`| int    | no       | Emulated full-refresh duration in ms when `emulate` is on. Default ~2500. Overridden by `OHMYOLED_EINK_REFRESH_MS`. |
 | `modules`   | object | no       | This display's own tiles — same shapes as the top-level sections. **Time** and **weather** are implemented; the display rotates through them. Other enabled tiles are logged and skipped until ported. |
 
 Iterate on layouts with **no hardware**: `--preview eink:time` /
@@ -643,7 +669,9 @@ backend.
 | Variable               | Effect                                                                                                |
 | ---------------------- | ----------------------------------------------------------------------------------------------------- |
 | `OHMYOLED_MATRIX_MODE` | `auto` (default), `test` (force terminal renderer), `hardware` (force GPIO; fall back to terminal).   |
-| `OHMYOLED_EINK_MODE`   | `auto` (default), `terminal` (force the hardware-free preview renderer), `hardware` (force the Waveshare panel; fall back to terminal). |
+| `OHMYOLED_EINK_MODE`   | `auto` (default), `terminal` (force the hardware-free preview renderer), `hardware` (force the Waveshare panel; fall back to terminal). Overrides `eink.mode`. |
+| `OHMYOLED_EINK_EMULATE`| `1`/`true`/`on` makes the terminal preview mimic the slow hardware full-refresh flash; `0`/`false` forces it off. Overrides `eink.emulate`. |
+| `OHMYOLED_EINK_REFRESH_MS` | Emulated full-refresh duration in ms (default ~2500). Overrides `eink.refresh_ms`. |
 | `OHMYOLED_EINK_RENDER` | How the terminal preview draws: `sixel` (default — inline image + PNG), `png` (only refresh the PNG), `glyphs` (Unicode block/braille mosaic). |
 | `OHMYOLED_EINK_PNG`    | Path the preview PNG is refreshed to each frame (defaults to a temp file). Open it in VS Code to watch it live-reload. |
 | `OHMYOLED_EINK_ZOOM`   | Scale factor for the Sixel image (e.g. `1.5` bigger, `0.75` smaller). Default fits the terminal's reported pixel size. |

@@ -6,7 +6,7 @@ mod preview;
 extern crate log;
 use clap::{Arg, ArgAction, Command};
 use oledlib::modules::{registry, scheduler};
-use ohmyoled_matrix::{EinkDisplay, MatrixOptions, RGBMatrix};
+use ohmyoled_matrix::{EinkDisplay, EinkMode, MatrixMode, MatrixOptions, RGBMatrix};
 
 fn parse_config_file(file: &str) -> serde_json::Value {
     config_io::load(file).unwrap_or_else(|e| {
@@ -87,6 +87,9 @@ fn install_sigint_handler() {
 
 #[derive(serde::Deserialize)]
 struct ParsedConfig {
+    /// LED-panel geometry. Optional: an eink-only config doesn't need it (the
+    /// defaults are used and the LED matrix isn't built unless it has tiles).
+    #[serde(default)]
     matrix_options: createjson::MatrixOptions,
 }
 
@@ -282,11 +285,16 @@ async fn main() {
             std::process::exit(34);
         });
     let dev = std::env::var("DEV").is_ok();
+    install_sigint_handler();
 
-    // The e-paper display is an independent, opt-in output. When `eink.enabled`
-    // is set we drive the panel with its own module set instead of the LED
-    // matrix; otherwise everything below is the unchanged LED path.
-    if eink_top.eink.enabled {
+    // The LED matrix and the e-paper display are independent outputs that can
+    // run at the same time (they're separate physical panels). `eink.enabled`
+    // turns the e-paper side on; the LED side runs whenever it has tiles to
+    // show. Either, both, or neither may be active.
+    let eink_enabled = eink_top.eink.enabled;
+
+    // ── e-paper side (opt-in) ───────────────────────────────────────────
+    let eink = if eink_enabled {
         log::info!(
             "eink display enabled (model={}, threshold={})",
             eink_top.eink.model,
@@ -296,29 +304,80 @@ async fn main() {
         let dims = (display.width(), display.height());
         let modules = registry::build_eink(&eink_top.eink.modules, dims).await;
         log::info!("eink registry built: {} module(s) active", modules.len());
-        install_sigint_handler();
-        if let Err(e) = scheduler::run_eink(display, modules).await {
-            eprintln!("eink scheduler: {e}");
-            unsafe { libc::_exit(1) };
+        Some((display, modules))
+    } else {
+        None
+    };
+
+    // ── LED side (default) ──────────────────────────────────────────────
+    let led_modules = registry::build(&registry_cfg).await;
+    log::info!("LED registry built: {} module(s) active", led_modules.len());
+    // Drive the LED panel when it has work, or when eink isn't taking over (so
+    // a bare config still behaves as before). When eink is the only thing with
+    // tiles, skip the LED path so we don't spin an idle loop — and, in dev
+    // mode, so it doesn't clobber the eink terminal output.
+    let run_led = !led_modules.is_empty() || !eink_enabled;
+    let matrix = if run_led {
+        log::debug!(
+            "matrix configured: chain={} parallel={} brightness={} slowdown={} mapping={}",
+            parsed.matrix_options.chain_length,
+            parsed.matrix_options.parallel,
+            parsed.matrix_options.brightness,
+            parsed.matrix_options.oled_slowdown,
+            parsed.matrix_options.hardware_mapping,
+        );
+        Some(build_matrix(&parsed.matrix_options, dev))
+    } else {
+        None
+    };
+
+    // Both outputs at once is supported. The one real conflict is when *both*
+    // resolve to their terminal/test backend: they'd share this single stdout
+    // and interleave into unreadable noise. Flag it rather than silently
+    // mangling the preview — on real hardware they drive separate panels.
+    if let (Some((display, _)), Some(m)) = (eink.as_ref(), matrix.as_ref()) {
+        if display.mode == EinkMode::Terminal && m.mode == MatrixMode::Test {
+            log::warn!(
+                "both LED matrix (test) and e-paper (terminal) are active and share this terminal — \
+                 their output will interleave. On hardware they drive separate panels; to preview \
+                 just one, disable the other (eink.enabled / remove LED tiles)."
+            );
+        } else {
+            log::info!("driving LED matrix and e-paper display concurrently");
         }
-        return;
     }
 
-    let matrix = build_matrix(&parsed.matrix_options, dev);
-    log::debug!(
-        "matrix configured: chain={} parallel={} brightness={} slowdown={} mapping={}",
-        parsed.matrix_options.chain_length,
-        parsed.matrix_options.parallel,
-        parsed.matrix_options.brightness,
-        parsed.matrix_options.oled_slowdown,
-        parsed.matrix_options.hardware_mapping,
-    );
-    let modules = registry::build(&registry_cfg).await;
-    log::info!("registry built: {} module(s) active", modules.len());
-
-    install_sigint_handler();
-    if let Err(e) = scheduler::run(matrix, modules).await {
-        eprintln!("scheduler: {e}");
-        unsafe { libc::_exit(1) };
+    // ── dispatch ────────────────────────────────────────────────────────
+    match (eink, matrix) {
+        // Both panels: run the two schedulers concurrently and exit if either
+        // returns (both normally loop forever).
+        (Some((display, emods)), Some(m)) => {
+            let (er, lr) =
+                tokio::join!(scheduler::run_eink(display, emods), scheduler::run(m, led_modules));
+            if let Err(e) = er {
+                eprintln!("eink scheduler: {e}");
+            }
+            if let Err(e) = lr {
+                eprintln!("scheduler: {e}");
+            }
+            unsafe { libc::_exit(1) };
+        }
+        // e-paper only.
+        (Some((display, emods)), None) => {
+            if let Err(e) = scheduler::run_eink(display, emods).await {
+                eprintln!("eink scheduler: {e}");
+                unsafe { libc::_exit(1) };
+            }
+        }
+        // LED only (the default path).
+        (None, Some(m)) => {
+            if let Err(e) = scheduler::run(m, led_modules).await {
+                eprintln!("scheduler: {e}");
+                unsafe { libc::_exit(1) };
+            }
+        }
+        // eink disabled forces run_led=true, so this is unreachable; handle it
+        // defensively rather than panicking.
+        (None, None) => log::warn!("no display active; nothing to run"),
     }
 }

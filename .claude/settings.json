@@ -3,6 +3,9 @@
     "type": "command",
     "command": "bash ${CLAUDE_PROJECT_DIR:-/workspaces/ohmyoled}/.claude/statusline-command.sh"
   },
+  "enabledPlugins": {
+    "rust-analyzer-lsp@claude-plugins-official": true
+  },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
       "source": {
@@ -10,8 +13,5 @@
         "repo": "anthropics/claude-plugins-official"
       }
     }
-  },
-  "enabledPlugins": {
-    "rust-analyzer-lsp@claude-plugins-official": true
   }
 }

@@ -22,6 +22,16 @@
 //! on every refresh, the bulletproof fallback for terminals without Sixel. For
 //! Sixel in VS Code, enable the `terminal.integrated.enableImages` setting.
 //!
+//! # Hardware emulation
+//!
+//! By default the preview flushes instantly — great for fast layout iteration,
+//! but dishonest about the panel, which full-refreshes slowly with a black/white
+//! flash and *cannot* animate. Set `OHMYOLED_EINK_EMULATE=1` to make every flush
+//! play that full-refresh strobe and dwell (~2.5 s, tune with
+//! `OHMYOLED_EINK_REFRESH_MS`) before settling on the frame — so what you see in
+//! the terminal matches how the e-ink panel actually updates. It deliberately
+//! blocks during the "refresh," exactly as the real SPI flush does.
+//!
 //! Ink pixels (the drawn foreground) render black on a white sheet, matching the
 //! panel.
 
@@ -39,6 +49,33 @@ const DEFAULT_ROWS: u32 = 48;
 /// bold and connected rather than eroded.
 const INK_NUM: u32 = 2;
 const INK_DEN: u32 = 5;
+
+/// Number of black/white inversions in the emulated full-refresh flash. A real
+/// Waveshare full refresh strobes the panel several times before settling.
+const EMU_FLASH_FRAMES: usize = 4;
+/// Default emulated full-refresh duration (ms). A panel full refresh is
+/// dominated by a fixed waveform, so it barely varies with resolution — a flat
+/// default reads truer than scaling by pixel count. Override with
+/// `OHMYOLED_EINK_REFRESH_MS`.
+const EMU_DEFAULT_REFRESH_MS: u64 = 2500;
+
+/// `OHMYOLED_EINK_EMULATE` as a tri-state: `Some(true/false)` when set,
+/// `None` when unset (so a config default can apply).
+fn emulate_from_env() -> Option<bool> {
+    std::env::var("OHMYOLED_EINK_EMULATE").ok().map(|s| {
+        matches!(
+            s.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "on" | "yes" | "hardware" | "hw"
+        )
+    })
+}
+
+/// `OHMYOLED_EINK_REFRESH_MS` parsed to ms, or `None` when unset/invalid.
+fn refresh_ms_from_env() -> Option<u64> {
+    std::env::var("OHMYOLED_EINK_REFRESH_MS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+}
 
 /// Top-level rendering strategy.
 #[derive(Clone, Copy, PartialEq)]
@@ -71,6 +108,12 @@ pub struct EinkTerminalBackend {
     fallback_png: PathBuf,
     /// Whether the one-time "where to look" hint has been printed.
     hinted: bool,
+    /// Mimic the hardware: play the full-refresh flash + dwell on every flush
+    /// so the preview behaves like a real panel. Off by default (instant) so
+    /// layout iteration stays fast; enable with `OHMYOLED_EINK_EMULATE`.
+    emulate: bool,
+    /// Emulated full-refresh duration in ms (`OHMYOLED_EINK_REFRESH_MS`).
+    refresh_ms: u64,
 }
 
 impl Default for EinkTerminalBackend {
@@ -80,13 +123,69 @@ impl Default for EinkTerminalBackend {
 }
 
 impl EinkTerminalBackend {
+    /// Build with no config defaults — emulation is env-driven only (the
+    /// preview path, which has no config block).
     pub fn new() -> Self {
+        Self::with_config(None, None)
+    }
+
+    /// Build with config-provided emulation defaults. The env vars
+    /// (`OHMYOLED_EINK_EMULATE`, `OHMYOLED_EINK_REFRESH_MS`) take precedence so
+    /// a config default can still be overridden at runtime.
+    pub fn with_config(emulate_cfg: Option<bool>, refresh_ms_cfg: Option<u64>) -> Self {
+        let emulate = emulate_from_env().or(emulate_cfg).unwrap_or(false);
+        let refresh_ms = refresh_ms_from_env()
+            .or(refresh_ms_cfg)
+            .unwrap_or(EMU_DEFAULT_REFRESH_MS);
         Self {
             mode: RenderMode::from_env(),
             png_path: std::env::var("OHMYOLED_EINK_PNG").ok().filter(|s| !s.is_empty()),
             fallback_png: std::env::temp_dir().join("ohmyoled-eink-preview.png"),
             hinted: false,
+            emulate,
+            refresh_ms,
         }
+    }
+
+    /// Play the hardware full-refresh flash: strobe the panel black/white a few
+    /// times, dwelling so the whole sequence takes ~`refresh_ms`. The caller
+    /// paints the settled image immediately after, so the flash reads as the
+    /// panel "developing" the new frame. Blocks the calling thread on purpose —
+    /// the real SPI flush blocks for seconds too, so the preview feels honest.
+    fn play_full_refresh(&self, stride: usize, width: u32, height: u32) {
+        let frames = EMU_FLASH_FRAMES.max(2);
+        let per = std::time::Duration::from_millis(self.refresh_ms / frames as u64);
+        let black = vec![0x00u8; stride * height as usize];
+        let white = vec![0xFFu8; stride * height as usize];
+        for i in 0..frames {
+            let buf = if i % 2 == 0 { &black } else { &white };
+            self.emit_frame(buf, stride, width, height);
+            std::thread::sleep(per);
+        }
+    }
+
+    /// Paint one packed frame to the terminal with no PNG write / hint line —
+    /// used for the transient flash frames of [`Self::play_full_refresh`].
+    fn emit_frame(&self, packed: &[u8], stride: usize, width: u32, height: u32) {
+        let mut out = std::io::stdout();
+        match self.mode {
+            RenderMode::Sixel => {
+                let (tw, th) = sixel_target(width, height);
+                let sixel = encode_sixel(packed, stride, width, height, tw, th);
+                let mut buf = String::from("\x1b[2J\x1b[H");
+                buf.push_str(&sixel);
+                let _ = out.write_all(buf.as_bytes());
+            }
+            RenderMode::Glyphs => {
+                let s = render_glyphs(packed, stride, width, height);
+                let _ = out.write_all(b"\x1b[2J\x1b[H");
+                let _ = out.write_all(s.as_bytes());
+            }
+            // In PNG mode there's no inline image to strobe; rewrite the file so
+            // a live-reloading viewer flickers along with the refresh.
+            RenderMode::Png => write_png(self.png_target(), packed, stride, width, height),
+        }
+        let _ = out.flush();
     }
 
     /// Is the pixel at (x, y) inked (bit clear)? `packed` is MSB-first, stride
@@ -109,6 +208,9 @@ impl EinkTerminalBackend {
 impl EinkBackend for EinkTerminalBackend {
     fn flush(&mut self, packed: &[u8], width: u32, height: u32) {
         let stride = width.div_ceil(8) as usize;
+        if self.emulate {
+            self.play_full_refresh(stride, width, height);
+        }
         match self.mode {
             RenderMode::Sixel => {
                 let (tw, th) = sixel_target(width, height);
@@ -146,14 +248,20 @@ impl EinkBackend for EinkTerminalBackend {
 
         if !self.hinted {
             self.hinted = true;
+            let emu = if self.emulate {
+                format!("; hardware emulation ON (~{} ms full-refresh flash)", self.refresh_ms)
+            } else {
+                String::new()
+            };
             log::info!(
-                "eink preview: {} mode; PNG refreshed to {}",
+                "eink preview: {} mode; PNG refreshed to {}{}",
                 match self.mode {
                     RenderMode::Sixel => "sixel",
                     RenderMode::Png => "png",
                     RenderMode::Glyphs => "glyphs",
                 },
-                self.png_target()
+                self.png_target(),
+                emu
             );
         }
     }
