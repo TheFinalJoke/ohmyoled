@@ -5,7 +5,9 @@
 //! selection (currently the weather tile — the one with an e-ink renderer).
 //! Produces the full `eink` config object.
 
-use crate::createjson::{aurora, flights, hass, iss, launch, pihole, quake, stock, time, ui, weather};
+use crate::createjson::{
+    aurora, f1, flights, golf, hass, iss, launch, pihole, quake, sport, stock, time, ui, weather,
+};
 use serde_json::{json, Map, Value};
 
 pub fn configure() -> Result<Value, String> {
@@ -128,6 +130,29 @@ pub fn configure() -> Result<Value, String> {
             }
             Err(e) => ui::warn(&format!("flights tile skipped: {e}")),
         }
+    }
+    // Team-sport / golf / F1 tiles all live under the one-or-many `sport` key.
+    let mut sports: Vec<Value> = Vec::new();
+    if ui::read_yes_no("Add a team-sport (NBA/MLB/NFL/NHL) tile to the e-paper display?", false) {
+        match sport::configure() {
+            Ok(v) => sports.push(v),
+            Err(e) => ui::warn(&format!("sport tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the golf tile to the e-paper display?", false) {
+        match golf::configure() {
+            Ok(v) => sports.push(v),
+            Err(e) => ui::warn(&format!("golf tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the Formula 1 tile to the e-paper display?", false) {
+        match f1::configure() {
+            Ok(v) => sports.push(v),
+            Err(e) => ui::warn(&format!("f1 tile skipped: {e}")),
+        }
+    }
+    if !sports.is_empty() {
+        modules.insert("sport".to_string(), Value::Array(sports));
     }
 
     ui::success(&format!(

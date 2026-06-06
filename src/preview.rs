@@ -59,11 +59,12 @@ use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
 use oledlib::matrix::eink::{
-    EinkAuroraFonts, EinkAuroraMatrix, EinkFlightsFonts, EinkFlightsMatrix, EinkHassFonts,
-    EinkHassMatrix, EinkIssFonts, EinkIssMatrix, EinkLaunchFonts, EinkLaunchMatrix, EinkPiholeFonts,
-    EinkPiholeMatrix, EinkQuakeFonts, EinkQuakeMatrix, EinkStockChartFonts, EinkStockChartMatrix,
-    EinkStockFonts, EinkStockMatrix, EinkTimeFonts, EinkTimeMatrix, EinkWeatherFonts,
-    EinkWeatherMatrix,
+    EinkAuroraFonts, EinkAuroraMatrix, EinkF1Fonts, EinkF1Matrix, EinkFlightsFonts,
+    EinkFlightsMatrix, EinkGolfFonts, EinkGolfMatrix, EinkHassFonts, EinkHassMatrix, EinkIssFonts,
+    EinkIssMatrix, EinkLaunchFonts, EinkLaunchMatrix, EinkPiholeFonts, EinkPiholeMatrix,
+    EinkQuakeFonts, EinkQuakeMatrix, EinkSportFonts, EinkSportMatrix, EinkStockChartFonts,
+    EinkStockChartMatrix, EinkStockFonts, EinkStockMatrix, EinkTimeFonts, EinkTimeMatrix,
+    EinkWeatherFonts, EinkWeatherMatrix,
 };
 use oledlib::matrix::{Renderer, TimeMatrix};
 
@@ -117,7 +118,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
 /// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
 pub const EINK_NAMES: &[&str] = &[
     "time", "weather", "pihole", "iss", "aurora", "quake", "stock", "launch", "hass", "flights",
-    "stock_chart",
+    "stock_chart", "sport", "golf", "f1",
 ];
 
 /// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
@@ -145,6 +146,9 @@ pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String
         "hass" => preview_eink_hass(&mut display, &fonts).await,
         "flights" => preview_eink_flights(&mut display, &fonts).await,
         "stock_chart" => preview_eink_stock_chart(&mut display, &fonts).await,
+        "sport" => preview_eink_sport(&mut display, &fonts).await,
+        "golf" => preview_eink_golf(&mut display, &fonts).await,
+        "f1" => preview_eink_f1(&mut display, &fonts).await,
         other => Err(format!(
             "unknown eink preview '{other}'. Available: {}",
             EINK_NAMES.join(", ")
@@ -429,6 +433,103 @@ async fn preview_eink_stock_chart(display: &mut EinkDisplay, fonts: &Path) -> Re
     };
     loop {
         let img = r.frame(&data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_sport(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkSportMatrix::with_fonts_async(EinkSportFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let standings: Vec<StandingsEntry> = ["Celtics", "76ers", "Knicks", "Bucks", "Heat", "Magic"]
+        .iter()
+        .enumerate()
+        .map(|(i, t)| StandingsEntry { position: i as u32 + 1, team_name: (*t).into() })
+        .collect();
+    let live = SportData {
+        api: SportApiSource::Espn,
+        sport: SportKind::Basketball,
+        team_name: "76ers".into(),
+        record: "41-21".into(),
+        next_game: Some(NextGame {
+            start: Local::now(),
+            status: GameStatus::InProgress,
+            home: TeamSide { name: "76ers".into(), abbreviation: "PHI".into(), logo_url: None, score: Some(88) },
+            away: TeamSide { name: "Celtics".into(), abbreviation: "BOS".into(), logo_url: None, score: Some(81) },
+            our_side: HomeOrAway::Home,
+        }),
+        standings,
+    };
+    let offseason = SportData {
+        api: SportApiSource::Espn,
+        sport: SportKind::Basketball,
+        team_name: "76ers".into(),
+        record: "—".into(),
+        next_game: None,
+        standings: vec![],
+    };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &offseason } else { &live };
+        toggle = !toggle;
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_golf(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkGolfMatrix::with_fonts_async(EinkGolfFonts { body: fonts.join("04B_03B_.TTF") }, dims)
+        .await?
+        .with_tour(GolfTour::Pga);
+    let board: Vec<LeaderboardEntry> = [
+        ("S. SCHEFFLER", "-12"), ("J. RAHM", "-9"), ("C. MORIKAWA", "-7"), ("J. SPIETH", "-5"),
+        ("P. CANTLAY", "-3"), ("X. SCHAUFFELE", "E"), ("R. MCILROY", "+1"), ("T. FINAU", "+4"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (n, s))| LeaderboardEntry { position: i as u32 + 1, player_short: (*n).into(), score: (*s).into() })
+    .collect();
+    let live = GolfData { tour: GolfTour::Pga, event_name: "The Masters".into(), status: "Round 3".into(), leaderboard: board };
+    let offseason = GolfData { tour: GolfTour::Pga, event_name: "Next: Players Championship".into(), status: String::new(), leaderboard: vec![] };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &offseason } else { &live };
+        toggle = !toggle;
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_f1(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkF1Matrix::with_fonts_async(EinkF1Fonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let standings: Vec<DriverStanding> = [
+        ("VER", "Verstappen", 314.0), ("NOR", "Norris", 270.0), ("LEC", "Leclerc", 226.0),
+        ("PIA", "Piastri", 197.0), ("SAI", "Sainz", 184.0), ("HAM", "Hamilton", 150.0),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (c, n, p))| DriverStanding { position: i as u32 + 1, code: (*c).into(), family_name: (*n).into(), points: *p })
+    .collect();
+    let in_season = F1Data {
+        season: "2025".into(),
+        next_race: Some(NextRace {
+            round: 7,
+            name: "Monaco Grand Prix".into(),
+            circuit: "Circuit de Monaco".into(),
+            start: Local::now() + ChDuration::days(3) + ChDuration::hours(4),
+        }),
+        standings: standings.clone(),
+    };
+    let offseason = F1Data { season: "2025".into(), next_race: None, standings };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &offseason } else { &in_season };
+        toggle = !toggle;
+        let img = r.frame(data, Local::now(), display.width(), display.height());
         display.show(&img);
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }

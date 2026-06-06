@@ -65,9 +65,9 @@ use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
 use crate::matrix::eink::{
-    EinkAuroraMatrix, EinkFlightsMatrix, EinkHassMatrix, EinkIssMatrix, EinkLaunchMatrix,
-    EinkPiholeMatrix, EinkQuakeMatrix, EinkStockChartMatrix, EinkStockMatrix, EinkTimeMatrix,
-    EinkWeatherMatrix,
+    EinkAuroraMatrix, EinkF1Matrix, EinkFlightsMatrix, EinkGolfMatrix, EinkHassMatrix, EinkIssMatrix,
+    EinkLaunchMatrix, EinkPiholeMatrix, EinkQuakeMatrix, EinkSportMatrix, EinkStockChartMatrix,
+    EinkStockMatrix, EinkTimeMatrix, EinkWeatherMatrix,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::modules::eink_module::{DynEinkModule, EinkModule};
@@ -961,17 +961,69 @@ pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn D
             Err(e) => log::error!("eink hass: skipping module: {e}"),
         }
     }
-
-    // Anything else enabled in the eink block is configured but not yet
-    // renderable on e-paper — report it so the tile isn't silently ignored.
-    let pending = cfg.sport.iter().filter(|s| s.run()).count();
-    if pending > 0 {
-        log::info!(
-            "eink registry: {pending} enabled tile(s) have no e-ink renderer yet"
-        );
+    for s in cfg.sport.iter().filter(|s| s.run()) {
+        match build_eink_sport(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: {} loaded", m.id());
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink sport: skipping module: {e}"),
+        }
     }
 
     modules
+}
+
+/// Dispatch a `sport` entry to the right e-paper renderer by variant, mirroring
+/// the LED [`build_sport`].
+async fn build_eink_sport(s: &SportSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let ttl = s.cache_ttl_secs();
+    match s {
+        SportSection::Basketball { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Basketball, team_logo, ttl, dims).await
+        }
+        SportSection::Baseball { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Baseball, team_logo, ttl, dims).await
+        }
+        SportSection::Football { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Football, team_logo, ttl, dims).await
+        }
+        SportSection::Hockey { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Hockey, team_logo, ttl, dims).await
+        }
+        SportSection::Golf { tour, .. } => {
+            let collector = GolfCollector::from_espn(*tour);
+            let renderer = EinkGolfMatrix::new_async(dims)
+                .await
+                .map_err(|e| format!("eink golf fonts: {e}"))?
+                .with_tour(*tour);
+            Ok(eink_module_with_ttl(collector, renderer, ttl))
+        }
+        SportSection::F1 { .. } => {
+            let collector = F1Collector::from_jolpica();
+            let renderer = EinkF1Matrix::new_async(dims)
+                .await
+                .map_err(|e| format!("eink f1 fonts: {e}"))?;
+            Ok(eink_module_with_ttl(collector, renderer, ttl))
+        }
+    }
+}
+
+async fn build_eink_team_sport(
+    kind: SportKind,
+    team_logo: &crate::teams::Logo,
+    cache_ttl_secs: Option<u64>,
+    dims: (u32, u32),
+) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = SportCollector::from_espn(EspnConfig {
+        sport: kind,
+        team_name: team_logo.name.clone(),
+        team_abbreviation: team_logo.shorthand.clone(),
+    });
+    let renderer = EinkSportMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink sport fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, cache_ttl_secs))
 }
 
 async fn build_eink_time(t: &TimeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {

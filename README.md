@@ -647,7 +647,7 @@ file.
 | `mode`      | string | no       | Backend: `auto` (default — hardware on a Pi, else the terminal preview), `terminal` (always the preview), `hardware` (force the panel). Overridden by `OHMYOLED_EINK_MODE`. |
 | `emulate`   | bool   | no       | Default `false`. Terminal preview only: mimic the slow hardware **full-refresh flash + dwell** so the preview is honest about panel timing. Overridden by `OHMYOLED_EINK_EMULATE`. |
 | `refresh_ms`| int    | no       | Emulated full-refresh duration in ms when `emulate` is on. Default ~2500. Overridden by `OHMYOLED_EINK_REFRESH_MS`. |
-| `modules`   | object | no       | This display's own tiles — same shapes as the top-level sections. **Time** and **weather** are implemented; the display rotates through them. Other enabled tiles are logged and skipped until ported. |
+| `modules`   | object | no       | This display's own tiles — same shapes as the top-level sections. **Every tile is supported on e-paper** (time, weather, stock, stock_chart, sport, golf, f1, iss, quake, aurora, flights, launch, hass, pihole); the display rotates through whichever are enabled, each as one static screen. |
 
 Iterate on layouts with **no hardware**: `--preview eink:time` /
 `--preview eink:weather` (or just `eink`) renders the screen live in the
