@@ -68,6 +68,12 @@ pub struct EinkOptions {
     pub rotation: u16,
     /// Luma threshold 0–255: pixels at or above are white, below are black.
     pub threshold: u8,
+    /// Explicit width override. When both `width` and `height` are set they
+    /// take precedence over the model-derived resolution — for panels not in
+    /// the model table, or custom dev sizes. Left `None` to use the model.
+    pub width: Option<u32>,
+    /// Explicit height override (see [`EinkOptions::width`]).
+    pub height: Option<u32>,
 }
 
 impl Default for EinkOptions {
@@ -78,6 +84,23 @@ impl Default for EinkOptions {
             model: "4in2".to_string(),
             rotation: 0,
             threshold: 128,
+            width: None,
+            height: None,
+        }
+    }
+}
+
+impl EinkOptions {
+    /// Resolve the logical canvas size: an explicit `width` + `height` pair
+    /// wins; otherwise it's derived from `model` via [`model_dimensions`].
+    ///
+    /// Note: on the hardware backend the panel *driver* is still selected by
+    /// `model`, so an override should match the physical panel — it's meant
+    /// for dev/preview and for unlisted panels.
+    pub fn dimensions(&self) -> (u32, u32) {
+        match (self.width, self.height) {
+            (Some(w), Some(h)) if w > 0 && h > 0 => (w, h),
+            _ => model_dimensions(&self.model),
         }
     }
 }
@@ -142,7 +165,7 @@ impl EinkDisplay {
     /// Create a display with an explicit backend, falling back to terminal
     /// when the hardware backend isn't compiled in for this target.
     pub fn with_mode(options: EinkOptions, mode: EinkMode) -> Self {
-        let (width, height) = model_dimensions(&options.model);
+        let (width, height) = options.dimensions();
         let threshold = options.threshold;
 
         let (backend, actual_mode): (Box<dyn EinkBackend>, EinkMode) = match mode {
@@ -270,6 +293,32 @@ mod tests {
         let d = EinkDisplay::test(EinkOptions::default());
         assert_eq!(d.mode, EinkMode::Terminal);
         assert_eq!((d.width(), d.height()), (400, 300));
+    }
+
+    #[test]
+    fn explicit_dimensions_override_model() {
+        // Both set → override wins over the model's native size.
+        let opts = EinkOptions {
+            model: "4in2".into(),
+            width: Some(640),
+            height: Some(384),
+            ..Default::default()
+        };
+        assert_eq!(opts.dimensions(), (640, 384));
+        let d = EinkDisplay::test(opts);
+        assert_eq!((d.width(), d.height()), (640, 384));
+    }
+
+    #[test]
+    fn partial_dimensions_fall_back_to_model() {
+        // Only one of width/height set → ignore, use the model.
+        let opts = EinkOptions {
+            model: "7in5_v2".into(),
+            width: Some(640),
+            height: None,
+            ..Default::default()
+        };
+        assert_eq!(opts.dimensions(), (800, 480));
     }
 
     #[test]

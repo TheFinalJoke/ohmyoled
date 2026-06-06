@@ -788,6 +788,14 @@ pub struct EinkRegistryConfig {
     /// Luma threshold 0–255 for the black/white cut.
     #[serde(default = "default_eink_threshold")]
     pub threshold: u8,
+    /// Optional explicit width override. Set both `width` and `height` to drive
+    /// a panel not in the model table (or a custom dev size); otherwise the
+    /// resolution comes from `model`.
+    #[serde(default)]
+    pub width: Option<u32>,
+    /// Optional explicit height override (see `width`).
+    #[serde(default)]
+    pub height: Option<u32>,
     /// This display's own tile selection — a full registry config.
     #[serde(default)]
     pub modules: RegistryConfig,
@@ -808,6 +816,8 @@ impl EinkRegistryConfig {
             model: self.model.clone(),
             rotation: self.rotation,
             threshold: self.threshold,
+            width: self.width,
+            height: self.height,
         }
     }
 }

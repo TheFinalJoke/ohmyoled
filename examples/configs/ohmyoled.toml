@@ -181,6 +181,8 @@ enabled = false
 model = "4in2"                # 4in2 | 2in13 | 2in9 | 7in5_v2 | ...
 rotation = 0
 threshold = 128               # luma cut for black/white (0–255)
+# width = 400                 # optional: set BOTH to override the model's
+# height = 300                # native resolution (unlisted/custom panels)
 
 # This display's own content (its own RegistryConfig). The e-paper display
 # rotates through these tiles.

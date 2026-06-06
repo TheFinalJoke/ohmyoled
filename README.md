@@ -620,6 +620,7 @@ eink:
 | `model`     | string | no       | Panel id → resolution + driver. Default `4in2`. Only `4in2` is wired on hardware so far; others render in the terminal/preview backend. |
 | `rotation`  | int    | no       | 0/90/180/270.                                                                    |
 | `threshold` | int    | no       | Luma cutoff 0–255 for the black/white conversion. Default 128.                   |
+| `width` / `height` | int | no  | Explicit resolution override. Set **both** to drive a panel not in the model table (or a custom size); otherwise resolution comes from `model`. On hardware the driver is still chosen by `model`, so an override should match the physical panel. |
 | `modules`   | object | no       | This display's own tiles — same shapes as the top-level sections. **Time** and **weather** are implemented; the display rotates through them. Other enabled tiles are logged and skipped until ported. |
 
 Iterate on layouts with **no hardware**: `--preview eink:time` /

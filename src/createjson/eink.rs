@@ -31,6 +31,18 @@ pub fn configure() -> Result<Value, String> {
     );
     let threshold = read_threshold();
 
+    // Optional explicit resolution override for unlisted/custom panels.
+    let (width, height) = if ui::read_yes_no(
+        "Override resolution? (advanced — blank uses the model's native size)",
+        false,
+    ) {
+        let w = read_dim("Width (px)");
+        let h = read_dim("Height (px)");
+        (Some(w), Some(h))
+    } else {
+        (None, None)
+    };
+
     // Build the display's own module set. Time + weather have e-ink renderers
     // today; reuse their existing prompts so the config is real. The display
     // rotates through whichever tiles are added.
@@ -60,13 +72,19 @@ pub fn configure() -> Result<Value, String> {
         modules.len()
     ));
 
-    Ok(json!({
+    let mut block = json!({
         "enabled": enabled,
         "model": model,
         "rotation": 0,
         "threshold": threshold,
         "modules": Value::Object(modules),
-    }))
+    });
+    // Only emit width/height when overridden, so the common case stays clean.
+    if let (Some(w), Some(h)) = (width, height) {
+        block["width"] = json!(w);
+        block["height"] = json!(h);
+    }
+    Ok(block)
 }
 
 pub fn summary_line(v: &Value) -> String {
@@ -89,6 +107,15 @@ fn read_threshold() -> u8 {
         match raw.trim().parse::<u8>() {
             Ok(v) => return v,
             _ => ui::warn("Expected an integer in [0, 255]"),
+        }
+    }
+}
+
+fn read_dim(label: &str) -> u32 {
+    loop {
+        match ui::read_required(label).trim().parse::<u32>() {
+            Ok(v) if v > 0 => return v,
+            _ => ui::warn("Expected a positive integer"),
         }
     }
 }
