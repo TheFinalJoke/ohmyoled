@@ -24,7 +24,7 @@ pub mod time;
 pub mod weather;
 
 pub use aurora::AuroraMatrix;
-pub use eink::{EinkWeatherFonts, EinkWeatherMatrix};
+pub use eink::{EinkTimeFonts, EinkTimeMatrix, EinkWeatherFonts, EinkWeatherMatrix};
 pub use eink_renderer::EinkRenderer;
 pub use error::RenderError;
 pub use f1::F1Matrix;

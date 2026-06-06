@@ -58,7 +58,7 @@ use oledlib::matrix::stock::{StockFonts, StockMatrix};
 use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
-use oledlib::matrix::eink::{EinkWeatherFonts, EinkWeatherMatrix};
+use oledlib::matrix::eink::{EinkTimeFonts, EinkTimeMatrix, EinkWeatherFonts, EinkWeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
@@ -109,7 +109,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
 }
 
 /// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
-pub const EINK_NAMES: &[&str] = &["weather"];
+pub const EINK_NAMES: &[&str] = &["time", "weather"];
 
 /// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
 /// Backend is whatever `EinkDisplay` resolves to — the terminal half-block
@@ -124,11 +124,24 @@ pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String
         fonts.display()
     );
     match name {
+        "time" => preview_eink_time(&mut display, &fonts).await,
         "weather" => preview_eink_weather(&mut display, &fonts).await,
         other => Err(format!(
             "unknown eink preview '{other}'. Available: {}",
             EINK_NAMES.join(", ")
         )),
+    }
+}
+
+async fn preview_eink_time(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let r = EinkTimeMatrix::with_fonts_async(EinkTimeFonts {
+        body: fonts.join("04B_03B_.TTF"),
+    })
+    .await?;
+    loop {
+        let img = r.frame(Local::now(), display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
     }
 }
 

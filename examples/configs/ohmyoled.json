@@ -114,6 +114,11 @@
     "rotation": 0,
     "threshold": 128,
     "modules": {
+      "time": {
+        "run": true,
+        "color": [255, 255, 255],
+        "time_format": "12h"
+      },
       "weather": {
         "run": true,
         "api": "nws",

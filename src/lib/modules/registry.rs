@@ -64,7 +64,7 @@ use crate::matrix::stock::StockMatrix;
 use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
-use crate::matrix::eink::EinkWeatherMatrix;
+use crate::matrix::eink::{EinkTimeMatrix, EinkWeatherMatrix};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::modules::eink_module::{DynEinkModule, EinkModule};
 use crate::modules::{DynModule, Module};
@@ -820,6 +820,15 @@ impl EinkRegistryConfig {
 pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
     let mut modules: Vec<Box<dyn DynEinkModule>> = Vec::new();
 
+    for t in cfg.time.iter().filter(|t| t.run) {
+        match build_eink_time(t).await {
+            Ok(m) => {
+                log::info!("eink registry: time loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink time: skipping module: {e}"),
+        }
+    }
     for w in cfg.weather.iter().filter(|w| w.run) {
         match build_eink_weather(w).await {
             Ok(m) => {
@@ -832,8 +841,7 @@ pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
 
     // Anything else enabled in the eink block is configured but not yet
     // renderable on e-paper — report it so the tile isn't silently ignored.
-    let pending = cfg.time.iter().filter(|t| t.run).count()
-        + cfg.stock.iter().filter(|s| s.run).count()
+    let pending = cfg.stock.iter().filter(|s| s.run).count()
         + cfg.sport.iter().filter(|s| s.run()).count()
         + cfg.iss.iter().filter(|s| s.run).count()
         + cfg.quake.iter().filter(|s| s.run).count()
@@ -844,11 +852,31 @@ pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
         + cfg.pihole.iter().filter(|s| s.run).count();
     if pending > 0 {
         log::info!(
-            "eink registry: {pending} enabled tile(s) have no e-ink renderer yet; only weather is supported so far"
+            "eink registry: {pending} enabled tile(s) have no e-ink renderer yet; \
+             time and weather are supported so far"
         );
     }
 
     modules
+}
+
+async fn build_eink_time(t: &TimeSection) -> Result<Box<dyn DynEinkModule>, String> {
+    let format = parse_time_format(t.time_format.as_deref());
+    let renderer = EinkTimeMatrix::new_async()
+        .await
+        .map_err(|e| format!("eink time fonts: {e}"))?
+        .with_format(format);
+    Ok(eink_module_with_ttl(TimeCollector::new(), renderer, t.cache_ttl_secs))
+}
+
+/// Parse the config `time_format` string into a [`TimeFormat`]. Anything
+/// 24-hour-ish selects 24h; everything else (incl. omitted) defaults to 12h.
+fn parse_time_format(s: Option<&str>) -> crate::matrix::time::TimeFormat {
+    use crate::matrix::time::TimeFormat;
+    match s.map(|s| s.trim().to_lowercase()).as_deref() {
+        Some("24h") | Some("24") | Some("twentyfour") | Some("military") => TimeFormat::TwentyFour,
+        _ => TimeFormat::Twelve,
+    }
 }
 
 async fn build_eink_weather(w: &WeatherSection) -> Result<Box<dyn DynEinkModule>, String> {

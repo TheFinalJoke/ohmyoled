@@ -177,6 +177,10 @@ eink:
   rotation: 0
   threshold: 128              # luma cut for black/white (0–255)
   modules:                    # this display's own content (its own RegistryConfig)
+    time:                     # the e-paper display rotates through its tiles
+      run: true
+      color: [255, 255, 255]  # ignored on B/W; kept for config parity
+      time_format: "12h"
     weather:
       run: true
       api: nws                # same providers as the LED weather tile

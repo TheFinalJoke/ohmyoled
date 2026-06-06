@@ -5,7 +5,7 @@
 //! selection (currently the weather tile — the one with an e-ink renderer).
 //! Produces the full `eink` config object.
 
-use crate::createjson::{ui, weather};
+use crate::createjson::{time, ui, weather};
 use serde_json::{json, Map, Value};
 
 pub fn configure() -> Result<Value, String> {
@@ -31,9 +31,17 @@ pub fn configure() -> Result<Value, String> {
     );
     let threshold = read_threshold();
 
-    // Build the display's own module set. Only the weather tile has an e-ink
-    // renderer today; reuse its existing prompt so the config is real.
+    // Build the display's own module set. Time + weather have e-ink renderers
+    // today; reuse their existing prompts so the config is real. The display
+    // rotates through whichever tiles are added.
     let mut modules = Map::new();
+    if ui::read_yes_no("Add the time tile to the e-paper display?", true) {
+        let opts = time::configure();
+        modules.insert(
+            "time".to_string(),
+            serde_json::to_value(opts).expect("TimeOptions serializes"),
+        );
+    }
     if ui::read_yes_no("Add the weather tile to the e-paper display?", true) {
         match weather::configure() {
             Ok(opts) => {

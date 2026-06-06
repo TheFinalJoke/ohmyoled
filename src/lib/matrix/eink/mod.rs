@@ -6,6 +6,8 @@
 //! black, the usual convention) that [`ohmyoled_matrix::EinkDisplay`]
 //! thresholds to black-ink-on-white and pushes to the panel.
 
+pub mod time;
 pub mod weather;
 
+pub use time::{EinkTimeFonts, EinkTimeMatrix};
 pub use weather::{EinkWeatherFonts, EinkWeatherMatrix};

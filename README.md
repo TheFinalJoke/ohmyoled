@@ -605,6 +605,9 @@ eink:
   rotation: 0
   threshold: 128              # luma cut for black/white (0–255)
   modules:                    # this display's own content (a full config block)
+    time:                     # the display rotates through its enabled tiles
+      run: true
+      time_format: "12h"
     weather:
       run: true
       api: nws
@@ -617,10 +620,11 @@ eink:
 | `model`     | string | no       | Panel id → resolution + driver. Default `4in2`. Only `4in2` is wired on hardware so far; others render in the terminal/preview backend. |
 | `rotation`  | int    | no       | 0/90/180/270.                                                                    |
 | `threshold` | int    | no       | Luma cutoff 0–255 for the black/white conversion. Default 128.                   |
-| `modules`   | object | no       | This display's own tiles — same shapes as the top-level sections. Weather is implemented; other enabled tiles are logged and skipped until ported. |
+| `modules`   | object | no       | This display's own tiles — same shapes as the top-level sections. **Time** and **weather** are implemented; the display rotates through them. Other enabled tiles are logged and skipped until ported. |
 
-Iterate on layouts with **no hardware**: `--preview eink:weather` (or
-just `eink`) renders the screen live in the terminal via half-blocks, and
+Iterate on layouts with **no hardware**: `--preview eink:time` /
+`--preview eink:weather` (or just `eink`) renders the screen live in the
+terminal via half-blocks, and
 `OHMYOLED_EINK_PNG=/path.png` dumps a pixel-exact PNG. The whole layout
 pipeline runs off-Pi — the physical panel is only touched by the ARM-only
 hardware backend.
