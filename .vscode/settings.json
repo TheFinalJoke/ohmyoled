@@ -1,3 +1,7 @@
 {
-    "claudeCode.useTerminal": true
+    "claudeCode.useTerminal": true,
+    // Render Sixel images inline in the integrated terminal, so the
+    // hardware-free e-ink preview (`cargo run -- --preview eink:<name>`)
+    // shows the panel as a real image. See README "Environment variables".
+    "terminal.integrated.enableImages": true
 }
