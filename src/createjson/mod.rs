@@ -1,4 +1,5 @@
 pub mod aurora;
+pub mod eink;
 pub mod f1;
 pub mod flights;
 pub mod golf;
@@ -78,6 +79,7 @@ fn print_menu(entries: &[Entry]) {
     println!("    {} Launch — next orbital launch countdown", ui::bold("[11]"));
     println!("    {} Home Assistant entity", ui::bold("[12]"));
     println!("    {} Pi-hole DNS-block summary", ui::bold("[13]"));
+    println!("    {} E-paper (e-ink) display — independent screen", ui::bold("[14]"));
     println!();
     println!("  {}", ui::bold(&ui::cyan("Actions")));
     println!("    {} Matrix panel options", ui::bold("[m]"));
@@ -230,6 +232,7 @@ fn re_configure_entry(entry: &Entry) -> Option<Entry> {
         "launch" => run_typed!("launch", launch, "LaunchOptions serializes"),
         "hass" => run_typed!("hass", hass, "HassOptions serializes"),
         "pihole" => run_typed!("pihole", pihole, "PiholeOptions serializes"),
+        "eink" => run_value!("eink", eink),
         other => {
             ui::error(&format!("unknown section `{other}` — can't edit"));
             None
@@ -287,7 +290,8 @@ pub fn default_config() -> Value {
         "flights": {"run":false,"lat":40.7128,"lon":-74.0060,"radius_km":80.0,"cache_ttl_secs":null},
         "launch": {"run":false,"agency_filter":[],"cache_ttl_secs":null},
         "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60],"display_mode":"state","cache_ttl_secs":null},
-        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null","cache_ttl_secs":null}
+        "pihole": {"run":false,"base_url":"http://pi.hole","token":"null","cache_ttl_secs":null},
+        "eink": {"enabled":false,"model":"4in2","rotation":0,"threshold":128,"modules":{"weather":{"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle","cache_ttl_secs":null}}}
     }"#;
     serde_json::from_str(json).expect("starter config must parse")
 }
@@ -295,7 +299,7 @@ pub fn default_config() -> Value {
 /// Section names recognised when merging an existing config back in.
 const KNOWN_SECTIONS: &[&str] = &[
     "time", "weather", "stock", "sport", "iss", "quake", "aurora",
-    "flights", "launch", "hass", "pihole",
+    "flights", "launch", "hass", "pihole", "eink",
 ];
 
 /// Pull existing entries out of a previously-written config so the
@@ -517,6 +521,16 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
                 }
                 Err(e) => ui::error(&format!("pihole config failed: {e}")),
             },
+            "14" => match eink::configure() {
+                Ok(value) => {
+                    // The eink block is a single top-level object; replace any
+                    // prior one rather than accumulating duplicates.
+                    entries.retain(|e| e.section != "eink");
+                    let label = eink::summary_line(&value);
+                    entries.push(Entry { section: "eink", label, value });
+                }
+                Err(e) => ui::error(&format!("eink config failed: {e}")),
+            },
             "m" => configure_matrix(&mut matrix_opts),
             "u" => {
                 if arg.is_empty() {
@@ -612,7 +626,7 @@ pub fn create_json(dev_mode: bool, existing: Option<Value>) -> Value {
 
     let sections = [
         "time", "weather", "stock", "sport", "iss", "quake", "aurora",
-        "flights", "launch", "hass", "pihole",
+        "flights", "launch", "hass", "pihole", "eink",
     ];
     for name in sections {
         let bucket: Vec<Value> = entries

@@ -22,6 +22,7 @@
 //! ```
 
 pub mod backend;
+pub mod eink;
 pub mod graphics;
 pub mod options;
 pub mod terminal;
@@ -33,6 +34,7 @@ pub mod terminal;
 pub mod hardware;
 
 pub use backend::{Backend, MatrixMode};
+pub use eink::{EinkDisplay, EinkMode, EinkOptions};
 pub use options::MatrixOptions;
 
 /// An RGB colour — red, green, blue channels each 0–255.

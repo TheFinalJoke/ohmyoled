@@ -165,3 +165,20 @@ sport:
     tour: pga                 # pga | lpga | champions | korn | liv
   - run: true
     sport: f1
+
+# ── E-paper (e-ink) display — independent, opt-in ────────────────────
+# Drives a Waveshare B/W e-paper HAT instead of the LED matrix when
+# enabled. Same data collectors, but its own separately-tuned tile
+# selection rendered as one large static screen. Flip enabled: true and
+# set your panel model to switch the process to the e-paper output.
+eink:
+  enabled: false
+  model: "4in2"               # 4in2 | 2in13 | 2in9 | 7in5_v2 | ...
+  rotation: 0
+  threshold: 128              # luma cut for black/white (0–255)
+  modules:                    # this display's own content (its own RegistryConfig)
+    weather:
+      run: true
+      api: nws                # same providers as the LED weather tile
+      current_location: true
+      weather_format: imperial

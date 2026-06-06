@@ -39,6 +39,10 @@ ohmyoled-matrix = { path = "crates/ohmyoled-matrix", default-features = false }
 # whose build script refuses to compile for non-Pi targets.
 default = ["hardware"]
 hardware = ["ohmyoled-matrix/hardware"]
+# E-paper (Waveshare B/W HAT) support. Off by default; enable for a Pi e-ink
+# build with `--features eink`. The e-ink terminal/dev path compiles without
+# this flag — the flag only adds the ARM-only SPI driver deps.
+eink = ["ohmyoled-matrix/eink"]
 
 [lib]
 name = "oledlib"

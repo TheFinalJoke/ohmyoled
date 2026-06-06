@@ -107,5 +107,19 @@
     },
     { "run": true, "sport": "golf", "tour": "pga" },
     { "run": true, "sport": "f1" }
-  ]
+  ],
+  "eink": {
+    "enabled": false,
+    "model": "4in2",
+    "rotation": 0,
+    "threshold": 128,
+    "modules": {
+      "weather": {
+        "run": true,
+        "api": "nws",
+        "current_location": true,
+        "weather_format": "imperial"
+      }
+    }
+  }
 }

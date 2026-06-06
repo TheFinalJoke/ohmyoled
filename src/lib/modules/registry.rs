@@ -64,6 +64,9 @@ use crate::matrix::stock::StockMatrix;
 use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
+use crate::matrix::eink::EinkWeatherMatrix;
+use crate::matrix::eink_renderer::EinkRenderer;
+use crate::modules::eink_module::{DynEinkModule, EinkModule};
 use crate::modules::{DynModule, Module};
 use crate::serde_helpers::one_or_many;
 use serde::Deserialize;
@@ -514,7 +517,10 @@ async fn build_time(t: &TimeSection) -> Result<Box<dyn DynModule>, String> {
     Ok(module_with_ttl(TimeCollector::new(), renderer, t.cache_ttl_secs))
 }
 
-async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String> {
+/// Build a `WeatherCollector` from a section's provider + credentials.
+/// Shared by the LED ([`build_weather`]) and e-paper ([`build_eink_weather`])
+/// tiles so both gather data the same way.
+fn weather_collector(w: &WeatherSection) -> Result<WeatherCollector, String> {
     let units = w
         .weather_format
         .clone()
@@ -551,6 +557,11 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
         })
         .map_err(|e| e.to_string())?,
     };
+    Ok(collector)
+}
+
+async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = weather_collector(w)?;
     let renderer = WeatherMatrix::new_with_animation_async(w.animation)
         .await
         .map_err(|e| format!("weather fonts: {e}"))?;
@@ -742,6 +753,128 @@ async fn build_team_sport(
         .await
         .map_err(|e| format!("sport fonts: {e}"))?;
     Ok(module_with_ttl(collector, renderer, cache_ttl_secs))
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// E-paper (e-ink) display
+// ──────────────────────────────────────────────────────────────────────────
+
+/// The independent e-paper display config, parsed from the top-level `eink`
+/// block. The e-ink screen shows its **own** content — its `modules` are a
+/// full, separate [`RegistryConfig`] (same section shapes and the same
+/// collectors as the LED display, chosen and tuned independently).
+///
+/// ```yaml
+/// eink:
+///   enabled: true
+///   model: "4in2"
+///   rotation: 0
+///   threshold: 128
+///   modules:
+///     weather: { run: true, api: nws, current_location: true }
+/// ```
+#[derive(Debug, Deserialize, Default)]
+pub struct EinkRegistryConfig {
+    /// Drive the e-paper display instead of the LED matrix. Off by default so
+    /// existing configs are unchanged.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Panel model id (e.g. `"4in2"`, `"7in5_v2"`) — sets resolution + driver.
+    #[serde(default = "default_eink_model")]
+    pub model: String,
+    /// Rotation in degrees (0/90/180/270).
+    #[serde(default)]
+    pub rotation: u16,
+    /// Luma threshold 0–255 for the black/white cut.
+    #[serde(default = "default_eink_threshold")]
+    pub threshold: u8,
+    /// This display's own tile selection — a full registry config.
+    #[serde(default)]
+    pub modules: RegistryConfig,
+}
+
+fn default_eink_model() -> String {
+    "4in2".to_string()
+}
+
+fn default_eink_threshold() -> u8 {
+    128
+}
+
+impl EinkRegistryConfig {
+    /// Convert to the matrix crate's panel options.
+    pub fn options(&self) -> ohmyoled_matrix::EinkOptions {
+        ohmyoled_matrix::EinkOptions {
+            model: self.model.clone(),
+            rotation: self.rotation,
+            threshold: self.threshold,
+        }
+    }
+}
+
+/// Build the active e-paper modules from the `eink.modules` config.
+///
+/// Mirrors [`build`] but emits `DynEinkModule`s. For the first cut only the
+/// weather tile has an e-ink renderer; any other enabled section is counted
+/// and reported (a follow-up ports the rest), never silently dropped.
+pub async fn build_eink(cfg: &RegistryConfig) -> Vec<Box<dyn DynEinkModule>> {
+    let mut modules: Vec<Box<dyn DynEinkModule>> = Vec::new();
+
+    for w in cfg.weather.iter().filter(|w| w.run) {
+        match build_eink_weather(w).await {
+            Ok(m) => {
+                log::info!("eink registry: weather loaded (provider={})", w.api.get_api());
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink weather: skipping module: {e}"),
+        }
+    }
+
+    // Anything else enabled in the eink block is configured but not yet
+    // renderable on e-paper — report it so the tile isn't silently ignored.
+    let pending = cfg.time.iter().filter(|t| t.run).count()
+        + cfg.stock.iter().filter(|s| s.run).count()
+        + cfg.sport.iter().filter(|s| s.run()).count()
+        + cfg.iss.iter().filter(|s| s.run).count()
+        + cfg.quake.iter().filter(|s| s.run).count()
+        + cfg.aurora.iter().filter(|s| s.run).count()
+        + cfg.flights.iter().filter(|s| s.run).count()
+        + cfg.launch.iter().filter(|s| s.run).count()
+        + cfg.hass.iter().filter(|s| s.run).count()
+        + cfg.pihole.iter().filter(|s| s.run).count();
+    if pending > 0 {
+        log::info!(
+            "eink registry: {pending} enabled tile(s) have no e-ink renderer yet; only weather is supported so far"
+        );
+    }
+
+    modules
+}
+
+async fn build_eink_weather(w: &WeatherSection) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = weather_collector(w)?;
+    let renderer = EinkWeatherMatrix::new_async()
+        .await
+        .map_err(|e| format!("eink weather fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, w.cache_ttl_secs))
+}
+
+/// E-paper analog of [`module_with_ttl`] — wraps a `(collector, eink renderer)`
+/// pair into a boxed `DynEinkModule`, resolving the cache TTL identically.
+fn eink_module_with_ttl<C, R>(
+    collector: C,
+    renderer: R,
+    cache_ttl_secs: Option<u64>,
+) -> Box<dyn DynEinkModule>
+where
+    C: crate::api::Collector + 'static,
+    R: EinkRenderer<Data = C::Output> + 'static,
+    C::Output: Send + Sync + 'static,
+{
+    let ttl = cache_ttl_secs
+        .map(std::time::Duration::from_secs)
+        .unwrap_or_else(|| collector.refresh_interval());
+    Box::new(EinkModule::new(collector, renderer, ttl))
 }
 
 /// Wrap a `(collector, renderer)` pair into a boxed `DynModule`,

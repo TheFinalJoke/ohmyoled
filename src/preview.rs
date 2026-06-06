@@ -22,7 +22,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::{Duration as ChDuration, Local, TimeZone};
-use ohmyoled_matrix::{Color, RGBMatrix};
+use ohmyoled_matrix::{Color, EinkDisplay, RGBMatrix};
 
 use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
 use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
@@ -58,6 +58,7 @@ use oledlib::matrix::stock::{StockFonts, StockMatrix};
 use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
+use oledlib::matrix::eink::{EinkWeatherFonts, EinkWeatherMatrix};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
@@ -104,6 +105,46 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
         )),
+    }
+}
+
+/// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
+pub const EINK_NAMES: &[&str] = &["weather"];
+
+/// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
+/// Backend is whatever `EinkDisplay` resolves to — the terminal half-block
+/// view in the devcontainer (no hardware), the panel on a Pi. Unlike the
+/// module path this refreshes every few seconds so layout iteration is quick.
+pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String> {
+    let fonts = font_dir();
+    log::info!(
+        "preview: rendering eink '{name}' ({}x{}) with fonts from {}",
+        display.width(),
+        display.height(),
+        fonts.display()
+    );
+    match name {
+        "weather" => preview_eink_weather(&mut display, &fonts).await,
+        other => Err(format!(
+            "unknown eink preview '{other}'. Available: {}",
+            EINK_NAMES.join(", ")
+        )),
+    }
+}
+
+async fn preview_eink_weather(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let r = EinkWeatherMatrix::with_fonts_async(EinkWeatherFonts {
+        body: fonts.join("04B_03B_.TTF"),
+        icon: fonts.join("weathericons.ttf"),
+    })
+    .await?;
+    let data = fake_weather();
+    loop {
+        // Compose + push directly (rather than `render()`, which dwells for the
+        // full 60 s cycle) so the preview redraws every few seconds.
+        let img = r.frame(&data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 }
 

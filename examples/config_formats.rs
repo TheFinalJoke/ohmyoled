@@ -4,8 +4,15 @@
 //! `examples/configs/ohmyoled.{json,yaml,toml}`, deserializes each into
 //! `RegistryConfig`, and prints a short summary.
 
-use oledlib::modules::registry::{RegistryConfig, SportSection};
+use oledlib::modules::registry::{EinkRegistryConfig, RegistryConfig, SportSection};
 use std::path::PathBuf;
+
+/// Pulls the top-level `eink` block, mirroring how `main.rs` parses it.
+#[derive(serde::Deserialize, Default)]
+struct EinkTop {
+    #[serde(default)]
+    eink: EinkRegistryConfig,
+}
 
 fn fixture(name: &str) -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -60,9 +67,9 @@ fn main() {
     let yaml_v = load_as_json_value(&fixture("ohmyoled.yaml"));
     let toml_v = load_as_json_value(&fixture("ohmyoled.toml"));
 
-    let j: RegistryConfig = serde_json::from_value(json_v).expect("json -> RegistryConfig");
-    let y: RegistryConfig = serde_json::from_value(yaml_v).expect("yaml -> RegistryConfig");
-    let t: RegistryConfig = serde_json::from_value(toml_v).expect("toml -> RegistryConfig");
+    let j: RegistryConfig = serde_json::from_value(json_v.clone()).expect("json -> RegistryConfig");
+    let y: RegistryConfig = serde_json::from_value(yaml_v.clone()).expect("yaml -> RegistryConfig");
+    let t: RegistryConfig = serde_json::from_value(toml_v.clone()).expect("toml -> RegistryConfig");
 
     let sj = summarize(&j);
     let sy = summarize(&y);
@@ -74,4 +81,24 @@ fn main() {
     assert_eq!(sj, sy, "json/yaml diverge");
     assert_eq!(sj, st, "json/toml diverge");
     println!("all three formats produce equivalent RegistryConfig");
+
+    // The independent `eink` block must also parse equivalently in all three.
+    let ej: EinkTop = serde_json::from_value(json_v).expect("json -> EinkTop");
+    let ey: EinkTop = serde_json::from_value(yaml_v).expect("yaml -> EinkTop");
+    let et: EinkTop = serde_json::from_value(toml_v).expect("toml -> EinkTop");
+    let eink_summary = |e: &EinkTop| {
+        format!(
+            "enabled={} model={} weather={}",
+            e.eink.enabled,
+            e.eink.model,
+            e.eink.modules.weather.len()
+        )
+    };
+    let (sej, sey, set) = (eink_summary(&ej), eink_summary(&ey), eink_summary(&et));
+    println!("eink json: {sej}");
+    println!("eink yaml: {sey}");
+    println!("eink toml: {set}");
+    assert_eq!(sej, sey, "eink json/yaml diverge");
+    assert_eq!(sej, set, "eink json/toml diverge");
+    println!("all three formats produce equivalent eink config");
 }

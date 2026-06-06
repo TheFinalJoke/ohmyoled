@@ -25,6 +25,7 @@
 //!
 //! The [`scheduler::run`] loop picks it up automatically.
 
+pub mod eink_module;
 pub mod error;
 pub mod registry;
 pub mod scheduler;
@@ -52,9 +53,92 @@ const FIRST_POLL_WAIT: Duration = Duration::from_secs(10);
 /// - `Inline`: no background task (the user opted out with `cache_ttl_secs: 0`).
 ///   The renderer calls `collector.poll().await` directly on each render.
 ///   Always-fresh data; panel stalls for the duration of the round-trip.
-enum PollSource<C: Collector> {
+///
+/// `pub(crate)` so the e-paper module ([`eink_module`]) can reuse the exact
+/// same polling + cold-start machinery — only the render target differs.
+pub(crate) enum PollSource<C: Collector> {
     Cached(watch::Receiver<Option<Arc<C::Output>>>),
     Inline(C),
+}
+
+/// Spawn the cache for a `(collector, ttl)` and return the matching
+/// [`PollSource`]. `Duration::ZERO` ⇒ inline (no background task).
+///
+/// Shared by [`Module::new`] and the e-paper module so both get identical
+/// caching behaviour.
+pub(crate) fn make_poll_source<C>(collector: C, ttl: Duration) -> PollSource<C>
+where
+    C: Collector + 'static,
+    C::Output: Send + Sync + 'static,
+{
+    if ttl.is_zero() {
+        return PollSource::Inline(collector);
+    }
+    let id = collector.id();
+    let (tx, rx) = watch::channel::<Option<Arc<C::Output>>>(None);
+    tokio::spawn(background_poll(collector, tx, ttl, id));
+    PollSource::Cached(rx)
+}
+
+/// Pull the snapshot to render from a [`PollSource`], applying the cold-start
+/// wait and last-good fallback. Updates `last_good` in place and returns the
+/// value to hand the renderer (or `None` to skip this cycle).
+///
+/// Render-target-agnostic, so the LED and e-paper modules share it verbatim.
+pub(crate) async fn acquire_snapshot<C>(
+    id: &'static str,
+    source: &mut PollSource<C>,
+    last_good: &mut Option<Arc<C::Output>>,
+) -> Option<Arc<C::Output>>
+where
+    C: Collector + 'static,
+    C::Output: Send + Sync + 'static,
+{
+    let snapshot: Option<Arc<C::Output>> = match source {
+        PollSource::Cached(rx) => {
+            let current = rx.borrow().clone();
+            if current.is_some() || last_good.is_some() {
+                current
+            } else {
+                // Cold start: the background task hasn't returned its first
+                // poll yet. Block this slot briefly so the tile doesn't
+                // silently skip its first cycle. Bounded so a dead API can't
+                // wedge the scheduler.
+                log::debug!(
+                    "[{id}] no cached value yet; waiting up to {:?} for first poll",
+                    FIRST_POLL_WAIT
+                );
+                match tokio::time::timeout(FIRST_POLL_WAIT, rx.changed()).await {
+                    Ok(Ok(())) => rx.borrow_and_update().clone(),
+                    Ok(Err(_)) => None, // sender dropped — shutdown
+                    Err(_) => {
+                        log::warn!(
+                            "[{id}] first poll didn't arrive within {:?}; skipping cycle",
+                            FIRST_POLL_WAIT
+                        );
+                        None
+                    }
+                }
+            }
+        }
+        PollSource::Inline(collector) => {
+            let started = std::time::Instant::now();
+            match collector.poll().await {
+                Ok(data) => {
+                    log::debug!("[{id}] inline poll ok in {} ms", started.elapsed().as_millis());
+                    Some(Arc::new(data))
+                }
+                Err(e) => {
+                    log::warn!("[{id}] inline poll failed: {e}; using last-good");
+                    None
+                }
+            }
+        }
+    };
+    if snapshot.is_some() {
+        *last_good = snapshot;
+    }
+    last_good.clone()
 }
 
 /// One module = one collector + one renderer whose `Data` types align.
@@ -79,19 +163,9 @@ where
     ///   for `ttl` between polls; renders read the cached value.
     pub fn new(collector: C, renderer: R, ttl: Duration) -> Self {
         let id = collector.id();
-        if ttl.is_zero() {
-            return Self {
-                id,
-                source: PollSource::Inline(collector),
-                renderer,
-                last_good: None,
-            };
-        }
-        let (tx, rx) = watch::channel::<Option<Arc<C::Output>>>(None);
-        tokio::spawn(background_poll(collector, tx, ttl, id));
         Self {
             id,
-            source: PollSource::Cached(rx),
+            source: make_poll_source(collector, ttl),
             renderer,
             last_good: None,
         }
@@ -175,64 +249,12 @@ where
 
     async fn render_cached(&mut self, matrix: &mut RGBMatrix) -> Result<(), ModuleError> {
         let id = self.id;
-        // Pick up the latest snapshot (background or inline).
-        let snapshot: Option<Arc<C::Output>> = match &mut self.source {
-            PollSource::Cached(rx) => {
-                let current = rx.borrow().clone();
-                if current.is_some() || self.last_good.is_some() {
-                    current
-                } else {
-                    // Cold start: the background task hasn't returned its
-                    // first poll yet (e.g. ISS / weather over a slow link).
-                    // Block this slot briefly so the tile doesn't silently
-                    // skip its first cycle. Bounded so a dead API can't
-                    // wedge the scheduler.
-                    log::debug!(
-                        "[{id}] no cached value yet; waiting up to {:?} for first poll",
-                        FIRST_POLL_WAIT
-                    );
-                    match tokio::time::timeout(FIRST_POLL_WAIT, rx.changed()).await {
-                        Ok(Ok(())) => rx.borrow_and_update().clone(),
-                        Ok(Err(_)) => None, // sender dropped — shutdown
-                        Err(_) => {
-                            log::warn!(
-                                "[{id}] first poll didn't arrive within {:?}; skipping cycle",
-                                FIRST_POLL_WAIT
-                            );
-                            None
-                        }
-                    }
-                }
-            }
-            PollSource::Inline(collector) => {
-                let started = std::time::Instant::now();
-                match collector.poll().await {
-                    Ok(data) => {
-                        log::debug!(
-                            "[{id}] inline poll ok in {} ms",
-                            started.elapsed().as_millis()
-                        );
-                        Some(Arc::new(data))
-                    }
-                    Err(e) => {
-                        log::warn!("[{id}] inline poll failed: {e}; using last-good");
-                        None
-                    }
-                }
-            }
-        };
-        if snapshot.is_some() {
-            self.last_good = snapshot;
-        }
-        match &self.last_good {
+        match acquire_snapshot(id, &mut self.source, &mut self.last_good).await {
             Some(data) => {
                 let started = std::time::Instant::now();
                 log::debug!("[{id}] render begin");
                 let r = self.renderer.render(matrix, data.as_ref()).await.map_err(Into::into);
-                log::debug!(
-                    "[{id}] render done in {} ms",
-                    started.elapsed().as_millis()
-                );
+                log::debug!("[{id}] render done in {} ms", started.elapsed().as_millis());
                 r
             }
             None => {

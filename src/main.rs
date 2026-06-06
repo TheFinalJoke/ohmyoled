@@ -6,7 +6,7 @@ mod preview;
 extern crate log;
 use clap::{Arg, ArgAction, Command};
 use oledlib::modules::{registry, scheduler};
-use ohmyoled_matrix::{MatrixOptions, RGBMatrix};
+use ohmyoled_matrix::{EinkDisplay, MatrixOptions, RGBMatrix};
 
 fn parse_config_file(file: &str) -> serde_json::Value {
     config_io::load(file).unwrap_or_else(|e| {
@@ -57,6 +57,17 @@ fn build_matrix(cfg: &createjson::MatrixOptions, dev: bool) -> RGBMatrix {
     }
 }
 
+/// Build an `EinkDisplay` from the parsed `eink` config block. Like
+/// `build_matrix`, `dev` forces the terminal (hardware-free) backend.
+fn build_eink_display(cfg: &registry::EinkRegistryConfig, dev: bool) -> EinkDisplay {
+    let opts = cfg.options();
+    if dev {
+        EinkDisplay::test(opts)
+    } else {
+        EinkDisplay::new(opts)
+    }
+}
+
 // Async-signal-safe SIGINT handler.
 // Writes a message via raw libc::write, then calls libc::_exit to bypass
 // the tokio runtime's shutdown path so in-flight HTTP fetches don't panic.
@@ -77,6 +88,15 @@ fn install_sigint_handler() {
 #[derive(serde::Deserialize)]
 struct ParsedConfig {
     matrix_options: createjson::MatrixOptions,
+}
+
+/// Pulls just the top-level `eink` block out of the config. Separate pass so
+/// the LED `RegistryConfig` and `ParsedConfig` stay untouched and existing
+/// configs (no `eink` key) parse to the disabled default.
+#[derive(serde::Deserialize, Default)]
+struct EinkTopConfig {
+    #[serde(default)]
+    eink: registry::EinkRegistryConfig,
 }
 
 #[tokio::main]
@@ -105,7 +125,7 @@ async fn main() {
             .action(ArgAction::SetTrue),
         Arg::new("preview")
             .long("preview")
-            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, stock_chart, sport, golf, f1, iss, quake, aurora, flights, launch, hass, pihole")
+            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, stock_chart, sport, golf, f1, iss, quake, aurora, flights, launch, hass, pihole. Prefix with 'eink' for the e-paper display, e.g. 'eink:weather'")
             .value_name("NAME"),
         Arg::new("verbose")
             .short('v')
@@ -135,8 +155,21 @@ async fn main() {
     // config loading entirely so it works on a fresh clone with no setup.
     if let Some(name) = matches.get_one::<String>("preview") {
         let dev = std::env::var("DEV").is_ok();
-        let matrix = build_matrix(&createjson::MatrixOptions::default(), dev);
         install_sigint_handler();
+        // `--preview eink` (or `eink:weather` / `eink_weather`) drives the
+        // e-paper display instead of the LED matrix. Defaults to the weather
+        // screen. Backend follows OHMYOLED_EINK_MODE (terminal off-Pi).
+        if let Some(rest) = name.strip_prefix("eink") {
+            let sub = rest.trim_start_matches([':', '_', '-']);
+            let sub = if sub.is_empty() { "weather" } else { sub };
+            let display = EinkDisplay::new(ohmyoled_matrix::EinkOptions::default());
+            if let Err(e) = preview::run_eink(sub, display).await {
+                eprintln!("preview: {e}");
+                std::process::exit(2);
+            }
+            return;
+        }
+        let matrix = build_matrix(&createjson::MatrixOptions::default(), dev);
         if let Err(e) = preview::run(name, matrix).await {
             eprintln!("preview: {e}");
             std::process::exit(2);
@@ -234,6 +267,11 @@ async fn main() {
             println!("Failed to deserialize config at {}: {}", e.path(), e.inner());
             std::process::exit(33);
         });
+    let eink_top: EinkTopConfig = serde_path_to_error::deserialize(configuration.clone())
+        .unwrap_or_else(|e| {
+            println!("Failed to deserialize eink config at {}: {}", e.path(), e.inner());
+            std::process::exit(35);
+        });
     let registry_cfg: registry::RegistryConfig = serde_path_to_error::deserialize(configuration)
         .unwrap_or_else(|e| {
             println!(
@@ -244,6 +282,26 @@ async fn main() {
             std::process::exit(34);
         });
     let dev = std::env::var("DEV").is_ok();
+
+    // The e-paper display is an independent, opt-in output. When `eink.enabled`
+    // is set we drive the panel with its own module set instead of the LED
+    // matrix; otherwise everything below is the unchanged LED path.
+    if eink_top.eink.enabled {
+        log::info!(
+            "eink display enabled (model={}, threshold={})",
+            eink_top.eink.model,
+            eink_top.eink.threshold
+        );
+        let display = build_eink_display(&eink_top.eink, dev);
+        let modules = registry::build_eink(&eink_top.eink.modules).await;
+        log::info!("eink registry built: {} module(s) active", modules.len());
+        install_sigint_handler();
+        if let Err(e) = scheduler::run_eink(display, modules).await {
+            eprintln!("eink scheduler: {e}");
+            unsafe { libc::_exit(1) };
+        }
+        return;
+    }
 
     let matrix = build_matrix(&parsed.matrix_options, dev);
     log::debug!(

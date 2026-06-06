@@ -5,6 +5,8 @@
 
 pub mod aurora;
 pub mod cells;
+pub mod eink;
+pub mod eink_renderer;
 pub mod error;
 pub mod f1;
 pub mod flights;
@@ -22,6 +24,8 @@ pub mod time;
 pub mod weather;
 
 pub use aurora::AuroraMatrix;
+pub use eink::{EinkWeatherFonts, EinkWeatherMatrix};
+pub use eink_renderer::EinkRenderer;
 pub use error::RenderError;
 pub use f1::F1Matrix;
 pub use flights::FlightsMatrix;
