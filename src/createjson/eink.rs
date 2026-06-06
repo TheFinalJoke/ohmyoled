@@ -5,7 +5,7 @@
 //! selection (currently the weather tile — the one with an e-ink renderer).
 //! Produces the full `eink` config object.
 
-use crate::createjson::{time, ui, weather};
+use crate::createjson::{aurora, iss, pihole, quake, time, ui, weather};
 use serde_json::{json, Map, Value};
 
 pub fn configure() -> Result<Value, String> {
@@ -63,6 +63,38 @@ pub fn configure() -> Result<Value, String> {
                 );
             }
             Err(e) => ui::warn(&format!("weather tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the ISS tracker tile to the e-paper display?", false) {
+        match iss::configure() {
+            Ok(opts) => {
+                modules.insert("iss".to_string(), serde_json::to_value(opts).expect("IssOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("iss tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the earthquake tile to the e-paper display?", false) {
+        match quake::configure() {
+            Ok(opts) => {
+                modules.insert("quake".to_string(), serde_json::to_value(opts).expect("QuakeOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("quake tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the aurora tile to the e-paper display?", false) {
+        match aurora::configure() {
+            Ok(opts) => {
+                modules.insert("aurora".to_string(), serde_json::to_value(opts).expect("AuroraOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("aurora tile skipped: {e}")),
+        }
+    }
+    if ui::read_yes_no("Add the Pi-hole tile to the e-paper display?", false) {
+        match pihole::configure() {
+            Ok(opts) => {
+                modules.insert("pihole".to_string(), serde_json::to_value(opts).expect("PiholeOptions serializes"));
+            }
+            Err(e) => ui::warn(&format!("pihole tile skipped: {e}")),
         }
     }
 

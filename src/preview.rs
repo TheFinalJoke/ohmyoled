@@ -58,7 +58,11 @@ use oledlib::matrix::stock::{StockFonts, StockMatrix};
 use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
-use oledlib::matrix::eink::{EinkTimeFonts, EinkTimeMatrix, EinkWeatherFonts, EinkWeatherMatrix};
+use oledlib::matrix::eink::{
+    EinkAuroraFonts, EinkAuroraMatrix, EinkIssFonts, EinkIssMatrix, EinkPiholeFonts,
+    EinkPiholeMatrix, EinkQuakeFonts, EinkQuakeMatrix, EinkTimeFonts, EinkTimeMatrix,
+    EinkWeatherFonts, EinkWeatherMatrix,
+};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
@@ -109,7 +113,7 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
 }
 
 /// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
-pub const EINK_NAMES: &[&str] = &["time", "weather"];
+pub const EINK_NAMES: &[&str] = &["time", "weather", "pihole", "iss", "aurora", "quake"];
 
 /// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
 /// Backend is whatever `EinkDisplay` resolves to — the terminal inline-image
@@ -127,6 +131,10 @@ pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String
     match name {
         "time" => preview_eink_time(&mut display, &fonts).await,
         "weather" => preview_eink_weather(&mut display, &fonts).await,
+        "pihole" => preview_eink_pihole(&mut display, &fonts).await,
+        "iss" => preview_eink_iss(&mut display, &fonts).await,
+        "aurora" => preview_eink_aurora(&mut display, &fonts).await,
+        "quake" => preview_eink_quake(&mut display, &fonts).await,
         other => Err(format!(
             "unknown eink preview '{other}'. Available: {}",
             EINK_NAMES.join(", ")
@@ -166,6 +174,111 @@ async fn preview_eink_weather(display: &mut EinkDisplay, fonts: &Path) -> Result
         // full 60 s cycle) so the preview redraws every few seconds.
         let img = r.frame(&data, display.width(), display.height());
         display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_pihole(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkPiholeMatrix::with_fonts_async(
+        EinkPiholeFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            big: fonts.join("04b24.otf"),
+        },
+        dims,
+    )
+    .await?;
+    let s = |pct: f32, q: u32, blk: u32| PiholeSummary {
+        percent_blocked: pct,
+        queries_today: q,
+        blocked_today: blk,
+        unique_clients: 12,
+    };
+    let cycle = [s(34.2, 12_348, 4_221), s(58.7, 88_500, 51_949), s(7.4, 2_100, 156)];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_iss(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkIssMatrix::with_fonts_async(EinkIssFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let distant = IssState {
+        ground_distance_km: 1247,
+        overhead: false,
+        lat: 23.5,
+        lon: -50.1,
+        altitude_km: 421.0,
+        velocity_kms: 7.66,
+        visibility: "daylight".into(),
+    };
+    let overhead = IssState { ground_distance_km: 120, overhead: true, ..distant.clone() };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &overhead } else { &distant };
+        toggle = !toggle;
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_aurora(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkAuroraMatrix::with_fonts_async(
+        EinkAuroraFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            big: fonts.join("04b24.otf"),
+        },
+        dims,
+    )
+    .await?;
+    let now = chrono::Utc::now();
+    let make = |kp: u8, alert: bool| AuroraReading {
+        kp,
+        kp_index: kp as f32,
+        kp_text: format!("{kp}Z"),
+        alert,
+        sampled_at: now,
+    };
+    let cycle = [make(2, false), make(4, false), make(6, true), make(8, true)];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_quake(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkQuakeMatrix::with_fonts_async(EinkQuakeFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let now = chrono::Utc::now() - ChDuration::minutes(14);
+    let ev = |mag: f32, title: &str, felt: Option<u32>| {
+        QuakeStatus::Event(QuakeEvent {
+            magnitude: mag,
+            title: title.into(),
+            origin: now,
+            depth_km: 24.0,
+            felt,
+        })
+    };
+    let cycle = [
+        ev(6.2, "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN", Some(482)),
+        ev(4.7, "M 4.7 - 120km SW of San Francisco, CA", Some(37)),
+        ev(3.1, "M 3.1 - 14 km NE of Reykjavik, Iceland", None),
+        QuakeStatus::Quiet,
+    ];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
 }

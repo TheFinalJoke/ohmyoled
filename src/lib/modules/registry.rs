@@ -64,7 +64,10 @@ use crate::matrix::stock::StockMatrix;
 use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
-use crate::matrix::eink::{EinkTimeMatrix, EinkWeatherMatrix};
+use crate::matrix::eink::{
+    EinkAuroraMatrix, EinkIssMatrix, EinkPiholeMatrix, EinkQuakeMatrix, EinkTimeMatrix,
+    EinkWeatherMatrix,
+};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::modules::eink_module::{DynEinkModule, EinkModule};
 use crate::modules::{DynModule, Module};
@@ -876,21 +879,53 @@ pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn D
         }
     }
 
+    for s in cfg.iss.iter().filter(|s| s.run) {
+        match build_eink_iss(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: iss loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink iss: skipping module: {e}"),
+        }
+    }
+    for s in cfg.quake.iter().filter(|s| s.run) {
+        match build_eink_quake(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: quake loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink quake: skipping module: {e}"),
+        }
+    }
+    for s in cfg.aurora.iter().filter(|s| s.run) {
+        match build_eink_aurora(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: aurora loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink aurora: skipping module: {e}"),
+        }
+    }
+    for s in cfg.pihole.iter().filter(|s| s.run) {
+        match build_eink_pihole(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: pihole loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink pihole: skipping module: {e}"),
+        }
+    }
+
     // Anything else enabled in the eink block is configured but not yet
     // renderable on e-paper — report it so the tile isn't silently ignored.
     let pending = cfg.stock.iter().filter(|s| s.run).count()
         + cfg.sport.iter().filter(|s| s.run()).count()
-        + cfg.iss.iter().filter(|s| s.run).count()
-        + cfg.quake.iter().filter(|s| s.run).count()
-        + cfg.aurora.iter().filter(|s| s.run).count()
         + cfg.flights.iter().filter(|s| s.run).count()
         + cfg.launch.iter().filter(|s| s.run).count()
-        + cfg.hass.iter().filter(|s| s.run).count()
-        + cfg.pihole.iter().filter(|s| s.run).count();
+        + cfg.hass.iter().filter(|s| s.run).count();
     if pending > 0 {
         log::info!(
-            "eink registry: {pending} enabled tile(s) have no e-ink renderer yet; \
-             time and weather are supported so far"
+            "eink registry: {pending} enabled tile(s) have no e-ink renderer yet"
         );
     }
 
@@ -922,6 +957,50 @@ async fn build_eink_weather(w: &WeatherSection, dims: (u32, u32)) -> Result<Box<
         .await
         .map_err(|e| format!("eink weather fonts: {e}"))?;
     Ok(eink_module_with_ttl(collector, renderer, w.cache_ttl_secs))
+}
+
+async fn build_eink_iss(s: &IssSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = IssCollector::from_wheretheiss(WhereTheIssConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkIssMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink iss fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_quake(s: &QuakeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = QuakeCollector::from_usgs(UsgsConfig { feed: s.feed })
+        .map_err(|e| e.to_string())?;
+    let renderer = EinkQuakeMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink quake fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_aurora(s: &AuroraSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = AuroraCollector::from_swpc(SwpcConfig {
+        alert_threshold: s.alert_threshold,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkAuroraMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink aurora fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_pihole(s: &PiholeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = PiholeCollector::from_v5(PiholeV5Config {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkPiholeMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink pihole fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
 /// E-paper analog of [`module_with_ttl`] — wraps a `(collector, eink renderer)`

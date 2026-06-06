@@ -109,6 +109,28 @@ pub fn big_value(
     ux + unit_font.text_width(unit)
 }
 
+/// [`big_value`] horizontally centered on `cx` (value + unit treated as one
+/// group). The workhorse for the single-value "hero" tiles.
+#[allow(clippy::too_many_arguments)]
+pub fn big_value_centered(
+    img: &mut RgbImage,
+    big: &Font,
+    unit_font: &Font,
+    cx: i32,
+    y: i32,
+    color: Color,
+    value: &str,
+    unit: &str,
+) {
+    let vw = big.text_width(value);
+    let total = if unit.is_empty() {
+        vw
+    } else {
+        vw + (big.height() / 12).max(2) + unit_font.text_width(unit)
+    };
+    big_value(img, big, unit_font, cx - total / 2, y, color, value, unit);
+}
+
 /// Fill a solid rectangle.
 pub fn fill_rect(img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, color: Color) {
     let px = Rgb([color.r, color.g, color.b]);
@@ -141,6 +163,12 @@ pub fn hbar(img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, frac: f32, ticks
         let tx = x + (w * i as i32) / ticks as i32;
         draw_line(img, tx, y, tx, y + h, color);
     }
+}
+
+/// Total width a [`badge`] occupies for `text` (box + horizontal padding).
+/// Use it to center a badge: `badge(img, font, cx - badge_width(font, text)/2, …)`.
+pub fn badge_width(font: &Font, text: &str) -> i32 {
+    font.text_width(text) + 2 * (font.height() / 3).max(3)
 }
 
 /// Draw a badge — a small boxed label. `filled` inverts it (solid box with the
