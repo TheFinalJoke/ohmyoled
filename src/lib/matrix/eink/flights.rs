@@ -142,24 +142,43 @@ impl EinkFlightsMatrix {
             let theta = ac.bearing_deg.to_radians();
             let px = cx + (rr * theta.sin()).round() as i32;
             let py = cy - (rr * theta.cos()).round() as i32;
-            // Aircraft position — a chunky dot (the arrow's origin).
-            let dot = (r / 24).max(3);
-            crate::matrix::eink::layout::fill_rect(img, px - dot, py - dot, 2 * dot + 1, 2 * dot + 1, fg);
-            // Heading vector — a short line in the aircraft's direction of
-            // travel (north-up, clockwise), so you see where it's going.
-            if let Some(h) = ac.heading_deg {
-                let hr = h.to_radians();
-                let len = (r / 6).max(6) as f32;
-                let ex = px + (len * hr.sin()).round() as i32;
-                let ey = py - (len * hr.cos()).round() as i32;
-                draw_line(img, px, py, ex, ey, fg);
+            // A little airplane pointed along its heading; a dot if unknown.
+            let sz = (r / 10).max(7);
+            match ac.heading_deg {
+                Some(h) => draw_plane(img, px, py, h, sz, fg),
+                None => crate::matrix::eink::layout::fill_rect(img, px - 2, py - 2, 5, 5, fg),
             }
             // Ring the nearest (first) so it reads without color.
             if i == 0 {
-                draw_circle(img, px, py, (r / 12).max(3), fg);
+                draw_circle(img, px, py, sz + 3, fg);
             }
         }
     }
+}
+
+/// Draw a top-down airplane silhouette (fuselage + wings + tailplane) centered
+/// at `(px, py)`, nose pointed along `heading_deg` (clockwise from north). `sz`
+/// is roughly the nose-to-center length in pixels.
+fn draw_plane(img: &mut RgbImage, px: i32, py: i32, heading_deg: f32, sz: i32, fg: Color) {
+    let h = heading_deg.to_radians();
+    let (sh, ch) = (h.sin(), h.cos());
+    let s = sz as f32;
+    // Local coords: `f` = forward toward the nose, `r` = toward the right wing.
+    let pt = |f: f32, r: f32| -> (i32, i32) {
+        (
+            px + (f * sh + r * ch).round() as i32,
+            py + (-f * ch + r * sh).round() as i32,
+        )
+    };
+    let nose = pt(s, 0.0);
+    let tail = pt(-s, 0.0);
+    let lwing = pt(-0.05 * s, -0.95 * s);
+    let rwing = pt(-0.05 * s, 0.95 * s);
+    let ltail = pt(-0.8 * s, -0.45 * s);
+    let rtail = pt(-0.8 * s, 0.45 * s);
+    draw_line(img, nose.0, nose.1, tail.0, tail.1, fg); // fuselage
+    draw_line(img, lwing.0, lwing.1, rwing.0, rwing.1, fg); // wings
+    draw_line(img, ltail.0, ltail.1, rtail.0, rtail.1, fg); // tailplane
 }
 
 #[async_trait]
