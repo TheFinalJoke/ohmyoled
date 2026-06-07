@@ -29,7 +29,7 @@
 //! collectors as the LED tile).
 
 use crate::api::weather::model::{Weather, WindDirection};
-use crate::matrix::eink::layout::{center_text, scaled_px, stat_row};
+use crate::matrix::eink::layout::{center_text, scaled_px, sparkline, stat_row};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
@@ -195,6 +195,34 @@ impl EinkWeatherMatrix {
         let icon_x = wi - margin - icon_w;
         let icon_base = hero_cy + self.icon_big.height() / 2 - self.icon_big.height() / 8;
         draw_text(&mut img, &self.icon_big, icon_x, icon_base, fg, &icon_glyph);
+
+        // ── Hourly temp trend + sun times, in the hero's empty center ───
+        let cs_x = margin + temp_w + (self.big.height() / 3); // clear of the degree group
+        let cs_w = icon_x - cs_x - margin;
+        if cs_w > 60 {
+            let ccx = cs_x + cs_w / 2;
+            if !data.hourly.is_empty() {
+                let temps: Vec<f32> = data.hourly.iter().take(24).map(|hr| hr.temp).collect();
+                let sh = (hero_bottom - hero_top) * 34 / 100;
+                let sy = hero_cy - sh / 2 - self.small.height();
+                center_text(&mut img, &self.small, ccx, sy - margin / 3, fg, "NEXT 24H");
+                sparkline(&mut img, cs_x, sy, cs_w, sh, &temps, fg);
+                let sun_y = sy + sh + self.small.height() + margin / 3;
+                let sun = format!(
+                    "RISE {}   SET {}",
+                    data.forecast.sunrise.format("%-H:%M"),
+                    data.forecast.sunset.format("%-H:%M")
+                );
+                center_text(&mut img, &self.small, ccx, sun_y, fg, &sun);
+            } else {
+                let sun = format!(
+                    "RISE {}   SET {}",
+                    data.forecast.sunrise.format("%-H:%M"),
+                    data.forecast.sunset.format("%-H:%M")
+                );
+                center_text(&mut img, &self.small, ccx, hero_cy, fg, &sun);
+            }
+        }
 
         // ── Forecast strip filling the bottom band ──────────────────────
         if has_forecast {

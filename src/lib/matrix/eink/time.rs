@@ -25,14 +25,14 @@
 //!       time_format: "12h"         # "12h" | "24h"
 //! ```
 
-use crate::matrix::eink::layout::{center_text, scaled_px};
+use crate::matrix::eink::layout::{center_text, fill_rect, scaled_px};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use crate::matrix::time::{TimeFormat, TimeSnapshot};
 use async_trait::async_trait;
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, Timelike};
 use image::RgbImage;
-use ohmyoled_matrix::graphics::{draw_line, draw_text, Font};
+use ohmyoled_matrix::graphics::{draw_circle, draw_line, draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -79,8 +79,8 @@ impl EinkTimeMatrix {
     pub fn with_fonts(paths: EinkTimeFonts, dims: (u32, u32)) -> Result<Self, String> {
         let h = dims.1;
         Ok(Self {
-            clock: Font::load_ttf(&paths.body, scaled_px(196.0, h))?,
-            meridiem: Font::load_ttf(&paths.body, scaled_px(44.0, h))?,
+            clock: Font::load_ttf(&paths.body, scaled_px(150.0, h))?,
+            meridiem: Font::load_ttf(&paths.body, scaled_px(38.0, h))?,
             date: Font::load_ttf(&paths.body, scaled_px(40.0, h))?,
             weekday: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
             format: TimeFormat::default(),
@@ -123,9 +123,16 @@ impl EinkTimeMatrix {
         let rule_y = wk_y + self.weekday.height() / 2 + 6;
         draw_line(&mut img, wi / 5, rule_y, wi - wi / 5, rule_y, fg);
 
-        // ── Big clock, visual center on the panel midline ───────────────
-        // Account for the meridiem so the numerals + AM/PM group sits balanced
-        // rather than letting "PM" push everything left of centre.
+        let date_y = hi - hi / 8;
+        let band_cy = (rule_y + date_y - self.date.height()) / 2;
+
+        // ── Analog clock on the left ────────────────────────────────────
+        let acx = wi * 27 / 100;
+        let radius = (wi * 18 / 100).min((date_y - self.date.height() - rule_y) / 2 - 4).max(20);
+        self.draw_analog(&mut img, acx, band_cy, radius, now, fg);
+
+        // ── Digital clock on the right, centered on the band midline ────
+        let dcx = wi * 64 / 100;
         let clock_w = self.clock.text_width(&clock_str);
         let mer_gap = self.clock.height() / 16;
         let mer_w = if meridiem.is_empty() {
@@ -133,10 +140,9 @@ impl EinkTimeMatrix {
         } else {
             mer_gap + self.meridiem.text_width(&meridiem)
         };
-        let clock_x = cx - (clock_w + mer_w) / 2;
-        let clock_base = hi / 2 - self.clock.text_v_center_from_baseline(&clock_str);
+        let clock_x = dcx - (clock_w + mer_w) / 2;
+        let clock_base = band_cy - self.clock.text_v_center_from_baseline(&clock_str);
         draw_text(&mut img, &self.clock, clock_x, clock_base, fg, &clock_str);
-        // AM/PM tucked to the top-right of the numerals (12h only).
         if !meridiem.is_empty() {
             let mx = clock_x + clock_w + mer_gap;
             let my = clock_base - self.clock.ascent() + self.clock.ascent() / 4 + self.meridiem.ascent();
@@ -145,10 +151,48 @@ impl EinkTimeMatrix {
 
         // ── Full date across the bottom ─────────────────────────────────
         let date = now.format("%B %-d, %Y").to_string();
-        let date_y = hi - hi / 8;
         center_text(&mut img, &self.date, cx, date_y, fg, &date);
 
         img
+    }
+
+    /// Draw an analog clock face (ring, hour ticks, hour + minute hands).
+    fn draw_analog(&self, img: &mut RgbImage, cx: i32, cy: i32, r: i32, now: DateTime<Local>, fg: Color) {
+        use std::f32::consts::TAU;
+        draw_circle(img, cx, cy, r, fg);
+        draw_circle(img, cx, cy, r - 1, fg);
+        let rf = r as f32;
+        for k in 0..12 {
+            let a = k as f32 / 12.0 * TAU;
+            let (s, c) = (a.sin(), a.cos());
+            // Quarter ticks longer than the rest.
+            let inner = if k % 3 == 0 { 0.80 } else { 0.88 };
+            draw_line(
+                img,
+                cx + (rf * inner * s) as i32,
+                cy - (rf * inner * c) as i32,
+                cx + (rf * 0.97 * s) as i32,
+                cy - (rf * 0.97 * c) as i32,
+                fg,
+            );
+        }
+        let (h, m) = (now.hour() % 12, now.minute());
+        let hr_a = (h as f32 + m as f32 / 60.0) / 12.0 * TAU;
+        let min_a = m as f32 / 60.0 * TAU;
+        self.hand(img, cx, cy, hr_a, rf * 0.5, 2, fg);
+        self.hand(img, cx, cy, min_a, rf * 0.82, 1, fg);
+        fill_rect(img, cx - 2, cy - 2, 5, 5, fg);
+    }
+
+    /// Draw a clock hand from the center at `angle` (radians, clockwise from
+    /// 12 o'clock), `len` px long, `thick` px of extra width each side.
+    fn hand(&self, img: &mut RgbImage, cx: i32, cy: i32, angle: f32, len: f32, thick: i32, fg: Color) {
+        let (s, c) = (angle.sin(), angle.cos());
+        let (ex, ey) = (cx + (len * s) as i32, cy - (len * c) as i32);
+        for t in -thick..=thick {
+            let (ox, oy) = ((t as f32 * c) as i32, (t as f32 * s) as i32);
+            draw_line(img, cx + ox, cy + oy, ex + ox, ey + oy, fg);
+        }
     }
 }
 

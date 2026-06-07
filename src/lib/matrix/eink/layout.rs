@@ -14,7 +14,7 @@
 //! [`ohmyoled_matrix::EinkDisplay`] inverts to black-ink-on-white.
 
 use image::{Rgb, RgbImage};
-use ohmyoled_matrix::graphics::{draw_line, draw_text, Font};
+use ohmyoled_matrix::graphics::{draw_circle, draw_line, draw_text, Font};
 use ohmyoled_matrix::Color;
 
 /// Reference panel height the base font sizes are authored against (7.5").
@@ -129,6 +129,36 @@ pub fn big_value_centered(
         vw + (big.height() / 12).max(2) + unit_font.text_width(unit)
     };
     big_value(img, big, unit_font, cx - total / 2, y, color, value, unit);
+}
+
+/// Draw a donut gauge: an outlined ring (`inner`..`outer` radius) with a solid
+/// arc swept clockwise from 12 o'clock proportional to `frac` (0..1). Good for
+/// "X% of a whole" with a value in the hole.
+pub fn donut(img: &mut RgbImage, cx: i32, cy: i32, outer: i32, inner: i32, frac: f32, color: Color) {
+    let px = Rgb([color.r, color.g, color.b]);
+    let (iw, ih) = (img.width() as i32, img.height() as i32);
+    let max_deg = frac.clamp(0.0, 1.0) * 360.0;
+    let (o2, i2) = (outer * outer, inner * inner);
+    for y in -outer..=outer {
+        for x in -outer..=outer {
+            let d2 = x * x + y * y;
+            if d2 < i2 || d2 > o2 {
+                continue;
+            }
+            let mut ang = (x as f32).atan2(-(y as f32)).to_degrees();
+            if ang < 0.0 {
+                ang += 360.0;
+            }
+            if ang <= max_deg {
+                let (gx, gy) = (cx + x, cy + y);
+                if gx >= 0 && gx < iw && gy >= 0 && gy < ih {
+                    img.put_pixel(gx as u32, gy as u32, px);
+                }
+            }
+        }
+    }
+    draw_circle(img, cx, cy, outer, color);
+    draw_circle(img, cx, cy, inner, color);
 }
 
 /// Fill a solid rectangle.

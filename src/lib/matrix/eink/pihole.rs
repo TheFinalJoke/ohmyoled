@@ -22,7 +22,7 @@
 
 use crate::api::pihole::model::PiholeSummary;
 use crate::matrix::eink::layout::{
-    big_value_centered, center_text, hbar, header_band, margin, scaled_px, stat_row,
+    big_value_centered, center_text, donut, header_band, margin, scaled_px, stat_row,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
@@ -73,8 +73,8 @@ impl EinkPiholeMatrix {
         let h = dims.1;
         Ok(Self {
             title: Font::load_ttf(&paths.body, scaled_px(30.0, h))?,
-            big: Font::load_ttf(&paths.big, scaled_px(120.0, h))?,
-            unit: Font::load_ttf(&paths.body, scaled_px(42.0, h))?,
+            big: Font::load_ttf(&paths.big, scaled_px(64.0, h))?,
+            unit: Font::load_ttf(&paths.body, scaled_px(28.0, h))?,
             label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
         })
     }
@@ -96,19 +96,17 @@ impl EinkPiholeMatrix {
 
         let content_top = header_band(&mut img, &self.title, &self.label, m, "PI-HOLE", Some("TODAY"), fg);
 
-        // Caption under the header.
-        center_text(&mut img, &self.label, cx, content_top + self.label.ascent(), fg, "BLOCKED");
+        // ── Donut: share of queries blocked, value in the hole ──────────
+        let stat_y = hi - m - (self.label.height() - self.label.ascent());
+        let dcy = (content_top + (stat_y - self.label.height())) / 2;
+        let outer = (wi * 14 / 100).min((stat_y - self.label.height() - content_top) / 2 - m).max(40);
+        let inner = outer * 70 / 100;
+        donut(&mut img, cx, dcy, outer, inner, data.percent_blocked / 100.0, fg);
 
-        // Big percentage hero, vertically around 42% of the panel.
-        let hero_base = hi * 42 / 100 + self.big.ascent() / 2;
-        let pct = format!("{:.1}", data.percent_blocked);
-        big_value_centered(&mut img, &self.big, &self.unit, cx, hero_base, fg, &pct, "%");
-
-        // Gauge echoing the percentage.
-        let bar_w = wi - 2 * m;
-        let bar_h = (hi / 22).max(6);
-        let bar_y = hero_base + m;
-        hbar(&mut img, m, bar_y, bar_w, bar_h, data.percent_blocked / 100.0, 10, fg);
+        // Percentage + "BLOCKED" centered in the hole.
+        let pct = format!("{:.0}", data.percent_blocked);
+        big_value_centered(&mut img, &self.big, &self.unit, cx, dcy + self.big.ascent() / 2, fg, &pct, "%");
+        center_text(&mut img, &self.label, cx, dcy + outer + self.label.ascent(), fg, "BLOCKED");
 
         // Stat row of the day's totals near the bottom.
         let stats = vec![
