@@ -28,12 +28,16 @@ pub struct OpenSkyConfig {
     /// Search radius from the user, km. Bbox is a square superset; the
     /// Haversine post-filter enforces the actual circle.
     pub radius_km: f32,
+    /// Drop aircraft OpenSky flags as `on_ground` (parked / taxiing at a
+    /// nearby airport), keeping only airborne traffic.
+    pub airborne_only: bool,
 }
 
 pub struct OpenSkyProvider {
     user_lat: f64,
     user_lon: f64,
     radius_km: f32,
+    airborne_only: bool,
     bbox: BBox,
 }
 
@@ -70,6 +74,7 @@ impl OpenSkyProvider {
             user_lat: cfg.user_lat,
             user_lon: cfg.user_lon,
             radius_km: cfg.radius_km,
+            airborne_only: cfg.airborne_only,
             bbox,
         })
     }
@@ -88,6 +93,7 @@ impl OpenSkyProvider {
             self.user_lat,
             self.user_lon,
             self.radius_km as f64,
+            self.airborne_only,
         ))
     }
 }
@@ -128,12 +134,14 @@ fn snapshot_from_raw(
     user_lat: f64,
     user_lon: f64,
     radius_km: f64,
+    airborne_only: bool,
 ) -> FlightSnapshot {
     let states = raw.states.unwrap_or_default();
     let mut nearby: Vec<FlightInfo> = states
         .into_iter()
         .filter_map(|s| parse_state(&s, user_lat, user_lon))
         .filter(|f| (f.distance_km as f64) <= radius_km)
+        .filter(|f| !airborne_only || !f.on_ground)
         .collect();
     nearby.sort_by(|a, b| {
         a.distance_km
@@ -237,7 +245,7 @@ mod tests {
     fn snapshot_picks_closest_aircraft() {
         // User at JFK; the on-ground Swiss state is closest (~1 km),
         // DAL2451 at ~5 km, UAL1234 ~80 km north.
-        let snap = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 100.0);
+        let snap = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 100.0, false);
         assert_eq!(snap.count, 3);
         let closest = snap.closest.expect("closest flight");
         assert_eq!(closest.icao24, "ghi789");
@@ -250,7 +258,7 @@ mod tests {
     #[test]
     fn altitude_falls_back_to_geo_when_baro_missing() {
         // DAL2451 has baro 9753.6 m -> ~32000 ft.
-        let snap = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 100.0);
+        let snap = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 100.0, false);
         let dal = snap
             .closest
             .as_ref()
@@ -273,14 +281,26 @@ mod tests {
     fn radius_filter_drops_distant_flights() {
         // UAL1234 is at (41.2, -74.5) — ~80 km from JFK; a 10 km filter
         // should drop it, leaving only the two close ones.
-        let snap = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 10.0);
+        let snap = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 10.0, false);
         assert_eq!(snap.count, 2);
+    }
+
+    #[test]
+    fn airborne_only_drops_grounded_aircraft() {
+        // Within 100 km there are 3 (one on the ground at JFK); airborne-only
+        // keeps just the two flying, and the closest is no longer the ground one.
+        let all = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 100.0, false);
+        let air = snapshot_from_raw(parse_fixture(), 40.6413, -73.7781, 100.0, true);
+        assert_eq!(all.count, 3);
+        assert_eq!(air.count, 2);
+        assert!(air.nearby.iter().all(|f| !f.on_ground), "no grounded aircraft survive");
+        assert!(!air.closest.unwrap().on_ground, "closest is now airborne");
     }
 
     #[test]
     fn empty_states_returns_quiet_snapshot() {
         let raw: RawResponse = serde_json::from_str(r#"{"time":1,"states":null}"#).unwrap();
-        let snap = snapshot_from_raw(raw, 0.0, 0.0, 100.0);
+        let snap = snapshot_from_raw(raw, 0.0, 0.0, 100.0, false);
         assert_eq!(snap.count, 0);
         assert!(snap.closest.is_none());
     }
@@ -325,6 +345,7 @@ mod tests {
             user_lat: 95.0,
             user_lon: 0.0,
             radius_km: 50.0,
+            airborne_only: true,
         });
         assert!(matches!(r, Err(ApiError::Config(_))));
         // Out-of-range radius.
@@ -332,6 +353,7 @@ mod tests {
             user_lat: 0.0,
             user_lon: 0.0,
             radius_km: 1000.0,
+            airborne_only: true,
         });
         assert!(matches!(r, Err(ApiError::Config(_))));
     }

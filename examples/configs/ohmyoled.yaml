@@ -107,6 +107,7 @@ flights:
   lat: 40.7128
   lon: -74.0060
   radius_km: 80
+  airborne_only: true        # drop planes parked/taxiing at nearby airports
 
 # NOAA planetary K-index — a single big digit (0–9) color-coded green
 # (quiet) through red (severe storm), with a 9-block scale bar. An

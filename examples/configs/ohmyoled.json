@@ -48,7 +48,8 @@
     "run": true,
     "lat": 40.7128,
     "lon": -74.0060,
-    "radius_km": 80
+    "radius_km": 80,
+    "airborne_only": true
   },
   "launch": {
     "run": true,

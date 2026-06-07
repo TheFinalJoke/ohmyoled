@@ -2,12 +2,19 @@ use crate::createjson::iss::read_coord_pub as read_coord;
 use crate::createjson::ui;
 use serde::{Deserialize, Serialize};
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FlightsOptions {
     pub run: bool,
     pub lat: f64,
     pub lon: f64,
     pub radius_km: f32,
+    /// Only show airborne traffic (drop planes on the ground at nearby airports).
+    #[serde(default = "default_true")]
+    pub airborne_only: bool,
     #[serde(default)]
     pub cache_ttl_secs: Option<u64>,
 }
@@ -19,6 +26,7 @@ impl Default for FlightsOptions {
             lat: 40.7128,
             lon: -74.0060,
             radius_km: 80.0,
+            airborne_only: true,
             cache_ttl_secs: None,
         }
     }
@@ -38,6 +46,7 @@ pub fn configure() -> Result<FlightsOptions, String> {
         }
     };
 
+    let airborne_only = ui::read_yes_no("Only show airborne traffic (skip planes at the airport)?", true);
     let cache_ttl_secs = ui::read_cache_ttl_secs();
     ui::success(&format!("Flights — lat={lat:.4}, lon={lon:.4}, radius={radius_km}km"));
     Ok(FlightsOptions {
@@ -45,6 +54,7 @@ pub fn configure() -> Result<FlightsOptions, String> {
         lat,
         lon,
         radius_km,
+        airborne_only,
         cache_ttl_secs,
     })
 }

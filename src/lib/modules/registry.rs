@@ -187,8 +187,17 @@ pub struct FlightsSection {
     /// bbox query = more credits/req against OpenSky's anonymous tier.
     #[serde(default = "default_flights_radius_km")]
     pub radius_km: f32,
+    /// Only show airborne traffic — drop aircraft parked/taxiing at a nearby
+    /// airport (OpenSky's `on_ground`). Defaults to `true`. Set `false` to
+    /// include ground traffic.
+    #[serde(default = "default_true")]
+    pub airborne_only: bool,
     #[serde(default)]
     pub cache_ttl_secs: Option<u64>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_flights_radius_km() -> f32 {
@@ -689,6 +698,7 @@ async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String>
         user_lat: s.lat,
         user_lon: s.lon,
         radius_km: s.radius_km,
+        airborne_only: s.airborne_only,
     })
     .map_err(|e| e.to_string())?;
     let renderer = FlightsMatrix::new_async()
@@ -1170,6 +1180,7 @@ async fn build_eink_flights(s: &FlightsSection, dims: (u32, u32)) -> Result<Box<
         user_lat: s.lat,
         user_lon: s.lon,
         radius_km: s.radius_km,
+        airborne_only: s.airborne_only,
     })
     .map_err(|e| e.to_string())?;
     let renderer = EinkFlightsMatrix::new_async(dims)
