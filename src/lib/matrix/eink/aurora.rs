@@ -1,9 +1,15 @@
-//! E-paper aurora renderer — the Kp index, a 9-step gauge, and an alert badge.
+//! E-paper aurora renderer — Kp index + the auroral oval on a world map.
 //!
-//! Static e-paper counterpart to [`crate::matrix::aurora::AuroraMatrix`]: one
-//! big Kp digit, an [`hbar`](crate::matrix::eink::layout::hbar) gauge with nine
-//! ticks (the LED's 9-block bar), and a filled "AURORA LIKELY" badge when the
-//! storm threshold is crossed. Composed white-on-black; the display inverts.
+//! Static e-paper counterpart to [`crate::matrix::aurora::AuroraMatrix`]. The
+//! left column is the Kp readout (big digit, a 9-step gauge, an alert badge,
+//! and the lowest latitude the aurora is likely visible from); the right is a
+//! world map with the **auroral oval** drawn for the current Kp — north and
+//! south boundary curves that march toward the equator as the storm grows.
+//! Composed white-on-black; the display inverts to black ink.
+//!
+//! The oval is a standard approximation: its equatorward edge sits near
+//! geomagnetic latitude `67 − 2·Kp`, offset toward the geomagnetic poles (over
+//! Arctic Canada / the Southern Ocean) so it dips lowest over North America.
 //!
 //! # Config
 //!
@@ -22,18 +28,22 @@
 
 use crate::api::aurora::model::AuroraReading;
 use crate::matrix::eink::layout::{
-    badge, badge_width, big_value_centered, center_text, footer, header_band, hbar, margin, scaled_px,
+    badge, badge_width, center_text, fill_rect, footer, header_band, hbar, margin, scaled_px,
 };
+use crate::matrix::eink::worldmap;
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
 use image::RgbImage;
-use ohmyoled_matrix::graphics::Font;
+use ohmyoled_matrix::graphics::{draw_line, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const FONT_DIR: &str = "/usr/share/fonts";
+
+/// Equatorward edge amplitude of the oval (degrees of geomagnetic offset).
+const OVAL_AMP: f32 = 8.0;
 
 /// Font paths for the e-paper aurora renderer.
 pub struct EinkAuroraFonts {
@@ -74,9 +84,9 @@ impl EinkAuroraMatrix {
         let h = dims.1;
         Ok(Self {
             title: Font::load_ttf(&paths.body, scaled_px(30.0, h))?,
-            big: Font::load_ttf(&paths.big, scaled_px(150.0, h))?,
+            big: Font::load_ttf(&paths.big, scaled_px(120.0, h))?,
             label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
-            banner: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
+            banner: Font::load_ttf(&paths.body, scaled_px(24.0, h))?,
             foot: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
         })
     }
@@ -94,31 +104,79 @@ impl EinkAuroraMatrix {
         let wi = w as i32;
         let hi = h as i32;
         let m = margin(w);
-        let cx = wi / 2;
 
         let content_top = header_band(&mut img, &self.title, &self.label, m, "AURORA", Some(&data.kp_text), fg);
-
-        // Alert banner (filled = high contrast) only above the threshold.
-        if data.alert {
-            let bx = cx - badge_width(&self.banner, "AURORA LIKELY") / 2;
-            badge(&mut img, &self.banner, bx, content_top, "AURORA LIKELY", fg, true);
-        } else {
-            center_text(&mut img, &self.label, cx, content_top + self.label.ascent(), fg, "QUIET SKIES");
-        }
-
-        // Big Kp digit hero.
-        center_text(&mut img, &self.label, cx, hi * 36 / 100, fg, "Kp INDEX");
-        let hero_base = hi * 56 / 100 + self.big.ascent() / 2;
-        big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, &format!("{}", data.kp), "");
-
-        // Nine-step gauge below the hero.
-        let bar_w = wi - 2 * m;
-        let bar_h = (hi / 18).max(8);
-        let bar_y = hero_base + m;
-        hbar(&mut img, m, bar_y, bar_w, bar_h, data.kp as f32 / 9.0, 9, fg);
-
+        let footer_top = hi - m - self.foot.height();
         footer(&mut img, &self.foot, fg, &format!("updated {}", data.sampled_at.format("%H:%M UTC")));
+
+        // ── Left column: Kp, gauge, alert, visibility ──────────────────
+        let col_w = wi * 36 / 100;
+        let col_cx = (m + col_w) / 2;
+        center_text(&mut img, &self.label, col_cx, content_top + m + self.label.ascent(), fg, "Kp INDEX");
+        let big_base = content_top + m + self.label.height() + m + self.big.ascent();
+        center_text(&mut img, &self.big, col_cx, big_base, fg, &format!("{}", data.kp));
+
+        let (alert, filled) = if data.alert { ("AURORA LIKELY", true) } else { ("QUIET", false) };
+        let alert_y = big_base + m;
+        badge(&mut img, &self.banner, col_cx - badge_width(&self.banner, alert) / 2, alert_y, alert, fg, filled);
+
+        let gauge_y = alert_y + self.banner.height() + m;
+        let gauge_h = (hi / 24).max(8);
+        hbar(&mut img, m, gauge_y, col_w - 2 * m, gauge_h, data.kp as f32 / 9.0, 9, fg);
+
+        // Lowest geomagnetic-ish latitude the oval reaches (most equatorward
+        // point, over North America).
+        let visible_to = (67.0 - 2.0 * data.kp as f32 - OVAL_AMP).max(40.0);
+        center_text(
+            &mut img,
+            &self.label,
+            col_cx,
+            gauge_y + gauge_h + m + self.label.ascent(),
+            fg,
+            &format!("VISIBLE TO ~{visible_to:.0} N"),
+        );
+
+        // ── Right: world map with the auroral oval ─────────────────────
+        let map_x = col_w + m;
+        let map_y = content_top + m / 2;
+        let map_w = wi - m - map_x;
+        let map_h = (footer_top - m / 2 - map_y).max(20);
+        worldmap::draw(&mut img, map_x, map_y, map_w, map_h, fg);
+        // Northern oval (pole over Arctic Canada) + southern oval.
+        self.draw_oval(&mut img, map_x, map_y, map_w, map_h, data.kp, -100.0, 1.0, fg);
+        self.draw_oval(&mut img, map_x, map_y, map_w, map_h, data.kp, 110.0, -1.0, fg);
+
         img
+    }
+
+    /// Draw one hemisphere's auroral oval equatorward boundary as a curve, with
+    /// a sparse poleward stipple to suggest the glow band. `sign` is +1 for the
+    /// north, −1 for the south; `pole_lon` offsets the oval toward that pole.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_oval(&self, img: &mut RgbImage, mx: i32, my: i32, mw: i32, mh: i32, kp: u8, pole_lon: f32, sign: f32, fg: Color) {
+        let l0 = 67.0 - 2.0 * kp as f32;
+        let edge_lat = |lon: f32| -> f32 {
+            let e = l0 - OVAL_AMP * (lon - pole_lon).to_radians().cos();
+            (sign * e).clamp(-88.0, 88.0)
+        };
+        let mut prev: Option<(i32, i32)> = None;
+        let mut x = mx;
+        while x <= mx + mw {
+            let lon = (x - mx) as f32 / mw as f32 * 360.0 - 180.0;
+            let (_, py) = worldmap::project(edge_lat(lon), lon, mx, my, mw, mh);
+            if let Some((ppx, ppy)) = prev {
+                draw_line(img, ppx, ppy, x, py, fg);
+            }
+            prev = Some((x, py));
+            // Sparse poleward glow dots (toward the pole = +sign latitude).
+            if (x - mx) % 12 == 0 {
+                for d in [6.0_f32, 12.0] {
+                    let (_, gy) = worldmap::project(edge_lat(lon) + sign * d, lon, mx, my, mw, mh);
+                    fill_rect(img, x, gy, 2, 2, fg);
+                }
+            }
+            x += 4;
+        }
     }
 }
 
@@ -159,7 +217,7 @@ mod tests {
         AuroraReading {
             kp,
             kp_index: kp as f32,
-            kp_text: format!("{kp}Z"),
+            kp_text: format!("{kp}"),
             alert,
             sampled_at: Utc::now(),
         }
@@ -175,11 +233,12 @@ mod tests {
     }
 
     #[test]
-    fn alert_differs_from_quiet() {
+    fn higher_kp_pushes_the_oval_equatorward() {
+        // A bigger storm should move the boundary, so the frames differ.
         let r = EinkAuroraMatrix::with_fonts(repo_fonts(), (800, 480)).unwrap();
-        let a = r.frame(&reading(2, false), 800, 480);
-        let b = r.frame(&reading(8, true), 800, 480);
-        assert_ne!(a.into_raw(), b.into_raw(), "alert banner + Kp should change the frame");
+        let calm = r.frame(&reading(1, false), 800, 480);
+        let storm = r.frame(&reading(8, true), 800, 480);
+        assert_ne!(calm.into_raw(), storm.into_raw(), "Kp should reshape the oval + gauge");
     }
 
     #[test]
