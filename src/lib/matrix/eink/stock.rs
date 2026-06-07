@@ -104,13 +104,15 @@ impl EinkStockMatrix {
         // Big current price hero (upper third).
         let hero_base = hi * 30 / 100 + self.big.ascent() / 2;
         if data.current.is_finite() {
-            big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, &format!("{:.2}", data.current), "");
+            big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, &format!("${:.2}", data.current), "");
         } else {
             big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, "—", "");
         }
 
         // Signed change in an outline badge — the +/- carries direction on B/W.
-        let change = format!("{:+.2}   {:+.2}%", data.dollar_change(), data.percent_change());
+        let dc = data.dollar_change();
+        let sign = if dc < 0.0 { "-" } else { "+" };
+        let change = format!("{sign}${:.2}   {:+.2}%", dc.abs(), data.percent_change());
         let bx = cx - badge_width(&self.change, &change) / 2;
         badge(&mut img, &self.change, bx, hero_base + m, &change, fg, false);
 
@@ -128,12 +130,12 @@ impl EinkStockMatrix {
 
         // Day range from the intraday series.
         let stats = vec![
-            format!("H {:.2}", data.day.high),
-            format!("L {:.2}", data.day.low),
+            format!("H ${:.2}", data.day.high),
+            format!("L ${:.2}", data.day.low),
         ];
         stat_row(&mut img, &self.label, stat_y, fg, &stats);
 
-        let prev = fit_text(&self.foot, &format!("prev close {:.2}", data.previous_close), wi - 2 * m);
+        let prev = fit_text(&self.foot, &format!("prev close ${:.2}", data.previous_close), wi - 2 * m);
         footer(&mut img, &self.foot, fg, &prev);
         img
     }
