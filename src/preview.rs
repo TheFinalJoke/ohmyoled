@@ -300,17 +300,17 @@ async fn preview_eink_quake(display: &mut EinkDisplay, fonts: &Path) -> Result<(
 async fn preview_eink_stock(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
     let dims = (display.width(), display.height());
     let r = EinkStockMatrix::with_fonts_async(EinkStockFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
-    let q = |current: f64| StockQuote {
-        api: StockApiSource::Finnhub,
+    let day = |slope: f64| HistorySeries::from_closes((0..26).map(|i| 188.0 + i as f64 * slope + ((i % 4) as f64 - 1.5)).collect());
+    let q = |current: f64, slope: f64| StockHistory {
+        api: StockApiSource::Yahoo,
         symbol: "AAPL".into(),
-        name: "Apple Inc".into(),
-        open: 188.0,
         current,
-        high: 192.4,
-        low: 187.1,
         previous_close: 190.0,
+        day: day(slope),
+        month: HistorySeries::from_closes((0..30).map(|i| 180.0 + i as f64 * 0.4).collect()),
+        year: HistorySeries::from_closes((0..52).map(|i| 150.0 + i as f64 * 0.8).collect()),
     };
-    let cycle = [q(195.2), q(185.4), q(190.0)];
+    let cycle = [q(195.2, 0.3), q(185.4, -0.25)];
     let mut i = 0usize;
     loop {
         let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());

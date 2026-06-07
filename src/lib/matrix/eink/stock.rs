@@ -1,13 +1,17 @@
-//! E-paper stock renderer — symbol, big price, signed change, day range.
+//! E-paper stock renderer — big price, signed change, and today's chart.
 //!
-//! Static e-paper counterpart to [`crate::matrix::stock::StockMatrix`]. The
-//! LED tile colors the change green/red; on the monochrome panel direction is
-//! carried by the signed number inside an outline badge. Composed white-on-black;
-//! the display inverts to black ink.
+//! Static e-paper counterpart to [`crate::matrix::stock::StockMatrix`], enriched
+//! with an intraday (1D) sparkline. Consumes [`StockHistory`] (the same data the
+//! `stock_chart` tile uses) so the live price and today's shape live on one
+//! screen. The LED tile colors the change green/red; on the monochrome panel
+//! direction is the signed number + the chart's own slope. Composed
+//! white-on-black; the display inverts to black ink.
 //!
 //! # Config
 //!
-//! Lives under the `eink.modules` block, reusing the `stock` section shape:
+//! Lives under the `eink.modules` block, reusing the `stock` section shape. The
+//! intraday history is sourced like the chart tile (Yahoo for equities,
+//! CoinGecko for coins), so the live price tracks that provider:
 //!
 //! ```yaml
 //! eink:
@@ -20,12 +24,11 @@
 //!       symbol: AAPL
 //! ```
 //!
-//! Data source: whichever stock provider the section selects (same collector
-//! as the LED tile).
+//! Data source: Yahoo Finance / CoinGecko history (same collector as `stock_chart`).
 
-use crate::api::stock::model::StockQuote;
+use crate::api::stock::model::StockHistory;
 use crate::matrix::eink::layout::{
-    badge, badge_width, big_value_centered, fit_text, footer, header_band, margin, scaled_px, stat_row,
+    badge, badge_width, big_value_centered, fit_text, footer, header_band, margin, scaled_px, sparkline, stat_row,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
@@ -74,8 +77,8 @@ impl EinkStockMatrix {
         let h = dims.1;
         Ok(Self {
             title: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
-            big: Font::load_ttf(&paths.body, scaled_px(120.0, h))?,
-            change: Font::load_ttf(&paths.body, scaled_px(30.0, h))?,
+            big: Font::load_ttf(&paths.body, scaled_px(96.0, h))?,
+            change: Font::load_ttf(&paths.body, scaled_px(28.0, h))?,
             label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
             foot: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
         })
@@ -87,8 +90,8 @@ impl EinkStockMatrix {
             .map_err(|e| format!("font load task panicked: {e}"))?
     }
 
-    /// Compose the quote at `w × h`.
-    pub fn frame(&self, data: &StockQuote, w: u32, h: u32) -> RgbImage {
+    /// Compose the quote + today's chart at `w × h`.
+    pub fn frame(&self, data: &StockHistory, w: u32, h: u32) -> RgbImage {
         let mut img = RgbImage::new(w, h);
         let fg = Color::WHITE;
         let wi = w as i32;
@@ -96,12 +99,10 @@ impl EinkStockMatrix {
         let m = margin(w);
         let cx = wi / 2;
 
-        let name = fit_text(&self.label, &data.name.to_uppercase(), wi / 2 - 2 * m);
-        let content_top = header_band(&mut img, &self.title, &self.label, m, &data.symbol, Some(&name), fg);
-        let _ = content_top;
+        header_band(&mut img, &self.title, &self.label, m, &data.symbol, Some("TODAY"), fg);
 
-        // Big price hero.
-        let hero_base = hi * 42 / 100 + self.big.ascent() / 2;
+        // Big current price hero (upper third).
+        let hero_base = hi * 30 / 100 + self.big.ascent() / 2;
         if data.current.is_finite() {
             big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, &format!("{:.2}", data.current), "");
         } else {
@@ -113,23 +114,34 @@ impl EinkStockMatrix {
         let bx = cx - badge_width(&self.change, &change) / 2;
         badge(&mut img, &self.change, bx, hero_base + m, &change, fg, false);
 
-        // Day range / open.
-        let stats = vec![
-            format!("OPEN {:.2}", data.open),
-            format!("HIGH {:.2}", data.high),
-            format!("LOW {:.2}", data.low),
-        ];
+        // ── Today's (1D) chart ──────────────────────────────────────────
+        let chart_top = hero_base + m + self.change.height() + m;
         let stat_y = hi - m - (self.label.height() - self.label.ascent());
+        let chart_bottom = stat_y - self.label.height() - m;
+        if data.day.is_empty() {
+            let bx = cx - badge_width(&self.label, "NO 1D DATA") / 2;
+            badge(&mut img, &self.label, bx, (chart_top + chart_bottom) / 2, "NO 1D DATA", fg, false);
+        } else {
+            let pts: Vec<f32> = data.day.closes.iter().map(|&v| v as f32).collect();
+            sparkline(&mut img, m, chart_top, wi - 2 * m, (chart_bottom - chart_top).max(8), &pts, fg);
+        }
+
+        // Day range from the intraday series.
+        let stats = vec![
+            format!("H {:.2}", data.day.high),
+            format!("L {:.2}", data.day.low),
+        ];
         stat_row(&mut img, &self.label, stat_y, fg, &stats);
 
-        footer(&mut img, &self.foot, fg, &format!("prev close {:.2}", data.previous_close));
+        let prev = fit_text(&self.foot, &format!("prev close {:.2}", data.previous_close), wi - 2 * m);
+        footer(&mut img, &self.foot, fg, &prev);
         img
     }
 }
 
 #[async_trait]
 impl EinkRenderer for EinkStockMatrix {
-    type Data = StockQuote;
+    type Data = StockHistory;
 
     fn id(&self) -> &'static str {
         "stock"
@@ -139,7 +151,7 @@ impl EinkRenderer for EinkStockMatrix {
         Duration::from_secs(60)
     }
 
-    async fn render(&mut self, display: &mut EinkDisplay, data: &StockQuote) -> Result<(), RenderError> {
+    async fn render(&mut self, display: &mut EinkDisplay, data: &StockHistory) -> Result<(), RenderError> {
         let img = self.frame(data, display.width(), display.height());
         display.show(&img);
         tokio::time::sleep(self.cycle_duration()).await;
@@ -150,23 +162,26 @@ impl EinkRenderer for EinkStockMatrix {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::stock::model::StockApiSource;
+    use crate::api::stock::model::{HistorySeries, StockApiSource};
 
     fn repo_fonts() -> EinkStockFonts {
         let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("fonts");
         EinkStockFonts { body: base.join("04B_03B_.TTF") }
     }
 
-    fn sample(current: f64) -> StockQuote {
-        StockQuote {
-            api: StockApiSource::Finnhub,
+    fn series(n: usize, base: f64, slope: f64) -> HistorySeries {
+        HistorySeries::from_closes((0..n).map(|i| base + i as f64 * slope).collect())
+    }
+
+    fn sample(current: f64) -> StockHistory {
+        StockHistory {
+            api: StockApiSource::Yahoo,
             symbol: "AAPL".into(),
-            name: "Apple Inc".into(),
-            open: 188.0,
             current,
-            high: 192.4,
-            low: 187.1,
             previous_close: 190.0,
+            day: series(26, 188.0, 0.15),
+            month: series(30, 180.0, 0.4),
+            year: series(52, 150.0, 0.8),
         }
     }
 
@@ -185,6 +200,15 @@ mod tests {
         let up = r.frame(&sample(195.0), 800, 480);
         let down = r.frame(&sample(185.0), 800, 480);
         assert_ne!(up.into_raw(), down.into_raw(), "up vs down change should differ");
+    }
+
+    #[test]
+    fn empty_day_renders_badge() {
+        let r = EinkStockMatrix::with_fonts(repo_fonts(), (800, 480)).unwrap();
+        let mut s = sample(191.2);
+        s.day = HistorySeries::from_closes(vec![]);
+        let img = r.frame(&s, 800, 480);
+        assert!(img.pixels().filter(|p| p.0 != [0, 0, 0]).count() > 200, "empty day still renders");
     }
 
     #[test]

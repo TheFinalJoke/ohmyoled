@@ -1097,17 +1097,16 @@ async fn build_eink_pihole(s: &PiholeSection, dims: (u32, u32)) -> Result<Box<dy
     Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
 }
 
+/// The e-paper stock tile shows the live price *and* today's chart, so it pulls
+/// the same intraday history as the chart tile (Yahoo for equities, CoinGecko
+/// for coins) — the `api_key` is unused here (Finnhub history is paid-tier).
 async fn build_eink_stock(s: &StockSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
     let collector = match s.api {
-        StockApi::Finnhub => {
-            let api_key = s.api_key.clone().ok_or_else(|| "stock: api_key missing".to_string())?;
-            StockCollector::from_finnhub(FinnhubConfig {
-                api_key,
-                symbol: s.symbol.clone(),
-            })
-            .map_err(|e| e.to_string())?
-        }
-        StockApi::Coingecko => StockCollector::from_coingecko(CoingeckoConfig {
+        StockApi::Finnhub => StockHistoryCollector::from_yahoo(YahooConfig {
+            symbol: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+        StockApi::Coingecko => StockHistoryCollector::from_coingecko(CoingeckoConfig {
             coin_id: s.symbol.clone(),
         })
         .map_err(|e| e.to_string())?,
