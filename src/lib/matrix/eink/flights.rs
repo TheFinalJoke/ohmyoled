@@ -110,19 +110,18 @@ impl EinkFlightsMatrix {
             draw_text(&mut img, &self.label, lx, content_top + self.label.ascent(), fg, "NEAREST");
             let mut y = content_top + self.label.height() + m / 2;
             for ac in data.nearby.iter().take(6) {
-                let call = if ac.callsign.trim().is_empty() { "----" } else { ac.callsign.trim() };
-                let line = format!("{}  {:.0}km {}", call, ac.distance_km, bearing_octant(ac.bearing_deg));
+                let line = format!("{}  {:.0}km {}", ac.label(), ac.distance_km, bearing_octant(ac.bearing_deg));
                 let line = fit_text(&self.list, &line, wi / 2 - 2 * m);
                 draw_text(&mut img, &self.list, lx, y + self.list.ascent(), fg, &line);
                 y += self.list.height() + m / 3;
             }
         }
 
-        // Footer: closest readout.
+        // Footer: closest readout (airline-decoded + heading octant).
         if let Some(c) = &data.closest {
             let alt = if c.on_ground { "GND".to_string() } else { format!("FL{:03}", c.altitude_ft / 100) };
-            let call = if c.callsign.trim().is_empty() { "----" } else { c.callsign.trim() };
-            footer(&mut img, &self.foot, fg, &format!("closest {call}  {:.0}km  {alt}", c.distance_km));
+            let hdg = c.heading_deg.map(|h| format!("  hdg {}", bearing_octant(h))).unwrap_or_default();
+            footer(&mut img, &self.foot, fg, &format!("closest {}  {:.0}km  {alt}{hdg}", c.label(), c.distance_km));
         }
         img
     }
@@ -145,6 +144,15 @@ impl EinkFlightsMatrix {
             let py = cy - (rr * theta.cos()).round() as i32;
             // 3px dot.
             crate::matrix::eink::layout::fill_rect(img, px - 1, py - 1, 3, 3, fg);
+            // Heading vector — a short line in the aircraft's direction of
+            // travel (north-up, clockwise), so you see where it's going.
+            if let Some(h) = ac.heading_deg {
+                let hr = h.to_radians();
+                let len = (r / 6).max(6) as f32;
+                let ex = px + (len * hr.sin()).round() as i32;
+                let ey = py - (len * hr.cos()).round() as i32;
+                draw_line(img, px, py, ex, ey, fg);
+            }
             // Ring the nearest (first) so it reads without color.
             if i == 0 {
                 draw_circle(img, px, py, (r / 12).max(3), fg);
@@ -192,6 +200,7 @@ mod tests {
             distance_km: dist,
             bearing_deg: bearing,
             ground_speed_kt: Some(420),
+            heading_deg: Some(bearing),
             country: "United States".into(),
         }
     }

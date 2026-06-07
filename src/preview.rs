@@ -390,7 +390,7 @@ async fn preview_eink_hass(display: &mut EinkDisplay, fonts: &Path) -> Result<()
 async fn preview_eink_flights(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
     let dims = (display.width(), display.height());
     let r = EinkFlightsMatrix::with_fonts_async(EinkFlightsFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
-    let f = |callsign: &str, dist: f32, bearing: f32| FlightInfo {
+    let f = |callsign: &str, dist: f32, bearing: f32, heading: f32| FlightInfo {
         callsign: callsign.into(),
         icao24: "a1b2c3".into(),
         altitude_ft: 34_000,
@@ -398,13 +398,14 @@ async fn preview_eink_flights(display: &mut EinkDisplay, fonts: &Path) -> Result
         distance_km: dist,
         bearing_deg: bearing,
         ground_speed_kt: Some(440),
+        heading_deg: Some(heading),
         country: "United States".into(),
     };
     let nearby = vec![
-        f("UAL123", 8.0, 45.0),
-        f("DAL456", 22.0, 200.0),
-        f("SWA789", 41.0, 300.0),
-        f("JBU221", 63.0, 120.0),
+        f("UAL123", 8.0, 45.0, 270.0),
+        f("DAL456", 22.0, 200.0, 90.0),
+        f("SWA789", 41.0, 300.0, 180.0),
+        f("JBU221", 63.0, 120.0, 0.0),
     ];
     let busy = FlightSnapshot { count: nearby.len(), closest: Some(nearby[0].clone()), nearby, radius_km: 80.0 };
     let empty = FlightSnapshot { count: 0, closest: None, nearby: vec![], radius_km: 80.0 };
@@ -815,6 +816,7 @@ async fn preview_flights(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Str
         distance_km: dist,
         bearing_deg: bearing,
         ground_speed_kt: Some(440),
+        heading_deg: Some(bearing),
         country: "United States".into(),
     };
     let snap = |radius_km: f32, flights: Vec<FlightInfo>| FlightSnapshot {

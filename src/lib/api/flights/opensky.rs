@@ -192,6 +192,8 @@ fn parse_state(s: &[Value], user_lat: f64, user_lon: f64) -> Option<FlightInfo> 
         .get(9)
         .and_then(|v| v.as_f64())
         .map(|mps| (mps * MPS_TO_KNOTS).max(0.0).round() as u32);
+    // true_track at [10] — heading the aircraft is flying.
+    let heading_deg = s.get(10).and_then(|v| v.as_f64()).map(|d| d as f32);
 
     let distance_km = haversine_km(user_lat, user_lon, lat, lon) as f32;
     let bearing = bearing_deg(user_lat, user_lon, lat, lon);
@@ -204,6 +206,7 @@ fn parse_state(s: &[Value], user_lat: f64, user_lon: f64) -> Option<FlightInfo> 
         distance_km,
         bearing_deg: bearing,
         ground_speed_kt,
+        heading_deg,
         country,
     })
 }
