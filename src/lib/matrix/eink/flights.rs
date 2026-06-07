@@ -142,8 +142,9 @@ impl EinkFlightsMatrix {
             let theta = ac.bearing_deg.to_radians();
             let px = cx + (rr * theta.sin()).round() as i32;
             let py = cy - (rr * theta.cos()).round() as i32;
-            // 3px dot.
-            crate::matrix::eink::layout::fill_rect(img, px - 1, py - 1, 3, 3, fg);
+            // Aircraft position — a chunky dot (the arrow's origin).
+            let dot = (r / 24).max(3);
+            crate::matrix::eink::layout::fill_rect(img, px - dot, py - dot, 2 * dot + 1, 2 * dot + 1, fg);
             // Heading vector — a short line in the aircraft's direction of
             // travel (north-up, clockwise), so you see where it's going.
             if let Some(h) = ac.heading_deg {
