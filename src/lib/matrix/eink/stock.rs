@@ -28,13 +28,13 @@
 
 use crate::api::stock::model::StockHistory;
 use crate::matrix::eink::layout::{
-    badge, badge_width, big_value_centered, fit_text, footer, header_band, margin, scaled_px, sparkline, stat_row,
+    badge, badge_width, big_value_centered, fit_text, footer, header_band, margin, right_text, scaled_px, sparkline,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
 use image::RgbImage;
-use ohmyoled_matrix::graphics::Font;
+use ohmyoled_matrix::graphics::{draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -80,7 +80,7 @@ impl EinkStockMatrix {
             big: Font::load_ttf(&paths.body, scaled_px(96.0, h))?,
             change: Font::load_ttf(&paths.body, scaled_px(28.0, h))?,
             label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
-            foot: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
+            foot: Font::load_ttf(&paths.body, scaled_px(24.0, h))?,
         })
     }
 
@@ -99,10 +99,15 @@ impl EinkStockMatrix {
         let m = margin(w);
         let cx = wi / 2;
 
-        header_band(&mut img, &self.title, &self.label, m, &data.symbol, Some("TODAY"), fg);
+        let content_top = header_band(&mut img, &self.title, &self.label, m, &data.symbol, Some("TODAY"), fg);
 
-        // Big current price hero (upper third).
-        let hero_base = hi * 30 / 100 + self.big.ascent() / 2;
+        // Day H/L tucked into the top corners, just under the header rule.
+        let hl_base = content_top + self.label.ascent();
+        draw_text(&mut img, &self.label, m, hl_base, fg, &format!("H ${:.2}", data.day.high));
+        right_text(&mut img, &self.label, wi - m, hl_base, fg, &format!("L ${:.2}", data.day.low));
+
+        // Big current price hero.
+        let hero_base = hi * 32 / 100 + self.big.ascent() / 2;
         if data.current.is_finite() {
             big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, &format!("${:.2}", data.current), "");
         } else {
@@ -116,10 +121,9 @@ impl EinkStockMatrix {
         let bx = cx - badge_width(&self.change, &change) / 2;
         badge(&mut img, &self.change, bx, hero_base + m, &change, fg, false);
 
-        // ── Today's (1D) chart ──────────────────────────────────────────
+        // ── Today's (1D) chart fills the band down to the footer ─────────
         let chart_top = hero_base + m + self.change.height() + m;
-        let stat_y = hi - m - (self.label.height() - self.label.ascent());
-        let chart_bottom = stat_y - self.label.height() - m;
+        let chart_bottom = hi - m - self.foot.height() - m;
         if data.day.is_empty() {
             let bx = cx - badge_width(&self.label, "NO 1D DATA") / 2;
             badge(&mut img, &self.label, bx, (chart_top + chart_bottom) / 2, "NO 1D DATA", fg, false);
@@ -127,13 +131,6 @@ impl EinkStockMatrix {
             let pts: Vec<f32> = data.day.closes.iter().map(|&v| v as f32).collect();
             sparkline(&mut img, m, chart_top, wi - 2 * m, (chart_bottom - chart_top).max(8), &pts, fg);
         }
-
-        // Day range from the intraday series.
-        let stats = vec![
-            format!("H ${:.2}", data.day.high),
-            format!("L ${:.2}", data.day.low),
-        ];
-        stat_row(&mut img, &self.label, stat_y, fg, &stats);
 
         let prev = fit_text(&self.foot, &format!("prev close ${:.2}", data.previous_close), wi - 2 * m);
         footer(&mut img, &self.foot, fg, &prev);
