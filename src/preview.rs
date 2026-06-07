@@ -273,19 +273,21 @@ async fn preview_eink_quake(display: &mut EinkDisplay, fonts: &Path) -> Result<(
     let dims = (display.width(), display.height());
     let r = EinkQuakeMatrix::with_fonts_async(EinkQuakeFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
     let now = chrono::Utc::now() - ChDuration::minutes(14);
-    let ev = |mag: f32, title: &str, felt: Option<u32>| {
+    let ev = |mag: f32, title: &str, lat: f32, lon: f32, felt: Option<u32>| {
         QuakeStatus::Event(QuakeEvent {
             magnitude: mag,
             title: title.into(),
             origin: now,
+            lat,
+            lon,
             depth_km: 24.0,
             felt,
         })
     };
     let cycle = [
-        ev(6.2, "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN", Some(482)),
-        ev(4.7, "M 4.7 - 120km SW of San Francisco, CA", Some(37)),
-        ev(3.1, "M 3.1 - 14 km NE of Reykjavik, Iceland", None),
+        ev(6.2, "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN", 38.3, 142.1, Some(482)),
+        ev(4.7, "M 4.7 - 120km SW of San Francisco, CA", 37.0, -123.5, Some(37)),
+        ev(3.1, "M 3.1 - 14 km NE of Reykjavik, Iceland", 64.2, -21.6, None),
         QuakeStatus::Quiet,
     ];
     let mut i = 0usize;
@@ -737,6 +739,8 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         magnitude: 6.2,
         title: "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN".into(),
         origin: now,
+        lat: 38.3,
+        lon: 142.1,
         depth_km: 24.0,
         felt: Some(482),
     });
@@ -744,6 +748,8 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         magnitude: 4.7,
         title: "M 4.7 - 120km SW of San Francisco, CA".into(),
         origin: now,
+        lat: 37.0,
+        lon: -123.5,
         depth_km: 8.0,
         felt: Some(37),
     });
@@ -751,6 +757,8 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         magnitude: 3.1,
         title: "M 3.1 - 14 km NE of Reykjavík, Iceland".into(),
         origin: now,
+        lat: 64.2,
+        lon: -21.6,
         depth_km: 5.0,
         felt: None,
     });

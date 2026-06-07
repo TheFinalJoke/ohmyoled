@@ -1,13 +1,15 @@
-//! E-paper earthquake renderer — latest significant event, or a quiet card.
+//! E-paper earthquake renderer — magnitude + a world map with the epicenter.
 //!
 //! Static e-paper counterpart to [`crate::matrix::quake::QuakeMatrix`]. For an
-//! event: a big magnitude, a severity badge (filled only for major), the place,
-//! and depth/felt stats. When the feed is quiet it renders a "NO QUAKES" card
-//! so the panel never goes stale. Composed white-on-black; the display inverts.
+//! event: a magnitude readout, a severity badge, a magnitude gauge, and depth/
+//! felt stats on the left, with the **epicenter plotted on a world map** (seismic
+//! rings sized by magnitude) on the right. A quiet feed renders a "NO QUAKES"
+//! card so the panel never goes stale. Composed white-on-black; the display
+//! inverts to black ink.
 //!
 //! Severity is never color-only (the panel is monochrome): the magnitude number
-//! is always shown, and the tier badge is outlined for MINOR/MODERATE, filled
-//! (high-contrast) only for MAJOR (≥6).
+//! is always shown, the gauge fills proportionally, and the tier badge is
+//! outlined for MINOR/MODERATE, filled (high-contrast) only for MAJOR (≥6).
 //!
 //! # Config
 //!
@@ -26,14 +28,15 @@
 
 use crate::api::quake::model::{QuakeEvent, QuakeStatus};
 use crate::matrix::eink::layout::{
-    badge, badge_width, big_value_centered, center_text, footer, header_band, margin, scaled_px, stat_row,
+    badge, badge_width, center_text, fill_rect, fit_text, footer, hbar, header_band, margin, scaled_px,
 };
+use crate::matrix::eink::worldmap;
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
 use chrono::Utc;
 use image::RgbImage;
-use ohmyoled_matrix::graphics::Font;
+use ohmyoled_matrix::graphics::{draw_circle, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -59,7 +62,6 @@ pub struct EinkQuakeMatrix {
     title: Font,
     big: Font,
     tier: Font,
-    place: Font,
     label: Font,
     foot: Font,
 }
@@ -77,9 +79,8 @@ impl EinkQuakeMatrix {
         let h = dims.1;
         Ok(Self {
             title: Font::load_ttf(&paths.body, scaled_px(30.0, h))?,
-            big: Font::load_ttf(&paths.body, scaled_px(120.0, h))?,
-            tier: Font::load_ttf(&paths.body, scaled_px(30.0, h))?,
-            place: Font::load_ttf(&paths.body, scaled_px(26.0, h))?,
+            big: Font::load_ttf(&paths.body, scaled_px(72.0, h))?,
+            tier: Font::load_ttf(&paths.body, scaled_px(26.0, h))?,
             label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
             foot: Font::load_ttf(&paths.body, scaled_px(18.0, h))?,
         })
@@ -105,16 +106,22 @@ impl EinkQuakeMatrix {
         let wi = w as i32;
         let hi = h as i32;
         let m = margin(w);
-        let cx = wi / 2;
 
         let age = age_text(ev.age_minutes(Utc::now()));
-        header_band(&mut img, &self.title, &self.label, m, "QUAKE", Some(&age), fg);
+        let content_top = header_band(&mut img, &self.title, &self.label, m, "QUAKE", Some(&age), fg);
 
-        // Big magnitude hero.
-        let hero_base = hi * 44 / 100 + self.big.ascent() / 2;
-        big_value_centered(&mut img, &self.big, &self.label, cx, hero_base, fg, &format!("M {:.1}", ev.magnitude), "");
+        // Place (the curated USGS title) along the bottom; time in the footer.
+        let footer_top = hi - m - self.label.height() - self.foot.height() - m / 2;
+        let place = fit_text(&self.label, &ev.title.to_uppercase(), wi - 2 * m);
+        center_text(&mut img, &self.label, wi / 2, footer_top + self.label.ascent(), fg, &place);
+        footer(&mut img, &self.foot, fg, &ev.origin.format("%b %-d  %H:%M UTC").to_string());
 
-        // Severity tier badge — filled only for MAJOR.
+        // ── Left column: magnitude, tier, gauge, depth/felt ─────────────
+        let col_w = wi * 36 / 100;
+        let col_cx = (m + col_w) / 2;
+        let mag_base = content_top + m + self.big.ascent();
+        center_text(&mut img, &self.big, col_cx, mag_base, fg, &format!("M {:.1}", ev.magnitude));
+
         let (tier, filled) = if ev.magnitude >= 6.0 {
             ("MAJOR", true)
         } else if ev.magnitude >= 4.0 {
@@ -122,25 +129,46 @@ impl EinkQuakeMatrix {
         } else {
             ("MINOR", false)
         };
-        let tier_y = hero_base + m;
-        let bx = cx - badge_width(&self.tier, tier) / 2;
-        badge(&mut img, &self.tier, bx, tier_y, tier, fg, filled);
+        let tier_y = mag_base + m;
+        badge(&mut img, &self.tier, col_cx - badge_width(&self.tier, tier) / 2, tier_y, tier, fg, filled);
 
-        // Place line (USGS title carries "M x.x - PLACE").
-        let place_y = tier_y + self.tier.height() + m;
-        center_text(&mut img, &self.place, cx, place_y + self.place.ascent(), fg, &ev.title);
+        // Magnitude gauge (0..9) — fills proportionally with unit ticks.
+        let gauge_y = tier_y + self.tier.height() + m;
+        let gauge_w = col_w - 2 * m;
+        hbar(&mut img, m, gauge_y, gauge_w, (hi / 24).max(8), (ev.magnitude / 9.0).clamp(0.0, 1.0), 9, fg);
 
-        // Depth / felt stats.
+        // Depth + felt.
+        let depth_y = gauge_y + (hi / 24).max(8) + m + self.label.ascent();
+        center_text(&mut img, &self.label, col_cx, depth_y, fg, &format!("DEPTH {:.0} km", ev.depth_km));
         let felt = match ev.felt {
             Some(n) => format!("FELT {n}"),
             None => "FELT —".into(),
         };
-        let stats = vec![format!("DEPTH {:.0} km", ev.depth_km), felt];
-        let stat_y = hi - m - (self.label.height() - self.label.ascent());
-        stat_row(&mut img, &self.label, stat_y, fg, &stats);
+        center_text(&mut img, &self.label, col_cx, depth_y + self.label.height() + m / 2, fg, &felt);
 
-        footer(&mut img, &self.foot, fg, &ev.origin.format("%b %-d %H:%M UTC").to_string());
+        // ── Right: world map with the epicenter ─────────────────────────
+        let map_x = col_w + m;
+        let map_y = content_top + m / 2;
+        let map_w = wi - m - map_x;
+        let map_h = (footer_top - m / 2 - map_y).max(20);
+        worldmap::draw(&mut img, map_x, map_y, map_w, map_h, fg);
+        let (px, py) = worldmap::project(ev.lat, ev.lon, map_x, map_y, map_w, map_h);
+        self.draw_epicenter(&mut img, px, py, ev.magnitude, map_h, fg);
+
         img
+    }
+
+    /// Concentric "seismic" rings around the epicenter, sized by magnitude.
+    fn draw_epicenter(&self, img: &mut RgbImage, px: i32, py: i32, mag: f32, map_h: i32, fg: Color) {
+        let max_r = (map_h / 4).max(10);
+        let outer = (4.0 + mag * 3.0).round() as i32;
+        let outer = outer.clamp(6, max_r);
+        // Knock out a clear disc so the marker stands clear of the land stipple.
+        fill_rect(img, px - outer - 1, py - outer - 1, 2 * outer + 3, 2 * outer + 3, Color::BLACK);
+        for k in 1..=3 {
+            draw_circle(img, px, py, outer * k / 3, fg);
+        }
+        fill_rect(img, px - 2, py - 2, 5, 5, fg);
     }
 
     fn frame_quiet(&self, w: u32, h: u32) -> RgbImage {
@@ -149,11 +177,21 @@ impl EinkQuakeMatrix {
         let wi = w as i32;
         let hi = h as i32;
         let m = margin(w);
-        let cx = wi / 2;
 
-        header_band(&mut img, &self.title, &self.label, m, "QUAKE", None, fg);
-        let bx = cx - badge_width(&self.big, "NO QUAKES") / 2;
-        badge(&mut img, &self.big, bx, hi / 2 - self.big.height() / 2, "NO QUAKES", fg, false);
+        let content_top = header_band(&mut img, &self.title, &self.label, m, "QUAKE", None, fg);
+        let map_x = m;
+        let map_y = content_top + m / 2;
+        let map_w = wi - 2 * m;
+        let map_h = (hi - m - map_y).max(20);
+        worldmap::draw(&mut img, map_x, map_y, map_w, map_h, fg);
+        let label = "NO RECENT QUAKES";
+        let bw = badge_width(&self.tier, label);
+        let bh = self.tier.height() * 3 / 2;
+        let bx = wi / 2 - bw / 2;
+        let by = hi / 2 - bh / 2;
+        // Clear the land stipple behind the badge so it reads cleanly.
+        fill_rect(&mut img, bx - m / 2, by - m / 2, bw + m, bh + m, Color::BLACK);
+        badge(&mut img, &self.tier, bx, by, label, fg, false);
         img
     }
 }
@@ -201,6 +239,8 @@ mod tests {
             magnitude: 6.2,
             title: "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN".into(),
             origin: Utc::now() - chrono::Duration::minutes(14),
+            lat: 38.3,
+            lon: 142.1,
             depth_km: 24.0,
             felt: Some(482),
         })
@@ -222,6 +262,19 @@ mod tests {
         let quiet = r.frame(&QuakeStatus::Quiet, 800, 480);
         assert!(quiet.pixels().filter(|p| p.0 != [0, 0, 0]).count() > 200, "quiet card must render");
         assert_ne!(ev.into_raw(), quiet.into_raw(), "quiet vs event should differ");
+    }
+
+    #[test]
+    fn epicenter_moves_with_coordinates() {
+        let r = EinkQuakeMatrix::with_fonts(repo_fonts(), (800, 480)).unwrap();
+        let a = r.frame(&event(), 800, 480);
+        let mut chile = event();
+        if let QuakeStatus::Event(e) = &mut chile {
+            e.lat = -33.0;
+            e.lon = -72.0;
+        }
+        let b = r.frame(&chile, 800, 480);
+        assert_ne!(a.into_raw(), b.into_raw(), "a different epicenter should move the marker");
     }
 
     #[test]

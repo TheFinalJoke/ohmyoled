@@ -21,6 +21,7 @@ pub mod stock;
 pub mod stock_chart;
 pub mod time;
 pub mod weather;
+pub mod worldmap;
 
 pub use aurora::{EinkAuroraFonts, EinkAuroraMatrix};
 pub use f1::{EinkF1Fonts, EinkF1Matrix};
