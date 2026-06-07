@@ -35,7 +35,7 @@ use crate::matrix::hass::{HassDisplay, HassDisplayMode};
 use async_trait::async_trait;
 use chrono::Utc;
 use image::RgbImage;
-use ohmyoled_matrix::graphics::Font;
+use ohmyoled_matrix::graphics::{draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -163,10 +163,17 @@ impl EinkHassMatrix {
             HassDisplayMode::Graph => {
                 let cur_base = body_top + self.mid.ascent() + m;
                 big_value_centered(&mut img, &self.mid, &self.unit, cx, cur_base, fg, data.state.trim(), &unit);
-                let gx = m;
-                let gy = cur_base + m;
-                let gw = wi - 2 * m;
+                // Min / max range labels (the sparkline's y-scale).
+                let lo = data.history.iter().map(|s| s.value).fold(f64::INFINITY, f64::min);
+                let hi_v = data.history.iter().map(|s| s.value).fold(f64::NEG_INFINITY, f64::max);
+                let gy = cur_base + m + self.foot.height();
                 let gh = hi - gy - m - self.foot.height();
+                let gx = m + self.foot.text_width(&format!("{hi_v:.0}")) + m / 2;
+                let gw = wi - m - gx;
+                if lo.is_finite() {
+                    draw_text(&mut img, &self.foot, m, gy + self.foot.ascent(), fg, &format!("{hi_v:.0}"));
+                    draw_text(&mut img, &self.foot, m, gy + gh - self.foot.height() + self.foot.ascent(), fg, &format!("{lo:.0}"));
+                }
                 let series: Vec<f32> = data.history.iter().map(|s| s.value as f32).collect();
                 sparkline(&mut img, gx, gy, gw, gh, &series, fg);
             }

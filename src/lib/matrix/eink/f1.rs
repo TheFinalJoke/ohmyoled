@@ -170,6 +170,10 @@ impl EinkF1Matrix {
         let name_x = m + pos_col + m;
         let row_h = self.row.height() + m / 3;
         let rows = (((hi - m) - top) / row_h).clamp(1, 14) as usize;
+        let leader_pts = data.standings.first().map(|d| d.points).unwrap_or(0.0);
+        // Two non-overlapping right columns: gap-to-leader (rightmost), points.
+        let gap_col = self.row.text_width("-999");
+        let pts_right = wi - m - gap_col - m;
         for (i, d) in data.standings.iter().take(rows).enumerate() {
             let base = top + row_h * i as i32 + self.row.ascent();
             // Podium emphasis: P1 filled, P2-3 outline, rest plain.
@@ -183,10 +187,16 @@ impl EinkF1Matrix {
                 _ => right_text(img, &self.row, m + pos_col, base, fg, &format!("{}", d.position)),
             }
             let name = format!("{}  {}", d.code, d.family_name);
-            let pts = format!("{:.0}", d.points);
-            let name = fit_text(&self.row, &name, wi - name_x - m - self.row.text_width(&pts) - m);
+            let name = fit_text(&self.row, &name, pts_right - self.row.text_width("9999") - name_x - m);
             draw_text(img, &self.row, name_x, base, fg, &name);
-            right_text(img, &self.row, wi - m, base, fg, &pts);
+            // Points (left column), then gap to the leader ("LDR" for P1).
+            right_text(img, &self.row, pts_right, base, fg, &format!("{:.0}", d.points));
+            let gap = if i == 0 {
+                "LDR".to_string()
+            } else {
+                format!("-{:.0}", leader_pts - d.points)
+            };
+            right_text(img, &self.row, wi - m, base, fg, &gap);
         }
     }
 }

@@ -26,7 +26,7 @@
 
 use crate::api::stock::model::{HistorySeries, StockHistory};
 use crate::matrix::eink::layout::{
-    badge, badge_width, footer, header_band, margin, scaled_px, sparkline,
+    badge, badge_width, footer, header_band, margin, right_text, scaled_px, sparkline,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
@@ -114,14 +114,20 @@ impl EinkStockChartMatrix {
 
             let plot_x = m + gutter;
             let plot_y = top + m / 2;
-            let plot_w = wi - m - plot_x;
             let plot_h = row_h - m;
             if series.is_empty() {
+                let plot_w = wi - m - plot_x;
                 let bx = plot_x + plot_w / 2 - badge_width(&self.pct, "NO DATA") / 2;
                 badge(&mut img, &self.pct, bx, plot_y + plot_h / 2 - self.pct.height() / 2, "NO DATA", fg, false);
             } else {
+                // Reserve a right column for the period high/low labels.
+                let hl_w = self.pct.text_width(&format!("{:.0}", series.high)).max(self.pct.text_width(&format!("{:.0}", series.low)));
+                let plot_w = wi - m - plot_x - hl_w - m / 2;
                 let pts: Vec<f32> = series.closes.iter().map(|&v| v as f32).collect();
                 sparkline(&mut img, plot_x, plot_y, plot_w, plot_h, &pts, fg);
+                // High at the top-right, low at the bottom-right of the plot.
+                right_text(&mut img, &self.pct, wi - m, plot_y + self.pct.ascent(), fg, &format!("{:.0}", series.high));
+                right_text(&mut img, &self.pct, wi - m, plot_y + plot_h - self.pct.height() + self.pct.ascent(), fg, &format!("{:.0}", series.low));
             }
         }
 

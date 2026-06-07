@@ -186,6 +186,7 @@ impl EinkTimeMatrix {
 
     /// Draw a clock hand from the center at `angle` (radians, clockwise from
     /// 12 o'clock), `len` px long, `thick` px of extra width each side.
+    #[allow(clippy::too_many_arguments)]
     fn hand(&self, img: &mut RgbImage, cx: i32, cy: i32, angle: f32, len: f32, thick: i32, fg: Color) {
         let (s, c) = (angle.sin(), angle.cos());
         let (ex, ey) = (cx + (len * s) as i32, cy - (len * c) as i32);
