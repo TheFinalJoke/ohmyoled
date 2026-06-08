@@ -29,10 +29,11 @@
 //! collectors as the LED tile).
 
 use crate::api::weather::model::{Weather, WindDirection};
-use crate::matrix::eink::layout::{center_text, scaled_px, sparkline, stat_row};
+use crate::matrix::eink::layout::{center_text, donut, right_text, scaled_px, stat_row};
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
+use chrono::{DateTime, Local};
 use image::RgbImage;
 use ohmyoled_matrix::graphics::{draw_circle, draw_line, draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
@@ -196,32 +197,13 @@ impl EinkWeatherMatrix {
         let icon_base = hero_cy + self.icon_big.height() / 2 - self.icon_big.height() / 8;
         draw_text(&mut img, &self.icon_big, icon_x, icon_base, fg, &icon_glyph);
 
-        // ── Hourly temp trend + sun times, in the hero's empty center ───
+        // ── Sun/moon arc in the hero's empty center ─────────────────────
         let cs_x = margin + temp_w + (self.big.height() / 3); // clear of the degree group
         let cs_w = icon_x - cs_x - margin;
         if cs_w > 60 {
-            let ccx = cs_x + cs_w / 2;
-            if !data.hourly.is_empty() {
-                let temps: Vec<f32> = data.hourly.iter().take(24).map(|hr| hr.temp).collect();
-                let sh = (hero_bottom - hero_top) * 34 / 100;
-                let sy = hero_cy - sh / 2 - self.small.height();
-                center_text(&mut img, &self.small, ccx, sy - margin / 3, fg, "NEXT 24H");
-                sparkline(&mut img, cs_x, sy, cs_w, sh, &temps, fg);
-                let sun_y = sy + sh + self.small.height() + margin / 3;
-                let sun = format!(
-                    "RISE {}   SET {}",
-                    data.forecast.sunrise.format("%-H:%M"),
-                    data.forecast.sunset.format("%-H:%M")
-                );
-                center_text(&mut img, &self.small, ccx, sun_y, fg, &sun);
-            } else {
-                let sun = format!(
-                    "RISE {}   SET {}",
-                    data.forecast.sunrise.format("%-H:%M"),
-                    data.forecast.sunset.format("%-H:%M")
-                );
-                center_text(&mut img, &self.small, ccx, hero_cy, fg, &sun);
-            }
+            let arc_h = ((hero_bottom - hero_top) * 80 / 100).max(40);
+            let arc_y = hero_cy - arc_h / 2;
+            self.draw_sun_arc(&mut img, cs_x, arc_y, cs_w, arc_h, data, Local::now(), fg);
         }
 
         // ── Forecast strip filling the bottom band ──────────────────────
@@ -263,12 +245,93 @@ impl EinkWeatherMatrix {
             center_text(img, &self.small, cx, hilo_base, fg, &hi_lo);
         }
     }
+
+    /// Draw the sun's daily arc over a horizon: a solid day arc (sunrise→sunset)
+    /// and a dashed night arc, with a sun or moon riding it at the position for
+    /// `now`, and the rise/set times labelled at the endpoints.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_sun_arc(&self, img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, data: &Weather, now: DateTime<Local>, fg: Color) {
+        use std::f32::consts::PI;
+        let horizon_y = y + h * 52 / 100;
+        let arc_h = (h as f32 * 0.40) as i32;
+        let r = (h / 11).clamp(5, 14);
+
+        // Horizon.
+        draw_line(img, x, horizon_y, x + w, horizon_y, fg);
+        // A point on the day (above) or night (below) arc at fraction t∈[0,1].
+        let arc_pt = |t: f32, up: bool| -> (i32, i32) {
+            let dy = (arc_h as f32 * (PI * t).sin()) as i32;
+            (x + (t * w as f32) as i32, if up { horizon_y - dy } else { horizon_y + dy })
+        };
+        // Day arc — solid.
+        let mut prev = arc_pt(0.0, true);
+        for i in 1..=48 {
+            let p = arc_pt(i as f32 / 48.0, true);
+            draw_line(img, prev.0, prev.1, p.0, p.1, fg);
+            prev = p;
+        }
+        // Night arc — dashed.
+        for i in 0..24 {
+            let a = arc_pt((2 * i) as f32 / 48.0, false);
+            let b = arc_pt((2 * i + 1) as f32 / 48.0, false);
+            draw_line(img, a.0, a.1, b.0, b.1, fg);
+        }
+
+        // Place the sun (day) or moon (night) at the current fraction.
+        let (sr, ss, n) = (
+            data.forecast.sunrise.timestamp(),
+            data.forecast.sunset.timestamp(),
+            now.timestamp(),
+        );
+        let day_len = (ss - sr).max(1);
+        if n >= sr && n <= ss {
+            let t = ((n - sr) as f32 / day_len as f32).clamp(0.0, 1.0);
+            let (px, py) = arc_pt(t, true);
+            draw_sun(img, px, py, r, fg);
+        } else {
+            let night_len = (86_400 - day_len).max(1);
+            let elapsed = if n > ss { n - ss } else { n + 86_400 - ss };
+            let t = (elapsed as f32 / night_len as f32).clamp(0.0, 1.0);
+            let (px, py) = arc_pt(t, false);
+            draw_moon(img, px, py, r, fg);
+        }
+
+        // Rise/set times under the endpoints.
+        let lab_y = horizon_y + arc_h + self.small.ascent();
+        draw_text(img, &self.small, x, lab_y, fg, &data.forecast.sunrise.format("%-H:%M").to_string());
+        right_text(img, &self.small, x + w, lab_y, fg, &data.forecast.sunset.format("%-H:%M").to_string());
+    }
 }
 
 /// Draw a small two-pixel-thick ring to stand in for a degree symbol.
 fn degree_ring(img: &mut RgbImage, cx: i32, cy: i32, r: i32, color: Color) {
     draw_circle(img, cx, cy, r, color);
     draw_circle(img, cx, cy, r - 1, color);
+}
+
+/// A filled sun disc with eight rays.
+fn draw_sun(img: &mut RgbImage, cx: i32, cy: i32, r: i32, fg: Color) {
+    use std::f32::consts::PI;
+    donut(img, cx, cy, r, 0, 1.0, fg);
+    for k in 0..8 {
+        let a = k as f32 * PI / 4.0;
+        let (c, s) = (a.cos(), a.sin());
+        draw_line(
+            img,
+            cx + (r as f32 * 1.5 * c) as i32,
+            cy + (r as f32 * 1.5 * s) as i32,
+            cx + (r as f32 * 2.1 * c) as i32,
+            cy + (r as f32 * 2.1 * s) as i32,
+            fg,
+        );
+    }
+}
+
+/// A crescent moon: a filled disc with an offset disc knocked out.
+fn draw_moon(img: &mut RgbImage, cx: i32, cy: i32, r: i32, fg: Color) {
+    let r = r + 1;
+    donut(img, cx, cy, r, 0, 1.0, fg);
+    donut(img, cx + r * 3 / 5, cy - r / 3, r, 0, 1.0, Color::BLACK);
 }
 
 #[async_trait]

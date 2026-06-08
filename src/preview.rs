@@ -1006,8 +1006,10 @@ fn fake_weather() -> Weather {
         forecast: DayForecast {
             today_high: 74.0,
             today_low: 56.0,
-            sunrise: now - ChDuration::hours(6),
-            sunset: now + ChDuration::hours(8),
+            // Today's sunrise/sunset (relative to the real clock) so the sun/moon
+            // arc lands at the actual current time of day.
+            sunrise: Local::now().date_naive().and_hms_opt(6, 12, 0).unwrap().and_local_timezone(Local).single().unwrap(),
+            sunset: Local::now().date_naive().and_hms_opt(20, 45, 0).unwrap().and_local_timezone(Local).single().unwrap(),
         },
         hourly: (0..12)
             .map(|i| HourlyForecast {
