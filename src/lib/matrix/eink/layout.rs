@@ -201,7 +201,10 @@ pub fn fit_text(font: &Font, text: &str, max_px: i32) -> String {
     if font.text_width(text) <= max_px {
         return text.to_string();
     }
-    let ell_w = font.text_width("…");
+    // ASCII "..." — the pixel fonts have no glyph for the single-char ellipsis
+    // (U+2026), which renders as a .notdef circle.
+    let ell = "...";
+    let ell_w = font.text_width(ell);
     let mut out = String::new();
     let mut w = 0;
     for ch in text.chars() {
@@ -212,7 +215,7 @@ pub fn fit_text(font: &Font, text: &str, max_px: i32) -> String {
         out.push(ch);
         w += cw;
     }
-    out.push('…');
+    out.push_str(ell);
     out
 }
 
@@ -304,6 +307,22 @@ fn knockout_text(img: &mut RgbImage, font: &Font, x: i32, baseline: i32, text: &
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `fit_text` truncates long strings with an ASCII `...`, never the
+    /// single-char ellipsis (U+2026) — the pixel font has no glyph for it and
+    /// would draw a .notdef circle. Regression test for the F1 circuit label.
+    #[test]
+    fn fit_text_uses_ascii_ellipsis() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fonts/04B_03B_.TTF");
+        let font = Font::load_ttf(&path, 22.0).expect("repo font loads");
+        let long = "Circuit de Spa-Francorchamps";
+        let fitted = fit_text(&font, long, 80);
+        assert!(fitted.len() < long.len(), "long name should be truncated");
+        assert!(fitted.ends_with("..."), "got: {fitted:?}");
+        assert!(!fitted.contains('\u{2026}'), "must not use the U+2026 ellipsis");
+        // Short text passes through untouched.
+        assert_eq!(fit_text(&font, "F1", 200), "F1");
+    }
 
     #[test]
     fn scaled_px_tracks_height() {

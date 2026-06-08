@@ -520,24 +520,39 @@ async fn preview_eink_f1(display: &mut EinkDisplay, fonts: &Path) -> Result<(), 
     .enumerate()
     .map(|(i, (c, n, p))| DriverStanding { position: i as u32 + 1, code: (*c).into(), family_name: (*n).into(), points: *p })
     .collect();
-    let in_season = F1Data {
-        season: "2025".into(),
-        next_race: Some(NextRace {
-            round: 7,
-            name: "Monaco Grand Prix".into(),
-            circuit: "Circuit de Monaco".into(),
-            start: Local::now() + ChDuration::days(3) + ChDuration::hours(4),
-        }),
-        standings: standings.clone(),
-    };
-    let offseason = F1Data { season: "2025".into(), next_race: None, standings };
-    let mut toggle = false;
+    // Rotate through a few circuits so the outlines can be eyeballed live, then
+    // show the off-season standings screen.
+    let circuits = [
+        ("Monaco Grand Prix", "Circuit de Monaco"),
+        ("Italian Grand Prix", "Autodromo Nazionale di Monza"),
+        ("Japanese Grand Prix", "Suzuka Circuit"),
+        ("Belgian Grand Prix", "Circuit de Spa-Francorchamps"),
+        ("Azerbaijan Grand Prix", "Baku City Circuit"),
+        ("United States Grand Prix", "Circuit of the Americas"),
+        ("Singapore Grand Prix", "Marina Bay Street Circuit"),
+        ("São Paulo Grand Prix", "Autódromo José Carlos Pace"),
+    ];
+    let offseason = F1Data { season: "2025".into(), next_race: None, standings: standings.clone() };
+    let mut i = 0usize;
     loop {
-        let data = if toggle { &offseason } else { &in_season };
-        toggle = !toggle;
-        let img = r.frame(data, Local::now(), display.width(), display.height());
-        display.show(&img);
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let (name, circuit) = circuits[i % circuits.len()];
+        let in_season = F1Data {
+            season: "2025".into(),
+            next_race: Some(NextRace {
+                round: (i % circuits.len()) as u32 + 1,
+                name: name.into(),
+                circuit: circuit.into(),
+                start: Local::now() + ChDuration::days(3) + ChDuration::hours(4),
+            }),
+            standings: standings.clone(),
+        };
+        // Show each circuit, then the off-season screen between circuits.
+        for data in [&in_season, &offseason] {
+            let img = r.frame(data, Local::now(), display.width(), display.height());
+            display.show(&img);
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+        i += 1;
     }
 }
 
