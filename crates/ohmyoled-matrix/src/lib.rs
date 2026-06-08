@@ -22,6 +22,7 @@
 //! ```
 
 pub mod backend;
+pub mod eink;
 pub mod graphics;
 pub mod options;
 pub mod terminal;
@@ -33,6 +34,7 @@ pub mod terminal;
 pub mod hardware;
 
 pub use backend::{Backend, MatrixMode};
+pub use eink::{parse_mode as parse_eink_mode, EinkDisplay, EinkMode, EinkOptions};
 pub use options::MatrixOptions;
 
 /// An RGB colour — red, green, blue channels each 0–255.
@@ -63,6 +65,11 @@ pub struct RGBMatrix {
     backend: Box<dyn Backend>,
     pub options: MatrixOptions,
     pub mode: MatrixMode,
+    /// Last frame pushed to the panel: `(width, height, rgb_bytes, offset_x,
+    /// offset_y)`. [`RGBMatrix::set_image`] skips the backend write when the new
+    /// frame is identical, so a renderer dwelling on a static image doesn't
+    /// re-push it every loop. Reset by [`RGBMatrix::clear`].
+    last_frame: Option<(u32, u32, Vec<u8>, i32, i32)>,
 }
 
 impl RGBMatrix {
@@ -125,14 +132,24 @@ impl RGBMatrix {
             }
         };
 
-        Self { backend, options, mode: actual_mode }
+        Self { backend, options, mode: actual_mode, last_frame: None }
     }
 
     /// Push an image to the display.
     ///
     /// `offset_x` / `offset_y` shift where the image is placed on the panel.
+    ///
+    /// No-ops when the image + offsets are identical to the last frame pushed,
+    /// so a static render doesn't repeatedly re-flush the same pixels.
     pub fn set_image(&mut self, img: &image::RgbImage, offset_x: i32, offset_y: i32) {
+        let (w, h) = (img.width(), img.height());
+        if let Some((lw, lh, last, lx, ly)) = &self.last_frame {
+            if *lw == w && *lh == h && *lx == offset_x && *ly == offset_y && last.as_slice() == img.as_raw().as_slice() {
+                return; // identical frame — nothing to refresh
+            }
+        }
         self.backend.set_image(img, offset_x, offset_y);
+        self.last_frame = Some((w, h, img.as_raw().clone(), offset_x, offset_y));
     }
 
     /// Push raw RGB bytes to the display (3 bytes/pixel, no padding).
@@ -150,12 +167,63 @@ impl RGBMatrix {
     /// Clear the display to black.
     pub fn clear(&mut self) {
         self.backend.clear();
+        // Panel no longer matches any cached frame; force the next set_image.
+        self.last_frame = None;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// Backend that counts set_image calls so dedupe can be asserted.
+    struct CountingBackend {
+        sets: Arc<AtomicUsize>,
+    }
+    impl backend::Backend for CountingBackend {
+        fn set_image(&mut self, _img: &image::RgbImage, _ox: i32, _oy: i32) {
+            self.sets.fetch_add(1, Ordering::SeqCst);
+        }
+        fn clear(&mut self) {}
+    }
+
+    fn solid(w: u32, h: u32, v: u8) -> image::RgbImage {
+        let mut img = image::RgbImage::new(w, h);
+        for p in img.pixels_mut() {
+            *p = image::Rgb([v, v, v]);
+        }
+        img
+    }
+
+    #[test]
+    fn set_image_skips_identical_frames_and_clear_resets() {
+        let sets = Arc::new(AtomicUsize::new(0));
+        let mut m = RGBMatrix {
+            backend: Box::new(CountingBackend { sets: sets.clone() }),
+            options: MatrixOptions::default(),
+            mode: MatrixMode::Test,
+            last_frame: None,
+        };
+        let a = solid(8, 8, 0);
+        let b = solid(8, 8, 200);
+
+        m.set_image(&a, 0, 0); // first push
+        m.set_image(&a, 0, 0); // identical → skipped
+        assert_eq!(sets.load(Ordering::SeqCst), 1);
+
+        m.set_image(&a, 1, 0); // same pixels, different offset → push
+        assert_eq!(sets.load(Ordering::SeqCst), 2);
+
+        m.set_image(&b, 1, 0); // changed pixels → push
+        m.set_image(&b, 1, 0); // identical → skipped
+        assert_eq!(sets.load(Ordering::SeqCst), 3);
+
+        m.clear(); // resets cache
+        m.set_image(&b, 1, 0); // post-clear → push again
+        assert_eq!(sets.load(Ordering::SeqCst), 4);
+    }
 
     #[test]
     fn env_var_forces_test_mode() {

@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,35 +23,34 @@ impl Default for IssOptions {
     }
 }
 
-pub fn configure() -> Result<IssOptions, String> {
-    ui::section("ISS");
-    ui::hint("Distance + overhead flag for the International Space Station. Needs your lat/lon.");
-
-    let lat = read_coord("Latitude (degrees, -90..90)", 40.7128, -90.0, 90.0);
-    let lon = read_coord("Longitude (degrees, -180..180)", -74.0060, -180.0, 180.0);
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-
-    ui::success(&format!("ISS — lat={lat:.4}, lon={lon:.4}"));
-    Ok(IssOptions { run: true, lat, lon, cache_ttl_secs })
-}
-
-pub fn summary_line(opts: &IssOptions) -> String {
-    format!("iss (lat={:.4}, lon={:.4})", opts.lat, opts.lon)
-}
-
-/// Re-prompt until a parseable f64 in `min..=max` is supplied. Shared
-/// with the other lat/lon-bearing modules via a tiny helper rather
-/// than copy-pasting the loop.
-fn read_coord(label: &str, default: f64, min: f64, max: f64) -> f64 {
-    loop {
-        let raw = ui::read_line_default(label, &format!("{default}"));
-        match raw.trim().parse::<f64>() {
-            Ok(v) if (min..=max).contains(&v) => return v,
-            _ => ui::warn(&format!("Expected a number in [{min}, {max}]")),
-        }
-    }
-}
-
-pub(crate) fn read_coord_pub(label: &str, default: f64, min: f64, max: f64) -> f64 {
-    read_coord(label, default, min, max)
+/// TUI form schema.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "lat",
+            "Latitude",
+            "Degrees, -90..90.",
+            FieldKind::Float {
+                default: 40.7128,
+                min: -90.0,
+                max: 90.0,
+            },
+        ),
+        FieldDef::new(
+            "lon",
+            "Longitude",
+            "Degrees, -180..180.",
+            FieldKind::Float {
+                default: -74.0060,
+                min: -180.0,
+                max: 180.0,
+            },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }

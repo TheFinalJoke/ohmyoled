@@ -14,7 +14,7 @@ src/
 ├── main.rs                   # CLI + config loading + scheduler bootstrap
 ├── config_io.rs              # JSON/YAML/TOML loader/writer
 ├── filelib.rs                # file-exists check
-├── createjson/               # interactive `-c` config builder
+├── createjson/               # `-c` config builder (full-screen ratatui TUI in tui/)
 └── lib/
     ├── lib.rs                # crate root (oledlib)
     ├── api/
@@ -285,74 +285,90 @@ whichever backend `RGBMatrix` resolves to (terminal in devcontainer,
 panel on a Pi). **Don't add a new `examples/subway_render_check.rs`** —
 `--preview` is the one place we eyeball renderers.
 
-### 5. Wire into the interactive builder + starter config — `src/createjson/`
+### 5. Wire into the config builder + starter config — `src/createjson/`
 
-The `-c` interactive flow and the `--init-config <path>` one-shot both
-live under `src/createjson/`. **Both** must learn about a new module,
-otherwise users who go through `-c` (or who download a release binary
-and run `--init-config`) can never enable the tile without
-hand-editing the file.
+The `-c` builder is a **full-screen ratatui TUI** (`src/createjson/tui/`),
+not a line-prompt flow. It's a two-screen wizard: a **Setup** screen (pick
+Matrix _or_ E-ink — mutually exclusive — fill that target's options, pick
+json/yaml/toml) and a **Modules** screen (toggle the applicable tiles, edit
+their fields, watch a live preview). The `--init-config <path>` one-shot
+still writes `default_config()`. **Both** must learn about a new module.
+
+The TUI is a generic form engine driven by a per-module **field schema** —
+you don't write any ratatui per module. Each `src/createjson/<name>.rs`
+keeps its serde `Options` struct + `Default`, and adds a `fields()` schema:
 
 ```
 src/createjson/
-├── mod.rs        # menu + dispatch + `default_config()` starter JSON
-├── subway.rs     # new: per-module `Options` struct + `configure()` prompt
-└── …             # existing one-file-per-module pattern
+├── mod.rs          # MatrixOptions + default_config() + create_json() → tui::run()
+├── subway.rs       # new: `Options` struct + `Default` + `fields()`
+├── tui/
+│   ├── field.rs       # FieldDef/FieldKind/Form — the pure projection engine
+│   ├── form_module.rs # per-section dispatch: fields()/value_to_form()/section_to_value()
+│   ├── app.rs         # wizard state (Target, ConfigFormat, Instance)
+│   ├── event.rs       # key handling
+│   ├── ui.rs          # ratatui rendering (the thin shell)
+│   └── preview.rs     # config assembly + json/yaml/toml serialization
+└── …                  # one-file-per-module pattern (struct + Default + fields)
 ```
 
 Pattern from any of `iss.rs` / `flights.rs` / `pihole.rs`:
 
 ```rust
 // src/createjson/subway.rs
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SubwayOptions {
     pub run: bool,
     pub station_id: String,
+    #[serde(default)]
+    pub cache_ttl_secs: Option<u64>,
 }
 
 impl Default for SubwayOptions {
-    fn default() -> Self { Self { run: true, station_id: "127N".into() } }
+    fn default() -> Self {
+        Self { run: true, station_id: "127N".into(), cache_ttl_secs: None }
+    }
 }
 
-pub fn configure() -> Result<SubwayOptions, String> {
-    ui::section("Subway");
-    let station_id = ui::read_required("MTA station id (e.g. 127N)");
-    ui::success(&format!("Subway — {station_id}"));
-    Ok(SubwayOptions { run: true, station_id })
-}
-
-pub fn summary_line(opts: &SubwayOptions) -> String {
-    format!("subway ({})", opts.station_id)
+/// Field schema. `id` MUST match the serde field name — the value is
+/// round-tripped through `SubwayOptions` on save, so a typo'd id is dropped.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new("station_id", "MTA station id", "e.g. 127N",
+            FieldKind::Text { default: "127N" }),
+        FieldDef::new("cache_ttl_secs", "Cache TTL (secs)", super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl),
+    ]
 }
 ```
 
-Then in `src/createjson/mod.rs`, four small edits:
+`FieldKind` covers `Text`/`OptionalText`/`Bool`/`Number{min,max}`/`Float`/
+`Enum{choices}`/`Rgb`/`StringList`/`CacheTtl`/`OptionalNumber`/`ValueEnum`.
+**Conditional fields** use `.when(|f| …)` (see `weather.rs` `api_key` /
+`stock.rs` `api_key`); **dependent option lists** (sport's team picker) use
+`form_module::on_field_changed`. Any non-trivial normalization (stock's
+symbol case-folding, time's `system` ⇒ `null`) lives in
+`form_module::section_to_value`. No `configure()`, no `summary_line` — those
+are gone.
 
-1. `pub mod subway;` at the top with the other module declarations.
-2. A new menu entry in `print_menu()` (next free number — keep the
-   numbering consecutive).
-3. A new match arm in `create_json()`:
-   ```rust
-   "N" => match subway::configure() {
-       Ok(opts) => {
-           let label = subway::summary_line(&opts);
-           let value = serde_json::to_value(opts).expect("SubwayOptions serializes");
-           entries.push(Entry { section: "subway", label, value });
-       }
-       Err(e) => ui::error(&format!("subway config failed: {e}")),
-   },
-   ```
-4. Add `"subway"` to the `sections` array used by `fold_section()`.
+Then in `src/createjson/tui/form_module.rs`, three small edits:
 
-**Also update `default_config()`** in the same file — its JSON literal
-is what `--init-config` writes. Add a `"subway": {"run":false,
-"station_id":"REPLACE_ME_STATION_ID"}` entry so the starter file lists
-every section. Required keys take `REPLACE_ME_*` placeholders; optional
-keys take their actual defaults. The user only has to flip `run: true`
-and fill placeholders to enable a tile.
+1. `pub mod subway;` already exists in `mod.rs`; nothing to add there for
+   the schema itself.
+2. Add `("subway", "Subway")` to `TILE_KINDS` and arms to `fields()`,
+   `config_key()` (returns `"subway"`), and `canonicalize()` (round-trips
+   `subway::SubwayOptions`). If `subway` can have multiple instances, extend
+   `allow_multi()`.
+3. Add `"subway"` to `SECTION_KEYS` in `app.rs` (existing-config loading) and
+   `SECTION_ORDER` in `preview.rs` (assembly order).
+
+**Also update `default_config()`** in `mod.rs` — its JSON literal is what
+`--init-config` writes. Add a `"subway": {"run":false,
+"station_id":"REPLACE_ME_STATION_ID","cache_ttl_secs":null}` entry. Required
+keys take `REPLACE_ME_*` placeholders; optional keys take their defaults.
 
 ### 6. Update docs + `--preview` help
 
@@ -512,8 +528,12 @@ scheduler.
 - **`one_or_many` consumes `#[serde(default)]`.** Both attributes are
   required. The default `Vec::new()` is what makes missing sections
   parse cleanly.
-
----
+- **`-c` now needs a TTY.** The config builder is a full-screen ratatui
+  TUI, so `-c` errors out under a pipe / in CI. Non-interactive setups use
+  `--init-config <path>` (writes `default_config()`), then hand-edit. The
+  builder's `Options` structs are the source of truth: `section_to_value`
+  round-trips each tile through its struct, so a `fields()` `id` that
+  doesn't match a serde field name is silently dropped — keep them in sync.
 
 ## What lives where
 
@@ -521,8 +541,8 @@ scheduler.
 | ------------------------------------- | ---------------------------------------------------------------------- |
 | Add a new API + matrix                | `src/lib/api/<name>/`, `src/lib/matrix/<name>.rs`, `registry.rs`, **`src/createjson/<name>.rs` + `createjson/mod.rs`** |
 | Add a new provider to existing module | `src/lib/api/<name>/<provider>.rs` + enum variant in that module's `mod.rs` |
-| Add a new config field                | The section struct in `registry.rs` + all three `examples/configs/*` + the matching `*Options` struct in `src/createjson/<name>.rs` + the `default_config()` JSON literal in `createjson/mod.rs` |
-| Add the `-c` / `--init-config` prompt | `src/createjson/<name>.rs` (one-file pattern) + register in `createjson/mod.rs` (menu entry, match arm, `sections` array, `default_config()` placeholder) |
+| Add a new config field                | The section struct in `registry.rs` + all three `examples/configs/*` + the matching `*Options` struct **+ a `FieldDef` in `fields()`** in `src/createjson/<name>.rs` + the `default_config()` JSON literal in `createjson/mod.rs` |
+| Add the `-c` / `--init-config` tile    | `src/createjson/<name>.rs` (`Options` + `Default` + `fields()`) + register in `createjson/tui/form_module.rs` (`TILE_KINDS`, `fields()`, `config_key()`, `canonicalize()`) + `SECTION_KEYS` (`app.rs`) + `SECTION_ORDER` (`preview.rs`) + `default_config()` placeholder |
 | Change panel geometry                 | `src/main.rs::build_matrix`                                            |
 | Add a new font                        | `src/sh/install.sh` + the renderer's `*Fonts` struct                   |
 | Change a shared HTTP behavior         | `src/lib/api/http.rs`                                                  |

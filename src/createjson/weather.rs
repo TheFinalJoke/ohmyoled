@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use oledlib::api;
 use oledlib::serde_helpers::null_string_as_none;
 use serde::{Deserialize, Serialize};
@@ -8,15 +8,6 @@ use serde::{Deserialize, Serialize};
 pub enum WeatherFormat {
     Imperial,
     Metric,
-}
-
-impl WeatherFormat {
-    pub fn slug(self) -> &'static str {
-        match self {
-            Self::Imperial => "imperial",
-            Self::Metric => "metric",
-        }
-    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -51,111 +42,112 @@ impl Default for WeatherOptions {
     }
 }
 
-fn pick_api() -> api::WeatherApi {
-    let slug = ui::choose(
-        "Which weather provider?",
-        &[
-            ("nws", "US National Weather Service — no key"),
-            ("openweather", "OpenWeather — key required"),
-            ("accuweather", "AccuWeather — key required"),
-            ("pirate", "Pirate Weather — key required"),
-        ],
-        "nws",
-    );
-    match slug.as_str() {
-        "nws" => api::WeatherApi::Nws,
-        "openweather" => api::WeatherApi::Openweather,
-        "accuweather" => api::WeatherApi::Accuweather,
-        "pirate" => api::WeatherApi::Pirate,
-        _ => api::WeatherApi::Nws,
+/// TUI form schema. Conditional fields:
+/// - `api_key` shown/required only when the provider isn't NWS.
+/// - `city` shown/required only when not auto-locating.
+/// - `current_location_api_key` (ipinfo token) shown only when auto-locating.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "api",
+            "Provider",
+            "Weather data source.",
+            FieldKind::Enum {
+                default: "nws",
+                choices: &[
+                    ("nws", "US National Weather Service — no key"),
+                    ("openweather", "OpenWeather — key required"),
+                    ("accuweather", "AccuWeather — key required"),
+                    ("pirate", "Pirate Weather — key required"),
+                ],
+            },
+        ),
+        FieldDef::new(
+            "api_key",
+            "API key",
+            "Required for every provider except NWS.",
+            FieldKind::Text { default: "" },
+        )
+        .when(|f| f.enum_slug("api") != Some("nws")),
+        FieldDef::new(
+            "current_location",
+            "Auto-locate (ipinfo)",
+            "Geolocate via ipinfo instead of a fixed city.",
+            FieldKind::Bool { default: true },
+        ),
+        FieldDef::new(
+            "city",
+            "City",
+            "e.g. 'Dallas, TX'. Used when auto-locate is off.",
+            FieldKind::Text { default: "" },
+        )
+        .when(|f| f.bool_val("current_location") == Some(false)),
+        FieldDef::new(
+            "current_location_api_key",
+            "ipinfo token",
+            "Optional ipinfo.io token for higher rate limits; blank to skip.",
+            FieldKind::OptionalText { default: "" },
+        )
+        .when(|f| f.bool_val("current_location") == Some(true)),
+        FieldDef::new(
+            "weather_format",
+            "Units",
+            "Imperial (°F/mph) or metric (°C).",
+            FieldKind::Enum {
+                default: "imperial",
+                choices: &[("imperial", "°F / mph"), ("metric", "°C / m·s⁻¹")],
+            },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::createjson::tui::field::{FieldValue, Form};
+    use crate::createjson::tui::form_module;
+
+    fn set_enum(form: &mut Form, idx: usize, sel: usize) {
+        if let FieldValue::Enum(s) = &mut form.values[idx] {
+            *s = sel;
+        }
     }
-}
-
-fn pick_format() -> Option<WeatherFormat> {
-    let slug = ui::choose(
-        "Units",
-        &[
-            ("imperial", "°F / mph"),
-            ("metric", "°C / m·s⁻¹"),
-        ],
-        "imperial",
-    );
-    Some(match slug.as_str() {
-        "metric" => WeatherFormat::Metric,
-        _ => WeatherFormat::Imperial,
-    })
-}
-
-fn configure_location() -> (bool, Option<String>, Option<String>) {
-    let use_current = ui::read_yes_no(
-        "Geolocate via ipinfo? (otherwise prompt for city)",
-        true,
-    );
-    if use_current {
-        ui::hint("Optional: paste an ipinfo.io token for higher rate limits (blank to skip).");
-        let token = ui::read_line_default("ipinfo token", "");
-        let token = if token.trim().is_empty() { None } else { Some(token) };
-        (true, None, token)
-    } else {
-        let city = ui::read_required("City (e.g. 'Dallas, TX')");
-        (false, Some(city), None)
-    }
-}
-
-pub fn configure() -> Result<WeatherOptions, String> {
-    ui::section("Weather");
-    ui::hint("Pick a provider, set your location, and choose units.");
-
-    if ui::read_yes_no("Use defaults (NWS, auto-locate, imperial)?", true) {
-        ui::success("Weather — NWS defaults");
-        return Ok(WeatherOptions::default());
+    fn set_bool(form: &mut Form, idx: usize, b: bool) {
+        if let FieldValue::Bool(v) = &mut form.values[idx] {
+            *v = b;
+        }
     }
 
-    let api_choice = pick_api();
-    let needs_key = !matches!(api_choice, api::WeatherApi::Nws);
-    let api_key = if needs_key {
-        ui::hint(&format!(
-            "{} requires an API key. Get one from the provider, then paste it here.",
-            api_choice.get_api()
-        ));
-        Some(ui::read_required("API key"))
-    } else {
-        None
-    };
+    #[test]
+    fn nws_drops_api_key() {
+        let form = form_module::default_form("weather");
+        let v = form_module::section_to_value("weather", &form).unwrap();
+        assert_eq!(v["api"], serde_json::json!("nws"));
+        // Canonicalized through WeatherOptions: hidden optionals become null.
+        assert!(v["api_key"].is_null());
+        assert!(v["city"].is_null());
+    }
 
-    let (current_location, city, ipinfo_token) = configure_location();
-    let weather_format = pick_format();
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
+    #[test]
+    fn non_nws_requires_key() {
+        let mut form = form_module::default_form("weather");
+        set_enum(&mut form, 0, 1); // openweather
+        assert!(form_module::section_to_value("weather", &form).is_err());
+    }
 
-    ui::success(&format!(
-        "Weather — {} ({}, {})",
-        api_choice.get_api(),
-        if current_location { "auto-locate" } else { city.as_deref().unwrap_or("city") },
-        weather_format.map(WeatherFormat::slug).unwrap_or("imperial"),
-    ));
-
-    Ok(WeatherOptions {
-        run: true,
-        api: api_choice,
-        api_key,
-        current_location,
-        city,
-        weather_format,
-        current_location_api_key: ipinfo_token,
-        cache_ttl_secs,
-    })
-}
-
-pub fn summary_line(opts: &WeatherOptions) -> String {
-    let where_at = if opts.current_location {
-        "auto-locate".to_string()
-    } else {
-        opts.city.clone().unwrap_or_else(|| "?".to_string())
-    };
-    format!(
-        "weather: {} — {} ({})",
-        opts.api.get_api(),
-        where_at,
-        opts.weather_format.map(WeatherFormat::slug).unwrap_or("imperial"),
-    )
+    #[test]
+    fn manual_location_requires_city_drops_ipinfo() {
+        let mut form = form_module::default_form("weather");
+        set_bool(&mut form, 2, false); // current_location off
+        assert!(form_module::section_to_value("weather", &form).is_err());
+        form.values[3] = FieldValue::Input(tui_input::Input::new("Dallas, TX".into()));
+        let v = form_module::section_to_value("weather", &form).unwrap();
+        assert_eq!(v["city"], serde_json::json!("Dallas, TX"));
+        assert!(v["current_location_api_key"].is_null());
+    }
 }

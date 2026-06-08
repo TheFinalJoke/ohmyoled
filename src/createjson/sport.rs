@@ -1,94 +1,89 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use oledlib::teams;
-use serde_json::{json, Value};
+use serde_json::Value;
 
-/// Default team-sport entry used when the user accepts defaults.
-fn default_entry() -> Value {
-    json!({
-        "run": true,
-        "sport": "baseball",
-        "team_logo": teams::Logo {
-            name: "Chicago Cubs".to_string(),
-            sportsdb_leagueid: 4424,
-            url: "https://www.thesportsdb.com/images/media/team/badge/wxbe071521892391.png".to_string(),
-            sport: teams::SportsTypes::BASEBALL,
-            shorthand: "CHC".to_string(),
-            apisportsid: 6,
-            sportsdbid: 135269,
-            sportsipyid: None,
-        },
-        "cache_ttl_secs": serde_json::Value::Null,
-    })
+/// TUI form schema. `team_logo` is a `ValueEnum` whose options depend on the
+/// chosen `sport` enum — `form_module::on_field_changed` repopulates it when
+/// the sport changes, and `team_options` builds the list.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "sport",
+            "League",
+            "Which team sport.",
+            FieldKind::Enum {
+                default: "baseball",
+                choices: &[
+                    ("baseball", "MLB"),
+                    ("basketball", "NBA"),
+                    ("football", "NFL"),
+                    ("hockey", "NHL"),
+                ],
+            },
+        ),
+        FieldDef::new(
+            "team_logo",
+            "Team",
+            "Which team's scoreboard + standings to follow.",
+            FieldKind::ValueEnum,
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }
 
-fn pick_sport() -> teams::SportsTypes {
-    let slug = ui::choose(
-        "Which team sport?",
-        &[
-            ("baseball", "MLB — ESPN scoreboard"),
-            ("basketball", "NBA — ESPN scoreboard"),
-            ("football", "NFL — ESPN scoreboard"),
-            ("hockey", "NHL — ESPN scoreboard"),
-        ],
-        "baseball",
-    );
-    teams::SportsTypes::str_to_sport(slug)
+/// Build the `(team name, serialized Logo)` option list for a sport slug,
+/// sorted alphabetically for a stable picker. Unknown slug ⇒ empty.
+pub fn team_options(sport_slug: &str) -> Vec<(String, Value)> {
+    let built = match sport_slug {
+        "baseball" => teams::Sport::build_baseball(),
+        "basketball" => teams::Sport::build_basketball(),
+        "football" => teams::Sport::build_football(),
+        "hockey" => teams::Sport::build_hockey(),
+        _ => return Vec::new(),
+    };
+    let mut opts: Vec<(String, Value)> = built
+        .teams
+        .into_iter()
+        .map(|(name, logo)| (name, serde_json::to_value(logo).expect("Logo serializes")))
+        .collect();
+    opts.sort_by(|a, b| a.0.cmp(&b.0));
+    opts
 }
 
-fn pick_team(sport: &teams::SportsTypes) -> teams::Logo {
-    ui::info(&format!(
-        "Available {} teams (type the full name as listed):",
-        sport.get_sport_str()
-    ));
-    teams::print_teams(sport);
-    loop {
-        let input = ui::read_required("Team name");
-        match teams::validate(input, sport) {
-            Ok(logo) => return logo,
-            Err(e) => ui::warn(&e),
+/// Index of a team in `options` by name (for picking a sensible default like
+/// the Chicago Cubs), or 0 if not found.
+pub fn default_team_index(options: &[(String, Value)], name: &str) -> usize {
+    options.iter().position(|(n, _)| n == name).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::createjson::tui::form_module;
+
+    #[test]
+    fn default_sport_picks_a_team() {
+        let form = form_module::default_form("sport");
+        let v = form_module::section_to_value("sport", &form).unwrap();
+        assert_eq!(v["sport"], serde_json::json!("baseball"));
+        assert!(v["team_logo"]["name"].is_string());
+    }
+
+    #[test]
+    fn changing_sport_repopulates_teams() {
+        let mut form = form_module::default_form("sport");
+        // switch to basketball (index 1)
+        if let crate::createjson::tui::field::FieldValue::Enum(sel) = &mut form.values[0] {
+            *sel = 1;
         }
+        form_module::on_field_changed("sport", &mut form, "sport");
+        let v = form_module::section_to_value("sport", &form).unwrap();
+        assert_eq!(v["sport"], serde_json::json!("basketball"));
+        // the chosen team's logo carries the basketball sport tag
+        assert_eq!(v["team_logo"]["sport"], serde_json::json!("basketball"));
     }
-}
-
-pub fn configure() -> Result<Value, String> {
-    ui::section("Sport — Team (MLB / NBA / NFL / NHL)");
-    if ui::read_yes_no("Use the default team (Chicago Cubs)?", false) {
-        let entry = default_entry();
-        ui::success("Sport — Chicago Cubs (MLB) added");
-        return Ok(entry);
-    }
-    let sport_kind = pick_sport();
-    let logo = pick_team(&sport_kind);
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-    let entry = json!({
-        "run": true,
-        "sport": sport_kind.get_sport_str(),
-        "team_logo": logo,
-        "cache_ttl_secs": cache_ttl_secs,
-    });
-    ui::success(&format!(
-        "Sport — {} ({}) added",
-        logo_display(&entry),
-        sport_kind.get_sport_str().to_uppercase()
-    ));
-    Ok(entry)
-}
-
-fn logo_display(entry: &Value) -> String {
-    entry
-        .get("team_logo")
-        .and_then(|t| t.get("name"))
-        .and_then(Value::as_str)
-        .unwrap_or("?")
-        .to_string()
-}
-
-pub fn summary_line(entry: &Value) -> String {
-    let sport = entry
-        .get("sport")
-        .and_then(Value::as_str)
-        .unwrap_or("?")
-        .to_uppercase();
-    let team = logo_display(entry);
-    format!("sport: {} — {team}", sport.to_lowercase())
 }

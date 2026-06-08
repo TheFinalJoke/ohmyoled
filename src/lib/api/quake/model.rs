@@ -54,6 +54,10 @@ pub struct QuakeEvent {
     pub title: String,
     /// Origin time of the event.
     pub origin: DateTime<Utc>,
+    /// Epicenter latitude (degrees, −90..90) from the USGS geometry.
+    pub lat: f32,
+    /// Epicenter longitude (degrees, −180..180) from the USGS geometry.
+    pub lon: f32,
     /// Depth below the surface, km.
     pub depth_km: f32,
     /// Number of "Did You Feel It?" community reports submitted for this

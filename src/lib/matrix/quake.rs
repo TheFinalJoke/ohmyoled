@@ -348,6 +348,8 @@ mod tests {
             magnitude: mag,
             title: format!("M {:.1} - {}", mag, place),
             origin: Utc::now() - ChDuration::minutes(14),
+            lat: 0.0,
+            lon: 0.0,
             depth_km: 24.0,
             felt: None,
         }
@@ -475,6 +477,8 @@ mod tests {
             magnitude: 6.2,
             title: "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN".into(),
             origin: Utc::now() - ChDuration::minutes(14),
+            lat: 38.3,
+            lon: 142.1,
             depth_km: 24.0,
             felt: Some(482),
         };
@@ -503,6 +507,8 @@ mod tests {
             magnitude: 3.1,
             title: "M 3.1 - Reno NV".into(),
             origin: Utc::now() - ChDuration::minutes(2),
+            lat: 39.5,
+            lon: -119.8,
             depth_km: 5.0,
             felt: None,
         };

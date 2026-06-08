@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,37 +22,20 @@ impl Default for LaunchOptions {
     }
 }
 
-pub fn configure() -> Result<LaunchOptions, String> {
-    ui::section("Launch");
-    ui::hint("Next orbital launch via Launch Library 2. No API key needed.");
-
-    let raw = ui::read_line_default(
-        "Agency filter (comma-separated substrings, blank = all)",
-        "",
-    );
-    let agency_filter: Vec<String> = raw
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-    if agency_filter.is_empty() {
-        ui::success("Launch — all providers");
-    } else {
-        ui::success(&format!("Launch — filtering {}", agency_filter.join(", ")));
-    }
-    Ok(LaunchOptions {
-        run: true,
-        agency_filter,
-        cache_ttl_secs,
-    })
-}
-
-pub fn summary_line(opts: &LaunchOptions) -> String {
-    if opts.agency_filter.is_empty() {
-        "launch (all agencies)".to_string()
-    } else {
-        format!("launch (filter: {})", opts.agency_filter.join(","))
-    }
+/// TUI form schema.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "agency_filter",
+            "Agency filter",
+            "Comma-separated substrings (e.g. SpaceX, NASA); blank = all agencies.",
+            FieldKind::StringList { default: "" },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }

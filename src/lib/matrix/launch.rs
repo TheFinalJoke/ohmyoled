@@ -307,7 +307,10 @@ fn truncate_to_width(s: &str, max_px: i32, font: &Font) -> String {
     if font.text_width(s) <= max_px {
         return s.to_string();
     }
-    let ellipsis_w = font.text_width("…");
+    // ASCII "..." — the pixel font has no glyph for U+2026, which would render
+    // as a .notdef circle.
+    let ellipsis = "...";
+    let ellipsis_w = font.text_width(ellipsis);
     let mut out = String::new();
     for ch in s.chars() {
         let mut probe = out.clone();
@@ -317,7 +320,7 @@ fn truncate_to_width(s: &str, max_px: i32, font: &Font) -> String {
         }
         out = probe;
     }
-    out.push('…');
+    out.push_str(ellipsis);
     out
 }
 
@@ -468,7 +471,7 @@ mod tests {
         let m = LaunchMatrix::with_fonts(repo_fonts()).expect("fonts");
         // Force "AAAAAAAA..." into a tiny pixel budget.
         let short = truncate_to_width("AAAAAAAAAAAAAAAAAAAA", 16, &m.body_font);
-        assert!(short.ends_with('…'));
+        assert!(short.ends_with("..."));
         assert!(m.body_font.text_width(&short) <= 16);
     }
 

@@ -48,7 +48,8 @@
     "run": true,
     "lat": 40.7128,
     "lon": -74.0060,
-    "radius_km": 80
+    "radius_km": 80,
+    "airborne_only": true
   },
   "launch": {
     "run": true,
@@ -107,5 +108,27 @@
     },
     { "run": true, "sport": "golf", "tour": "pga" },
     { "run": true, "sport": "f1" }
-  ]
+  ],
+  "eink": {
+    "enabled": false,
+    "model": "7in5_v2",
+    "rotation": 0,
+    "threshold": 128,
+    "mode": "auto",
+    "emulate": false,
+    "refresh_ms": 2500,
+    "modules": {
+      "time": {
+        "run": true,
+        "color": [255, 255, 255],
+        "time_format": "12h"
+      },
+      "weather": {
+        "run": true,
+        "api": "nws",
+        "current_location": true,
+        "weather_format": "imperial"
+      }
+    }
+  }
 }

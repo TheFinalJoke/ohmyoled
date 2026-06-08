@@ -58,11 +58,11 @@ fn pick_top_event(raw: FeatureCollection) -> QuakeStatus {
         .filter(|f| is_earthquake(f.properties.event_type.as_deref()))
         .filter_map(|f| {
             let mag = f.properties.mag?;
-            let depth = f
-                .geometry
-                .as_ref()
-                .and_then(|g| g.coordinates.get(2).copied())
-                .unwrap_or(0.0) as f32;
+            // GeoJSON geometry is `[lon, lat, depth_km]`.
+            let coords = f.geometry.as_ref().map(|g| &g.coordinates);
+            let lon = coords.and_then(|c| c.first().copied()).unwrap_or(0.0) as f32;
+            let lat = coords.and_then(|c| c.get(1).copied()).unwrap_or(0.0) as f32;
+            let depth = coords.and_then(|c| c.get(2).copied()).unwrap_or(0.0) as f32;
             let origin = f.properties.time.and_then(parse_unix_ms)?;
             // Prefer the curated title; synthesize a minimal one if USGS
             // omitted it (older revisions of the feed sometimes do).
@@ -74,6 +74,8 @@ fn pick_top_event(raw: FeatureCollection) -> QuakeStatus {
                 magnitude: mag as f32,
                 title,
                 origin,
+                lat,
+                lon,
                 depth_km: depth,
                 felt: f.properties.felt,
             })
