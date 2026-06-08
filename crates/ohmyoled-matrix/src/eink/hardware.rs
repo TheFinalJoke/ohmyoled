@@ -23,7 +23,7 @@
 use embedded_hal::digital::{ErrorType, OutputPin};
 use embedded_hal_bus::spi::ExclusiveDevice;
 use epd_waveshare::{epd4in2::Epd4in2, epd7in5_v2::Epd7in5, prelude::*};
-use rppal::gpio::{InputPin, OutputPin as Out};
+use rppal::gpio::{Gpio, InputPin, OutputPin as Out};
 use rppal::hal::Delay;
 use rppal::spi::{Bus, Mode, SlaveSelect, Spi};
 

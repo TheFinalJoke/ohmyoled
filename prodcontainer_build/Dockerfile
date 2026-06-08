@@ -24,7 +24,11 @@ RUN git clone --branch "${OHMYOLED_REF}" --depth 1 \
         https://github.com/TheFinalJoke/ohmyoled.git .
 
 RUN bash scripts/fetch-fonts.sh
-RUN cargo build --release
+# `--features eink` adds the Waveshare SPI backend alongside the default
+# `hardware` (LED panel) backend. Both deps are arm/aarch64-gated in
+# ohmyoled-matrix/Cargo.toml, so this is a no-op on x86_64 source builds and
+# enables e-ink panels when this image is built on a Pi target.
+RUN cargo build --release --features eink
 
 # ---------------------------------------------------------------------------
 # Runtime stage — just the binary + fonts + a couple of system fonts the

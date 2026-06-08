@@ -59,12 +59,16 @@ jobs:
       # passthrough block in Cross.toml) so rpi-led-matrix-sys's
       # vendored Makefile builds the C++ library with the cross
       # toolchain instead of the host x86_64 one.
+      # `--features eink` pulls in the Waveshare SPI backend alongside the
+      # default `hardware` (LED panel) backend. Both deps are target-gated to
+      # arm/aarch64 in ohmyoled-matrix/Cargo.toml, so the same flag is safe on
+      # both Pi targets — the released binary supports LED and e-ink panels.
       - name: Build
         env:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
           AR: ${{ matrix.ar }}
-        run: cross build --release --target ${{ matrix.target }}
+        run: cross build --release --features eink --target ${{ matrix.target }}
 
       - name: Stage binary
         run: cp target/${{ matrix.target }}/release/ohmyoled ${{ matrix.artifact }}
