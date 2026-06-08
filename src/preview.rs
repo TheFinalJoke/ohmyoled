@@ -444,7 +444,10 @@ async fn preview_eink_stock_chart(display: &mut EinkDisplay, fonts: &Path) -> Re
 async fn preview_eink_sport(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
     let dims = (display.width(), display.height());
     let r = EinkSportMatrix::with_fonts_async(EinkSportFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
-    let standings: Vec<StandingsEntry> = ["Celtics", "76ers", "Knicks", "Bucks", "Heat", "Magic"]
+    let standings: Vec<StandingsEntry> = [
+        "Celtics", "76ers", "Knicks", "Bucks", "Heat", "Magic", "Pacers", "Cavaliers", "Bulls",
+        "Hawks", "Nets", "Raptors", "Hornets", "Pistons",
+    ]
         .iter()
         .enumerate()
         .map(|(i, t)| StandingsEntry { position: i as u32 + 1, team_name: (*t).into() })

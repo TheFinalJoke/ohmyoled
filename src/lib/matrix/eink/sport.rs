@@ -27,14 +27,17 @@
 //!
 //! Data source: ESPN (same collector as the LED tile).
 
-use crate::api::sport::model::{GameStatus, NextGame, SportData};
+use crate::api::http::shared_client;
+use crate::api::sport::model::{GameStatus, NextGame, SportData, TeamSide};
 use crate::matrix::eink::layout::{
     badge, badge_width, center_text, fit_text, header_band, margin, rect, right_text, scaled_px,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
+use image::imageops::FilterType;
 use image::RgbImage;
+use std::collections::HashMap;
 use ohmyoled_matrix::graphics::{draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
@@ -64,6 +67,9 @@ pub struct EinkSportMatrix {
     score: Font,
     status: Font,
     row: Font,
+    /// Fetched + resized team logos, keyed by team name. Populated lazily in
+    /// `render`; `frame` draws from it (abbreviation box on a miss).
+    logo_cache: HashMap<String, RgbImage>,
 }
 
 impl EinkSportMatrix {
@@ -84,7 +90,23 @@ impl EinkSportMatrix {
             score: Font::load_ttf(&paths.body, scaled_px(96.0, h))?,
             status: Font::load_ttf(&paths.body, scaled_px(26.0, h))?,
             row: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
+            logo_cache: HashMap::new(),
         })
+    }
+
+    /// Fetch + decode + resize a team's logo into the cache (idempotent). A
+    /// miss or failure leaves the renderer to draw the abbreviation box.
+    async fn ensure_logo(&mut self, side: &TeamSide) {
+        if self.logo_cache.contains_key(&side.name) {
+            return;
+        }
+        let Some(url) = side.logo_url.clone() else { return };
+        match fetch_logo(&url).await {
+            Ok(logo) => {
+                self.logo_cache.insert(side.name.clone(), logo);
+            }
+            Err(e) => log::warn!("eink sport: logo fetch failed for {} ({url}): {e}", side.name),
+        }
     }
 
     pub async fn with_fonts_async(paths: EinkSportFonts, dims: (u32, u32)) -> Result<Self, String> {
@@ -104,7 +126,7 @@ impl EinkSportMatrix {
 
         let content_top = header_band(&mut img, &self.title, &self.row, m, data.sport.display_name(), Some(&data.record), fg);
 
-        let standings_top = if data.standings.is_empty() { hi } else { hi - hi * 40 / 100 };
+        let standings_top = if data.standings.is_empty() { hi } else { hi - hi * 50 / 100 };
 
         match &data.next_game {
             Some(game) => self.draw_scoreboard(&mut img, game, content_top, standings_top, fg),
@@ -135,18 +157,22 @@ impl EinkSportMatrix {
         let home_cx = wi / 5;
         let away_cx = wi * 4 / 5;
         let cx = wi / 2;
+        // Everything hangs off the band's vertical center so the scoreboard
+        // fills the space rather than hugging the top.
+        let score_cy = top + band_h / 2;
 
-        // Team abbreviation badges + names.
-        let box_w = (wi / 6).min(band_h / 3);
-        let box_top = top + m;
+        // Team crest (logo if fetched, else an abbreviation box) + name,
+        // vertically centered as a unit on the score line.
+        let box_w = (wi / 6).min(band_h * 42 / 100);
+        let unit_h = box_w + m / 2 + self.name.height();
+        let box_top = score_cy - unit_h / 2;
         for (tcx, side) in [(home_cx, &game.home), (away_cx, &game.away)] {
-            rect(img, tcx - box_w / 2, box_top, box_w, box_w, fg);
-            center_text(img, &self.abbr, tcx, box_top + box_w / 2 + self.abbr.ascent() / 2, fg, &side.abbreviation);
+            self.draw_crest(img, tcx, box_top, box_w, side, fg);
             let name = fit_text(&self.name, &side.name.to_uppercase(), wi / 3 - m);
-            center_text(img, &self.name, tcx, box_top + box_w + self.name.ascent() + m / 2, fg, &name);
+            center_text(img, &self.name, tcx, box_top + box_w + m / 2 + self.name.ascent(), fg, &name);
         }
 
-        // Center: status badge + score (or date/time for a scheduled game).
+        // Status badge above the centered score.
         let (status_text, filled) = match game.status {
             GameStatus::Final => ("FINAL", true),
             GameStatus::InProgress => ("LIVE", true),
@@ -154,42 +180,86 @@ impl EinkSportMatrix {
             GameStatus::Scheduled => ("SCHEDULED", false),
         };
         let sb_x = cx - badge_width(&self.status, status_text) / 2;
-        badge(img, &self.status, sb_x, box_top, status_text, fg, filled);
+        let sb_y = score_cy - self.score.height() / 2 - self.status.height() - m / 2;
+        badge(img, &self.status, sb_x, sb_y, status_text, fg, filled);
 
-        let mid_base = top + band_h / 2 + self.score.ascent() / 2;
         match game.status {
             GameStatus::Final | GameStatus::InProgress => {
                 let hs = game.home.score.unwrap_or(0);
                 let as_ = game.away.score.unwrap_or(0);
-                center_text(img, &self.score, cx, mid_base, fg, &format!("{hs}-{as_}"));
+                let s = format!("{hs}-{as_}");
+                let base = score_cy - self.score.text_v_center_from_baseline(&s);
+                center_text(img, &self.score, cx, base, fg, &s);
             }
             GameStatus::Scheduled | GameStatus::Postponed => {
                 let date = game.start.format("%a %b %-d").to_string();
                 let time = game.start.format("%-I:%M %p").to_string();
-                center_text(img, &self.status, cx, mid_base - self.status.height(), fg, &date);
-                center_text(img, &self.status, cx, mid_base, fg, &time);
+                center_text(img, &self.status, cx, score_cy, fg, &date);
+                center_text(img, &self.status, cx, score_cy + self.status.height(), fg, &time);
             }
         }
     }
 
+    /// Draw a team crest into the `box_w` square at `(cx - box_w/2, box_top)`:
+    /// the fetched logo as a B/W silhouette when available, else an outlined
+    /// box with the abbreviation.
+    fn draw_crest(&self, img: &mut RgbImage, cx: i32, box_top: i32, box_w: i32, side: &TeamSide, fg: Color) {
+        let bx = cx - box_w / 2;
+        if let Some(logo) = self.logo_cache.get(&side.name) {
+            draw_logo_silhouette(img, logo, bx, box_top, box_w, fg);
+        } else {
+            rect(img, bx, box_top, box_w, box_w, fg);
+            center_text(img, &self.abbr, cx, box_top + box_w / 2 + self.abbr.ascent() / 2, fg, &side.abbreviation);
+        }
+    }
+
+    /// Two-column standings (1.. on the left, the next batch on the right) so
+    /// the bottom band fills the panel width.
     fn draw_standings(&self, img: &mut RgbImage, data: &SportData, top: i32, fg: Color) {
         let wi = img.width() as i32;
         let hi = img.height() as i32;
         let m = margin(img.width());
-        let pos_col = wi / 14;
-        let name_x = m + pos_col + m;
+        let pos_col = wi / 22;
         let row_h = self.row.height() + m / 3;
-        let rows = (((hi - m) - top) / row_h).clamp(1, 10) as usize;
-        for (i, e) in data.standings.iter().take(rows).enumerate() {
-            let base = top + row_h * i as i32 + self.row.ascent();
+        let per_col = (((hi - m) - top) / row_h).clamp(1, 10) as usize;
+        let col_w = (wi - 2 * m) / 2;
+        for (i, e) in data.standings.iter().take(per_col * 2).enumerate() {
+            let (col, r) = (i / per_col, i % per_col);
+            let cx0 = m + (col as i32) * col_w;
+            let base = top + row_h * r as i32 + self.row.ascent();
+            let name_x = cx0 + pos_col + m;
             let ours = e.team_name.eq_ignore_ascii_case(&data.team_name);
             if ours {
-                badge(img, &self.row, m, top + row_h * i as i32, &format!("{}", e.position), fg, true);
+                badge(img, &self.row, cx0, top + row_h * r as i32, &format!("{}", e.position), fg, true);
             } else {
-                right_text(img, &self.row, m + pos_col, base, fg, &format!("{}", e.position));
+                right_text(img, &self.row, cx0 + pos_col, base, fg, &format!("{}", e.position));
             }
-            let name = fit_text(&self.row, &e.team_name, wi - name_x - m);
+            let name = fit_text(&self.row, &e.team_name, cx0 + col_w - name_x - m);
             draw_text(img, &self.row, name_x, base, fg, &name);
+        }
+    }
+}
+
+/// Composite a fetched logo into the `box_w` square as a high-contrast B/W
+/// silhouette: source pixels that are dark or saturated (the logo's marks)
+/// become foreground ink; near-white background is left clear.
+fn draw_logo_silhouette(img: &mut RgbImage, logo: &RgbImage, bx: i32, by: i32, box_w: i32, fg: Color) {
+    let n = logo.width().max(1);
+    let (iw, ih) = (img.width() as i32, img.height() as i32);
+    let px = image::Rgb([fg.r, fg.g, fg.b]);
+    for ty in 0..box_w {
+        for tx in 0..box_w {
+            let sx = (tx as u32 * n / box_w as u32).min(n - 1);
+            let sy = (ty as u32 * n / box_w as u32).min(logo.height() - 1);
+            let p = logo.get_pixel(sx, sy).0;
+            let luma = (p[0] as u32 * 299 + p[1] as u32 * 587 + p[2] as u32 * 114) / 1000;
+            let sat = *p.iter().max().unwrap() as i32 - *p.iter().min().unwrap() as i32;
+            if luma < 200 || sat > 40 {
+                let (gx, gy) = (bx + tx, by + ty);
+                if gx >= 0 && gx < iw && gy >= 0 && gy < ih {
+                    img.put_pixel(gx as u32, gy as u32, px);
+                }
+            }
         }
     }
 }
@@ -207,11 +277,47 @@ impl EinkRenderer for EinkSportMatrix {
     }
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &SportData) -> Result<(), RenderError> {
+        // Fetch both teams' logos (cached) before composing.
+        if let Some(game) = &data.next_game {
+            let (home, away) = (game.home.clone(), game.away.clone());
+            self.ensure_logo(&home).await;
+            self.ensure_logo(&away).await;
+        }
         let img = self.frame(data, display.width(), display.height());
         display.show(&img);
         tokio::time::sleep(self.cycle_duration()).await;
         Ok(())
     }
+}
+
+/// HTTP fetch + decode + resize a logo to `LOGO_PX` square, composited onto a
+/// white background (so transparency reads as background for the silhouette).
+async fn fetch_logo(url: &str) -> Result<RgbImage, String> {
+    const LOGO_PX: u32 = 120;
+    let bytes = shared_client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("http: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("http status: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| format!("body: {e}"))?;
+    let owned = bytes.to_vec();
+    tokio::task::spawn_blocking(move || {
+        let dyn_img = image::load_from_memory(&owned).map_err(|e| format!("decode: {e}"))?;
+        let rgba = dyn_img.resize_exact(LOGO_PX, LOGO_PX, FilterType::Lanczos3).to_rgba8();
+        let mut out = RgbImage::from_pixel(LOGO_PX, LOGO_PX, image::Rgb([255, 255, 255]));
+        for (x, y, p) in rgba.enumerate_pixels() {
+            let a = p[3] as f32 / 255.0;
+            let blend = |c: u8| (c as f32 * a + 255.0 * (1.0 - a)).round() as u8;
+            out.put_pixel(x, y, image::Rgb([blend(p[0]), blend(p[1]), blend(p[2])]));
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("decode task panicked: {e}"))?
 }
 
 #[cfg(test)]
