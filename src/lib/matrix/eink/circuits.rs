@@ -82,11 +82,11 @@ mod tests {
 
     #[test]
     fn suzuka_special_cased_others_templated() {
-        assert!(std::ptr::eq(path_for("Suzuka Circuit"), SUZUKA));
-        assert!(std::ptr::eq(path_for("Japanese Grand Prix"), SUZUKA));
-        assert!(!std::ptr::eq(path_for("Circuit de Monaco"), SUZUKA));
+        assert_eq!(path_for("Suzuka Circuit"), SUZUKA);
+        assert_eq!(path_for("Japanese Grand Prix"), SUZUKA);
+        assert_ne!(path_for("Circuit de Monaco"), SUZUKA);
         // Deterministic: same name -> same template.
-        assert!(std::ptr::eq(path_for("Monza"), path_for("Monza")));
+        assert_eq!(path_for("Monza"), path_for("Monza"));
     }
 
     #[test]
