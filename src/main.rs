@@ -7,12 +7,62 @@ extern crate log;
 use clap::{Arg, ArgAction, Command};
 use oledlib::modules::{registry, scheduler};
 use ohmyoled_matrix::{EinkDisplay, EinkMode, MatrixMode, MatrixOptions, RGBMatrix};
+use std::io::IsTerminal;
 
 fn parse_config_file(file: &str) -> serde_json::Value {
     config_io::load(file).unwrap_or_else(|e| {
         println!("Failed to load {file}: {e}");
         std::process::exit(32);
     })
+}
+
+/// Map a path's extension to the wizard's `ConfigFormat`, so loading a
+/// `.yaml` config defaults the format radio to YAML (saving keeps the format).
+fn format_for_path(path: &str) -> Option<createjson::tui::app::ConfigFormat> {
+    use createjson::tui::app::ConfigFormat;
+    config_io::Format::from_path(path).map(|f| match f {
+        config_io::Format::Json => ConfigFormat::Json,
+        config_io::Format::Yaml => ConfigFormat::Yaml,
+        config_io::Format::Toml => ConfigFormat::Toml,
+    })
+}
+
+/// Swap a path's extension (used when the `-c` wizard's chosen output format
+/// differs from the `-f` path's extension — the chosen format wins).
+fn swap_extension(path: &str, ext: &str) -> String {
+    std::path::Path::new(path)
+        .with_extension(ext)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Write the wizard's result, honoring the format it chose by adjusting the
+/// output path's extension. Returns `false` (writing nothing) when the user
+/// quit — the `{"failure": true}` sentinel. Removes the original `target_path`
+/// when the format-adjusted path differs, so there's no stale duplicate.
+fn finalize_wizard_config(
+    target_path: &str,
+    result: (serde_json::Value, Option<createjson::tui::app::ConfigFormat>),
+) -> bool {
+    let (value, fmt) = result;
+    if value
+        .get("failure")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    let out_path = match fmt {
+        Some(f) => swap_extension(target_path, f.ext()),
+        None => target_path.to_string(),
+    };
+    if filelib::check_if_exists(target_path) {
+        let _ = std::fs::remove_file(target_path);
+    }
+    ensure_config_dir(&out_path);
+    config_io::write(&out_path, &value).expect("write failed");
+    println!("Wrote config to {out_path}");
+    true
 }
 
 /// Resolve the default config path, preferring an existing file across
@@ -182,7 +232,7 @@ async fn main() {
 
     if matches.get_flag("dev_mode") {
         println!("Building a dev environment, replacing {target_path} with a dev config");
-        let main_json = createjson::create_json(true, None);
+        let (main_json, _) = createjson::create_json(true, None, None);
         if filelib::check_if_exists(&target_path) {
             std::fs::remove_file(&target_path).expect("Can not Remove file");
         }
@@ -208,46 +258,32 @@ async fn main() {
     }
 
     if matches.get_flag("create_config") {
-        if filelib::check_if_exists(&target_path) {
-            println!(
-                "Config exists at {}. (m)erge into existing entries, (o)verwrite, or (c)ancel? [m]",
-                &target_path
+        // The builder is now a full-screen TUI, so it needs a real terminal.
+        // Non-interactive / piped environments should use `--init-config`.
+        if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
+            eprintln!(
+                "`-c` opens an interactive terminal UI and needs a TTY.\n\
+                 For non-interactive setups, write a starter config with \
+                 `--init-config <path>` and edit it by hand."
             );
-            let raw = oledlib::get_input().unwrap_or_default();
-            let choice = raw.trim().to_lowercase();
-            let choice = if choice.is_empty() { "m" } else { choice.as_str() };
-            match choice {
-                "m" | "merge" => {
-                    let existing = parse_config_file(&target_path);
-                    let main_json = createjson::create_json(false, Some(existing));
-                    if main_json.get("failure").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        return;
-                    }
-                    std::fs::remove_file(&target_path).expect("Can not Remove file");
-                    ensure_config_dir(&target_path);
-                    config_io::write(&target_path, &main_json).expect("write failed");
-                    println!("Updated config at {target_path}");
-                }
-                "o" | "overwrite" => {
-                    let main_json = createjson::create_json(false, None);
-                    if main_json.get("failure").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        return;
-                    }
-                    std::fs::remove_file(&target_path).expect("Can not Remove file");
-                    ensure_config_dir(&target_path);
-                    config_io::write(&target_path, &main_json).expect("write failed");
-                    println!("Wrote changes to File: {target_path}");
-                }
-                _ => {
-                    println!("Cancelled — config not changed");
-                    std::process::exit(0)
-                }
-            }
-        } else {
-            let main_json = createjson::create_json(false, None);
-            ensure_config_dir(&target_path);
-            config_io::write(&target_path, &main_json).expect("write failed");
+            std::process::exit(1);
         }
+        // Auto-load an existing config so the wizard opens on it for editing.
+        // The file's format seeds the format radio; the TUI itself is the
+        // editor (toggle tiles off, or quit without saving, to "start over").
+        let (existing, initial_fmt) = if filelib::check_if_exists(&target_path) {
+            println!("Loading {target_path} into the editor…");
+            (
+                Some(parse_config_file(&target_path)),
+                format_for_path(&target_path),
+            )
+        } else {
+            (None, None)
+        };
+        finalize_wizard_config(
+            &target_path,
+            createjson::create_json(false, existing, initial_fmt),
+        );
         return;
     }
 

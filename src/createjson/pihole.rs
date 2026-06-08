@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use oledlib::serde_helpers::null_string_as_none;
 use serde::{Deserialize, Serialize};
 
@@ -23,32 +23,28 @@ impl Default for PiholeOptions {
     }
 }
 
-pub fn configure() -> Result<PiholeOptions, String> {
-    ui::section("Pi-hole");
-    ui::hint("DNS-block summary tile. Token only needed if your admin UI requires auth.");
-
-    let base_url = ui::read_line_default("Base URL (e.g. http://pi.hole)", "http://pi.hole");
-    let token_raw = ui::read_line_default(
-        "Admin API token (blank = unauth — many home installs allow this)",
-        "",
-    );
-    let token = if token_raw.trim().is_empty() {
-        None
-    } else {
-        Some(token_raw.trim().to_string())
-    };
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-
-    ui::success(&format!("Pi-hole — {}", base_url));
-    Ok(PiholeOptions {
-        run: true,
-        base_url: base_url.trim().to_string(),
-        token,
-        cache_ttl_secs,
-    })
-}
-
-pub fn summary_line(opts: &PiholeOptions) -> String {
-    let auth = if opts.token.is_some() { "auth" } else { "unauth" };
-    format!("pihole ({}, {auth})", opts.base_url)
+/// TUI form schema.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "base_url",
+            "Base URL",
+            "e.g. http://pi.hole",
+            FieldKind::Text {
+                default: "http://pi.hole",
+            },
+        ),
+        FieldDef::new(
+            "token",
+            "Admin API token",
+            "Blank = unauthenticated (many home installs allow this).",
+            FieldKind::OptionalText { default: "" },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }

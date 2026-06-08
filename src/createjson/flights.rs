@@ -1,5 +1,4 @@
-use crate::createjson::iss::read_coord_pub as read_coord;
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use serde::{Deserialize, Serialize};
 
 fn default_true() -> bool {
@@ -32,36 +31,50 @@ impl Default for FlightsOptions {
     }
 }
 
-pub fn configure() -> Result<FlightsOptions, String> {
-    ui::section("Flights");
-    ui::hint("Aircraft within a circular bbox around your location, via OpenSky (anon).");
-
-    let lat = read_coord("Latitude (degrees, -90..90)", 40.7128, -90.0, 90.0);
-    let lon = read_coord("Longitude (degrees, -180..180)", -74.0060, -180.0, 180.0);
-    let radius_km = loop {
-        let raw = ui::read_line_default("Search radius (km, 1..=500)", "80");
-        match raw.trim().parse::<f32>() {
-            Ok(v) if (1.0..=500.0).contains(&v) => break v,
-            _ => ui::warn("Expected a number in 1..=500"),
-        }
-    };
-
-    let airborne_only = ui::read_yes_no("Only show airborne traffic (skip planes at the airport)?", true);
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-    ui::success(&format!("Flights — lat={lat:.4}, lon={lon:.4}, radius={radius_km}km"));
-    Ok(FlightsOptions {
-        run: true,
-        lat,
-        lon,
-        radius_km,
-        airborne_only,
-        cache_ttl_secs,
-    })
-}
-
-pub fn summary_line(opts: &FlightsOptions) -> String {
-    format!(
-        "flights (lat={:.4}, lon={:.4}, r={}km)",
-        opts.lat, opts.lon, opts.radius_km
-    )
+/// TUI form schema.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "lat",
+            "Latitude",
+            "Degrees, -90..90.",
+            FieldKind::Float {
+                default: 40.7128,
+                min: -90.0,
+                max: 90.0,
+            },
+        ),
+        FieldDef::new(
+            "lon",
+            "Longitude",
+            "Degrees, -180..180.",
+            FieldKind::Float {
+                default: -74.0060,
+                min: -180.0,
+                max: 180.0,
+            },
+        ),
+        FieldDef::new(
+            "radius_km",
+            "Search radius (km)",
+            "1..500.",
+            FieldKind::Float {
+                default: 80.0,
+                min: 1.0,
+                max: 500.0,
+            },
+        ),
+        FieldDef::new(
+            "airborne_only",
+            "Airborne only",
+            "Skip planes parked at nearby airports.",
+            FieldKind::Bool { default: true },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }

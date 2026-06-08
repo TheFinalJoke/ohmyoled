@@ -128,7 +128,7 @@ ohmyoled [--config <PATH>] [--create_config | --init-config <PATH> | --dev]
 | -------------------------- | ---------------------------------------------------------------------------------------- |
 | `-f`, `--config <PATH>`    | Path to config file. Format is chosen by extension (`.json`/`.yaml`/`.yml`/`.toml`).     |
 | `--json_file <PATH>`       | Deprecated alias for `--config`. Still works.                                            |
-| `-c`, `--create_config`    | Run the interactive config builder and write to `<PATH>` (or `/etc/ohmyoled/ohmyoled.json`). Format is chosen by the path's extension. Alias: `--create_json`. |
+| `-c`, `--create_config`    | Launch the full-screen config builder (a terminal UI — needs a TTY). If a config already exists at `<PATH>` it's **loaded for editing**; otherwise you start fresh. Pick a display target (LED matrix _or_ e-ink), toggle tiles, edit fields with a live preview, and choose the output format (json/yaml/toml) on screen — the chosen format sets the written file's extension. Writes to `<PATH>` (or `/etc/ohmyoled/ohmyoled.json`). For non-interactive setups use `--init-config`. Alias: `--create_json`. |
 | `--init-config <PATH>`     | Write a non-interactive starter config to `<PATH>` (time enabled, weather/stock/sport wired but `run: false` with `REPLACE_ME_*` placeholders). Format from the extension. Refuses to overwrite an existing file. |
 | `--dev`                    | Write a canned dev config instead of prompting.                                          |
 | `-v` / `-vv`               | Bump log verbosity above the info default: debug / trace.                                |
