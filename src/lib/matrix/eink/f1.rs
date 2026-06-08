@@ -138,13 +138,26 @@ impl EinkF1Matrix {
         let wi = img.width() as i32;
         let m = margin(img.width());
         let cx = wi / 2;
+
+        // Race name across the top.
         let name = fit_text(&self.race, &race.name.to_uppercase(), wi - 2 * m);
         center_text(img, &self.race, cx, top + self.race.ascent() + m / 2, fg, &name);
-        let circuit = fit_text(&self.label, &race.circuit, wi - 2 * m);
-        center_text(img, &self.label, cx, top + self.race.height() + self.label.ascent() + m / 2, fg, &circuit);
+        let info_top = top + self.race.height() + m / 2;
+
+        // Left: the circuit outline + its name.
+        let box_x = m;
+        let box_w = wi * 42 / 100;
+        let box_y = info_top;
+        let box_h = (bottom - info_top - self.label.height() - m / 2).max(40);
+        crate::matrix::eink::circuits::draw(img, box_x, box_y, box_w, box_h, crate::matrix::eink::circuits::path_for(&race.circuit), fg);
+        let circuit = fit_text(&self.label, &race.circuit, box_w);
+        center_text(img, &self.label, box_x + box_w / 2, box_y + box_h + self.label.ascent(), fg, &circuit);
+
+        // Right: the countdown, centered in the remaining space.
+        let rcx = box_x + box_w + (wi - m - (box_x + box_w)) / 2;
         let line = format_countdown(&race.start, now);
-        let cd_base = (top + bottom) / 2 + self.countdown.ascent() / 2;
-        center_text(img, &self.countdown, cx, cd_base, fg, &line);
+        let cd_base = (info_top + bottom) / 2 + self.countdown.ascent() / 2;
+        center_text(img, &self.countdown, rcx, cd_base, fg, &line);
     }
 
     fn draw_offseason(&self, img: &mut RgbImage, data: &F1Data, top: i32, bottom: i32, fg: Color) {

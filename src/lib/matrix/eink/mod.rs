@@ -7,6 +7,7 @@
 //! thresholds to black-ink-on-white and pushes to the panel.
 
 pub mod aurora;
+pub mod circuits;
 pub mod f1;
 pub mod flights;
 pub mod golf;
