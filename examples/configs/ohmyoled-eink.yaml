@@ -1,4 +1,4 @@
-# Ready-to-run e-paper (e-ink) config.
+# Ready-to-run e-paper (e-ink) config — every tile enabled.
 #
 #   cargo run -- -f examples/configs/ohmyoled-eink.yaml
 #
@@ -6,6 +6,10 @@
 # is needed for an eink-only run — the LED matrix is only built if you add
 # top-level tiles (time:/weather:/… at the root). Add both and they run at the
 # same time (separate panels on hardware).
+#
+# The display rotates through every tile below that has `run: true`. Tiles that
+# need a key or a local service (hass, pihole, finnhub stock) are left
+# `run: false` with placeholders — flip them on and fill in the values.
 
 eink:
   enabled: true
@@ -18,17 +22,82 @@ eink:
   # Backend + emulation (all overridable by the matching OHMYOLED_EINK_* env
   # vars, which win at runtime):
   mode: auto                  # auto (hardware on a Pi, else terminal) | terminal | hardware
-  emulate: false             # terminal preview only: mimic the slow hardware
+  emulate: false              # terminal preview only: mimic the slow hardware
                               #   full-refresh flash so the preview is honest
   refresh_ms: 2500            # emulated full-refresh duration when emulate: true
 
-  modules:                    # the e-paper display's own tiles
+  modules:                    # the e-paper display's own tiles (a full config block)
+
     time:
       run: true
       color: [255, 255, 255]  # ignored on B/W; kept for config parity
-      time_format: "12h"
+      time_format: "12h"      # "12h" | "24h"
+
     weather:
-      run: true               # needs network: NWS (US, no key) + IP geolocation
+      run: true               # network: NWS (US, no key) + IP geolocation
       api: nws
       current_location: true
       weather_format: imperial
+
+    # Live price + today's 1D chart. CoinGecko needs no key (symbol = coin id);
+    # set chart: true to also rotate in the 3-window stock_chart tile.
+    stock:
+      run: true
+      api: coingecko
+      symbol: bitcoin
+      chart: true
+
+    iss:                      # world map with the ISS plotted on it
+      run: true
+      lat: 40.7128
+      lon: -74.0060
+
+    quake:                    # epicenter on a world map + magnitude gauge
+      run: true
+      feed: significant_day   # significant_day | m45_day | m25_day | all_day
+
+    aurora:                   # auroral oval on a world map by Kp
+      run: true
+      alert_threshold: 5      # Kp at/above which the "AURORA LIKELY" badge shows
+
+    flights:                  # radar with little planes by heading
+      run: true
+      lat: 40.7128
+      lon: -74.0060
+      radius_km: 80
+      airborne_only: true     # drop planes parked/taxiing at nearby airports
+
+    launch:                   # rocket + segmented countdown
+      run: true
+      agency_filter: []       # e.g. ["SpaceX"] to only show one provider
+
+    pihole:
+      run: false              # needs your Pi-hole
+      base_url: "http://pi.hole"
+      token: "REPLACE_ME_PIHOLE_TOKEN"
+
+    hass:
+      run: false              # needs your Home Assistant
+      base_url: "http://homeassistant.local:8123"
+      token: "REPLACE_ME_HASS_LONG_LIVED_TOKEN"
+      entity_id: "sensor.kitchen_temp"
+      display_mode: graph     # state | historical | graph
+
+    # Team sport / golf / F1 all live under the one-or-many `sport` key.
+    sport:
+      - run: true
+        sport: basketball     # basketball | baseball | football | hockey
+        team_logo:
+          name: Boston Celtics
+          sportsdb_leagueid: 4387
+          url: https://www.thesportsdb.com/images/media/team/badge/rwhfsg1554840424.png
+          sport: basketball
+          shorthand: BOS
+          apisportsid: 133
+          sportsdbid: 134860
+          sportsipyid: 0
+      - run: true
+        sport: golf
+        tour: pga             # pga | lpga | champions | korn | liv
+      - run: true
+        sport: f1

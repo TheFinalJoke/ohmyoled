@@ -31,7 +31,9 @@ where
     /// Build an e-paper module with explicit cache TTL — same semantics as
     /// [`super::Module::new`] (`Duration::ZERO` ⇒ inline polling).
     pub fn new(collector: C, renderer: R, ttl: Duration) -> Self {
-        let id = collector.id();
+        // The renderer's id labels the tile (the stock tile and the chart tile
+        // share one history collector, but render different things).
+        let id = renderer.id();
         Self {
             id,
             source: make_poll_source(collector, ttl),
