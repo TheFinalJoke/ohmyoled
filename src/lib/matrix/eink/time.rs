@@ -79,8 +79,8 @@ impl EinkTimeMatrix {
     pub fn with_fonts(paths: EinkTimeFonts, dims: (u32, u32)) -> Result<Self, String> {
         let h = dims.1;
         Ok(Self {
-            clock: Font::load_ttf(&paths.body, scaled_px(150.0, h))?,
-            meridiem: Font::load_ttf(&paths.body, scaled_px(38.0, h))?,
+            clock: Font::load_ttf(&paths.body, scaled_px(136.0, h))?,
+            meridiem: Font::load_ttf(&paths.body, scaled_px(36.0, h))?,
             date: Font::load_ttf(&paths.body, scaled_px(40.0, h))?,
             weekday: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
             format: TimeFormat::default(),
@@ -127,12 +127,12 @@ impl EinkTimeMatrix {
         let band_cy = (rule_y + date_y - self.date.height()) / 2;
 
         // ── Analog clock on the left ────────────────────────────────────
-        let acx = wi * 27 / 100;
-        let radius = (wi * 18 / 100).min((date_y - self.date.height() - rule_y) / 2 - 4).max(20);
+        let gap = wi / 24;
+        let acx = wi * 22 / 100;
+        let radius = (wi * 15 / 100).min((date_y - self.date.height() - rule_y) / 2 - 4).max(20);
         self.draw_analog(&mut img, acx, band_cy, radius, now, fg);
 
-        // ── Digital clock on the right, centered on the band midline ────
-        let dcx = wi * 64 / 100;
+        // ── Digital clock centered in the space to the right of the dial ─
         let clock_w = self.clock.text_width(&clock_str);
         let mer_gap = self.clock.height() / 16;
         let mer_w = if meridiem.is_empty() {
@@ -140,6 +140,9 @@ impl EinkTimeMatrix {
         } else {
             mer_gap + self.meridiem.text_width(&meridiem)
         };
+        let dial_right = acx + radius + radius / 4; // clear of the rays
+        let region_right = wi - wi / 24;
+        let dcx = (dial_right + gap + region_right) / 2;
         let clock_x = dcx - (clock_w + mer_w) / 2;
         let clock_base = band_cy - self.clock.text_v_center_from_baseline(&clock_str);
         draw_text(&mut img, &self.clock, clock_x, clock_base, fg, &clock_str);
