@@ -97,6 +97,12 @@ impl EinkHardwareBackend {
             .map_err(|e| format!("spi device init failed: {e:?}"))?;
 
         let mut delay = Delay;
+        // The panel constructors below perform a hardware reset and then block
+        // polling the BUSY GPIO until the controller reports idle. A mis-wired
+        // BUSY pin, wrong panel revision, or unpowered HAT makes that wait hang
+        // indefinitely, so log *before* the call — if you see this line but not
+        // the matching "initialised on SPI0" line, init is stuck on BUSY.
+        log::info!("eink: opening {model} panel on SPI0 (reset + BUSY handshake)…");
         let panel = match model.as_str() {
             "4in2" | "4in2_v2" => {
                 let epd = Epd4in2::new(&mut spi, busy, dc, rst, &mut delay, None)
