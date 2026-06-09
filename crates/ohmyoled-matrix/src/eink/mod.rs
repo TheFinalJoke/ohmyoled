@@ -203,14 +203,36 @@ impl EinkDisplay {
             EinkMode::Hardware | EinkMode::Auto => {
                 #[cfg(all(feature = "eink", any(target_arch = "arm", target_arch = "aarch64")))]
                 {
-                    match hardware::EinkHardwareBackend::init(&options) {
-                        Ok(hw) => (Box::new(hw), EinkMode::Hardware),
-                        Err(e) => {
+                    // `init()` blocks polling the panel's BUSY line with no
+                    // internal timeout, so a mis-wired or mis-configured panel
+                    // (BUSY stuck low, wrong interface mode) would hang the whole
+                    // app forever. Run it on a worker thread and cap the wait —
+                    // on timeout we leak that thread (still blocked in the driver,
+                    // harmless: terminal mode never touches SPI) and degrade
+                    // gracefully instead of freezing startup.
+                    const INIT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+                    let init_opts = options.clone();
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    std::thread::spawn(move || {
+                        let _ = tx.send(hardware::EinkHardwareBackend::init(&init_opts));
+                    });
+                    match rx.recv_timeout(INIT_TIMEOUT) {
+                        Ok(Ok(hw)) => (Box::new(hw), EinkMode::Hardware),
+                        Ok(Err(e)) => {
                             if mode == EinkMode::Hardware {
                                 log::warn!("eink hardware init failed ({e}); using terminal mode");
                             } else {
                                 log::info!("eink hardware unavailable ({e}); using terminal mode");
                             }
+                            (Box::new(terminal::EinkTerminalBackend::with_config(options.emulate, options.refresh_ms)), EinkMode::Terminal)
+                        }
+                        Err(_) => {
+                            log::error!(
+                                "eink hardware init timed out after {}s — BUSY never released; \
+                                 check the ribbon seating and HAT config switches (4-line SPI = 0, Display Config = A); \
+                                 using terminal mode",
+                                INIT_TIMEOUT.as_secs()
+                            );
                             (Box::new(terminal::EinkTerminalBackend::with_config(options.emulate, options.refresh_ms)), EinkMode::Terminal)
                         }
                     }
