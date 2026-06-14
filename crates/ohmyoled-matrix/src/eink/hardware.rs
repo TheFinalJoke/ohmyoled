@@ -224,10 +224,15 @@ impl SevenIn5V2 {
     }
 
     /// Fast/partial full-screen refresh — `epd7in5_V2.py` `display_Partial()`
-    /// with the window set to the whole panel. Quick and flash-free, but ghosts
-    /// over many calls (scrubbed by the periodic full refresh in [`update`]).
-    /// Only `0x13` is written (the inverse of `packed`, matching `display_full`
-    /// polarity); no `0x10`.
+    /// with the window set to the whole panel. Quick and flash-free; only `0x13`
+    /// is written, no `0x10`.
+    ///
+    /// **Polarity:** partial mode interprets the `0x13` buffer with the *opposite*
+    /// polarity to the full refresh, so — unlike [`display_full`], which inverts —
+    /// `packed` is sent **as-is** here. (Mirrors the reference, where full
+    /// `display()` writes `0x13 ← image` but `display_Partial()` writes
+    /// `0x13 ← ~image`; our `packed` is already the inverse of that `image`, so
+    /// the two flips cancel and a plain `packed` is correct.)
     fn display_partial(&mut self, packed: &[u8]) -> Result<(), String> {
         let (xs, xe, ys, ye) = (0u32, Self::WIDTH, 0u32, Self::HEIGHT);
         self.cmd_data(0x50, &[0xA9, 0x07])?; // VCOM/data interval (partial)
@@ -246,8 +251,7 @@ impl SevenIn5V2 {
                 0x01,
             ],
         )?;
-        let inverse: Vec<u8> = packed.iter().map(|b| !b).collect();
-        self.cmd_data(0x13, &inverse)?; // new frame (0 = white)
+        self.cmd_data(0x13, packed)?; // new frame (partial-mode polarity)
         self.cmd(0x12)?; // display refresh
         sleep(Duration::from_millis(100));
         self.wait_until_idle()
