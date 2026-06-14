@@ -179,14 +179,15 @@ impl SevenIn5V2 {
         Ok(())
     }
 
-    /// Push one packed frame (1bpp, MSB-first, 1 = white) and refresh. Mirrors
-    /// `epd7in5_V2.py` `display()`: the previous-frame buffer (0x10) gets the
-    /// bitwise inverse and the new-frame buffer (0x13) gets the image, so every
-    /// pixel transitions for a clean full refresh.
+    /// Push one packed frame (1bpp, MSB-first, 1 = white) and refresh. Our
+    /// buffer is 1 = white, but the panel's new-frame buffer (0x13) is
+    /// 0 = white (see `clear`: writing 0x00 yields white), so 0x13 gets the
+    /// bitwise inverse. The previous-frame buffer (0x10) gets `packed` — the
+    /// inverse of 0x13 — so every pixel transitions for a clean full refresh.
     fn display(&mut self, packed: &[u8]) -> Result<(), String> {
         let inverse: Vec<u8> = packed.iter().map(|b| !b).collect();
-        self.cmd_data(0x10, &inverse)?; // previous frame
-        self.cmd_data(0x13, packed)?; // new frame
+        self.cmd_data(0x10, packed)?; // previous frame
+        self.cmd_data(0x13, &inverse)?; // new frame (0 = white)
         self.cmd(0x12)?; // display refresh
         sleep(Duration::from_millis(100));
         self.wait_until_idle()
