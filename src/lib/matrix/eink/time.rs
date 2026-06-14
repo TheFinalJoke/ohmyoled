@@ -1,10 +1,12 @@
-//! E-paper time renderer — a large static clock + date screen.
+//! E-paper time renderer — a large ticking clock + date screen.
 //!
-//! The e-paper counterpart to [`crate::matrix::time::TimeMatrix`]. E-paper
-//! refreshes slowly and holds its image, so there's no per-second tick: the
-//! screen shows `HH:MM` (plus weekday and full date) and refreshes about once
-//! a minute. Numerals are drawn big in the project pixel font, which stays
-//! crisp at large sizes on a monochrome panel.
+//! The e-paper counterpart to [`crate::matrix::time::TimeMatrix`]. While the
+//! time module owns the panel it **ticks every second**: `HH:MM` is drawn big
+//! with smaller live `SS`, and the analog dial has a sweeping second hand. The
+//! first frame is a clean clear+draw; each subsequent second uses the panel's
+//! fast partial refresh (no white flash) via [`EinkDisplay::show_fast`].
+//! Numerals are drawn big in the project pixel font, which stays crisp at large
+//! sizes on a monochrome panel.
 //!
 //! Reuses the shared `draw_*` primitives and the same `TimeFormat` (12h/24h)
 //! as the LED tile. Composed white-on-black; the display inverts to
@@ -35,7 +37,7 @@ use image::RgbImage;
 use ohmyoled_matrix::graphics::{draw_circle, draw_line, draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FONT_DIR: &str = "/usr/share/fonts";
 
@@ -60,6 +62,8 @@ impl Default for EinkTimeFonts {
 pub struct EinkTimeMatrix {
     clock: Font,
     meridiem: Font,
+    /// Smaller font for the live seconds beside `HH:MM`.
+    seconds: Font,
     date: Font,
     weekday: Font,
     format: TimeFormat,
@@ -81,6 +85,7 @@ impl EinkTimeMatrix {
         Ok(Self {
             clock: Font::load_ttf(&paths.body, scaled_px(136.0, h))?,
             meridiem: Font::load_ttf(&paths.body, scaled_px(36.0, h))?,
+            seconds: Font::load_ttf(&paths.body, scaled_px(48.0, h))?,
             date: Font::load_ttf(&paths.body, scaled_px(40.0, h))?,
             weekday: Font::load_ttf(&paths.body, scaled_px(34.0, h))?,
             format: TimeFormat::default(),
@@ -133,23 +138,30 @@ impl EinkTimeMatrix {
         self.draw_analog(&mut img, acx, band_cy, radius, now, fg);
 
         // ── Digital clock centered in the space to the right of the dial ─
+        // A small right-hand column holds the live seconds, with the meridiem
+        // (12h only) riding above them.
+        let sec_str = now.format("%S").to_string();
         let clock_w = self.clock.text_width(&clock_str);
         let mer_gap = self.clock.height() / 16;
         let mer_w = if meridiem.is_empty() {
             0
         } else {
-            mer_gap + self.meridiem.text_width(&meridiem)
+            self.meridiem.text_width(&meridiem)
         };
+        let sec_w = self.seconds.text_width(&sec_str);
+        let col_w = mer_w.max(sec_w);
         let dial_right = acx + radius + radius / 4; // clear of the rays
         let region_right = wi - wi / 24;
         let dcx = (dial_right + gap + region_right) / 2;
-        let clock_x = dcx - (clock_w + mer_w) / 2;
+        let clock_x = dcx - (clock_w + mer_gap + col_w) / 2;
         let clock_base = band_cy - self.clock.text_v_center_from_baseline(&clock_str);
         draw_text(&mut img, &self.clock, clock_x, clock_base, fg, &clock_str);
+        // Seconds sit at the big digits' baseline; meridiem rides above them.
+        let col_x = clock_x + clock_w + mer_gap;
+        draw_text(&mut img, &self.seconds, col_x, clock_base, fg, &sec_str);
         if !meridiem.is_empty() {
-            let mx = clock_x + clock_w + mer_gap;
             let my = clock_base - self.clock.ascent() + self.clock.ascent() / 4 + self.meridiem.ascent();
-            draw_text(&mut img, &self.meridiem, mx, my, fg, &meridiem);
+            draw_text(&mut img, &self.meridiem, col_x, my, fg, &meridiem);
         }
 
         // ── Full date across the bottom ─────────────────────────────────
@@ -179,11 +191,14 @@ impl EinkTimeMatrix {
                 fg,
             );
         }
-        let (h, m) = (now.hour() % 12, now.minute());
+        let (h, m, s) = (now.hour() % 12, now.minute(), now.second());
         let hr_a = (h as f32 + m as f32 / 60.0) / 12.0 * TAU;
         let min_a = m as f32 / 60.0 * TAU;
+        let sec_a = s as f32 / 60.0 * TAU;
         self.hand(img, cx, cy, hr_a, rf * 0.5, 2, fg);
         self.hand(img, cx, cy, min_a, rf * 0.82, 1, fg);
+        // Thin, long second hand sweeping to near the rim.
+        self.hand(img, cx, cy, sec_a, rf * 0.9, 0, fg);
         fill_rect(img, cx - 2, cy - 2, 5, 5, fg);
     }
 
@@ -209,8 +224,8 @@ impl EinkRenderer for EinkTimeMatrix {
     }
 
     fn cycle_duration(&self) -> Duration {
-        // Refresh about once a minute — e-paper is slow and the clock only
-        // shows minutes.
+        // How long the clock holds the panel and ticks seconds before yielding
+        // to the next module.
         Duration::from_secs(60)
     }
 
@@ -220,12 +235,25 @@ impl EinkRenderer for EinkTimeMatrix {
         data: &TimeSnapshot,
     ) -> Result<(), RenderError> {
         let _ = data;
-        // Sample the clock at render time so the displayed minute is current.
-        let img = self.frame(Local::now(), display.width(), display.height());
-        display.show(&img);
-        tokio::time::sleep(self.cycle_duration()).await;
+        let (w, h) = (display.width(), display.height());
+        // Clean baseline: one clear+draw so the screen starts ghost-free.
+        display.show(&self.frame(Local::now(), w, h));
+        // Then tick once a second using the fast (no-flash) partial refresh.
+        let deadline = Instant::now() + self.cycle_duration();
+        while Instant::now() < deadline {
+            sleep_to_next_second().await;
+            display.show_fast(&self.frame(Local::now(), w, h));
+        }
         Ok(())
     }
+}
+
+/// Sleep until the next whole-second boundary, so ticks stay aligned to the
+/// wall clock even as the panel refresh consumes part of each second.
+async fn sleep_to_next_second() {
+    let ns = Local::now().nanosecond().min(999_999_999);
+    let until = 1_000_000_000 - ns;
+    tokio::time::sleep(Duration::from_nanos(until as u64)).await;
 }
 
 #[cfg(test)]
@@ -242,6 +270,10 @@ mod tests {
 
     fn at(h: u32, m: u32) -> DateTime<Local> {
         Local.with_ymd_and_hms(2026, 6, 6, h, m, 0).unwrap()
+    }
+
+    fn at_s(h: u32, m: u32, s: u32) -> DateTime<Local> {
+        Local.with_ymd_and_hms(2026, 6, 6, h, m, s).unwrap()
     }
 
     #[test]
@@ -269,6 +301,20 @@ mod tests {
         assert!(f12.pixels().any(|p| p.0 != [0, 0, 0]));
         assert!(f24.pixels().any(|p| p.0 != [0, 0, 0]));
         assert_ne!(f12.into_raw(), f24.into_raw(), "12h vs 24h should differ");
+    }
+
+    #[test]
+    fn seconds_change_the_frame() {
+        // The live seconds digits and the analog second hand must make the
+        // frame differ second-to-second — proves the per-second tick renders.
+        let r = EinkTimeMatrix::with_fonts(repo_fonts(), (800, 480)).expect("fonts load");
+        let f00 = r.frame(at_s(20, 42, 0), 800, 480);
+        let f30 = r.frame(at_s(20, 42, 30), 800, 480);
+        assert_ne!(
+            f00.into_raw(),
+            f30.into_raw(),
+            "second 0 vs 30 should render differently"
+        );
     }
 
     #[test]

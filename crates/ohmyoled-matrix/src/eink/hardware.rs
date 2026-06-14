@@ -267,6 +267,18 @@ impl SevenIn5V2 {
         Ok(())
     }
 
+    /// Push one packed frame with a single partial refresh and **no** clear —
+    /// for frequent updates (a ticking clock). The caller recomposes the whole
+    /// frame each time, so the partial refresh drives toward the new image
+    /// (the old frame's pixels are already gone) without a cumulative trail.
+    fn update_fast(&mut self, packed: &[u8]) -> Result<(), String> {
+        if !self.in_partial_mode {
+            self.init_part()?;
+            self.in_partial_mode = true;
+        }
+        self.display_partial(packed)
+    }
+
     /// Blank the panel to white with a clean full refresh. Restores full mode
     /// first (partial mode leaves fast-update registers set). An all-white
     /// frame through `display_full` is `epd7in5_V2.py` `Clear()` (0x10←0xFF,
@@ -377,6 +389,19 @@ impl EinkBackend for EinkHardwareBackend {
         };
         if let Err(e) = r {
             log::error!("eink: frame update failed: {e}");
+        }
+    }
+
+    fn flush_fast(&mut self, packed: &[u8], _width: u32, _height: u32) {
+        let r = match &mut self.panel {
+            // The 4.2" path has no distinct fast refresh — do a normal update.
+            Panel::FourIn2 { spi, epd, delay } => epd
+                .update_and_display_frame(spi, packed, delay)
+                .map_err(|e| format!("{e:?}")),
+            Panel::SevenIn5V2(p) => p.update_fast(packed),
+        };
+        if let Err(e) = r {
+            log::error!("eink: fast frame update failed: {e}");
         }
     }
 

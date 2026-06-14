@@ -155,6 +155,13 @@ pub trait EinkBackend: Send {
     /// Push one full frame. `width`/`height` describe the logical image; the
     /// stride is derived as `ceil(width/8)`.
     fn flush(&mut self, packed: &[u8], width: u32, height: u32);
+    /// Push a frame using the panel's fast/partial refresh **without** the
+    /// preceding clear — for frequent updates (e.g. a ticking clock) where the
+    /// white-clear flash is undesirable. The default delegates to [`flush`] for
+    /// backends with no distinct fast path (terminal, 4.2").
+    fn flush_fast(&mut self, packed: &[u8], width: u32, height: u32) {
+        self.flush(packed, width, height);
+    }
     /// Blank the panel to white.
     fn clear(&mut self);
 }
@@ -282,6 +289,18 @@ impl EinkDisplay {
             return;
         }
         self.backend.flush(&packed, self.width, self.height);
+        self.last_packed = Some(packed);
+    }
+
+    /// Push a frame using the fast/partial refresh (no clear) — for frequent
+    /// updates like a ticking clock. Skips the refresh when nothing changed.
+    /// Falls back to a full flush on backends without a fast path.
+    pub fn show_fast(&mut self, img: &RgbImage) {
+        let packed = pack_1bpp(img, self.width, self.height, self.threshold);
+        if self.last_packed.as_deref() == Some(packed.as_slice()) {
+            return;
+        }
+        self.backend.flush_fast(&packed, self.width, self.height);
         self.last_packed = Some(packed);
     }
 
