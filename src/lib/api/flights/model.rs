@@ -43,9 +43,74 @@ pub struct FlightInfo {
     /// Ground speed in knots. `None` when OpenSky didn't include
     /// `velocity_m_s` (sometimes the case for planes on the ground).
     pub ground_speed_kt: Option<u32>,
+    /// True track / heading — the compass direction the aircraft is *flying*,
+    /// degrees clockwise from true north. `None` when OpenSky omitted it.
+    pub heading_deg: Option<f32>,
     /// Origin country (filed flight plan). Useful as a secondary label
     /// when no callsign is available.
     pub country: String,
+}
+
+impl FlightInfo {
+    /// A human-friendly label: `"United 123"` when the callsign's 3-letter
+    /// airline prefix is recognised, otherwise the raw callsign, otherwise the
+    /// ICAO24 hex code.
+    pub fn label(&self) -> String {
+        let cs = self.callsign.trim();
+        if cs.is_empty() {
+            return self.icao24.to_uppercase();
+        }
+        if cs.len() > 3 {
+            let (prefix, rest) = cs.split_at(3);
+            if prefix.chars().all(|c| c.is_ascii_alphabetic()) {
+                if let Some(name) = airline_name(prefix) {
+                    return format!("{name} {}", rest.trim());
+                }
+            }
+        }
+        cs.to_string()
+    }
+}
+
+/// Map a 3-letter ICAO airline code (the callsign prefix) to a short airline
+/// name. Covers the common carriers; unknown codes return `None` so callers
+/// fall back to the raw callsign.
+pub fn airline_name(icao3: &str) -> Option<&'static str> {
+    Some(match icao3.to_ascii_uppercase().as_str() {
+        "UAL" => "United",
+        "DAL" => "Delta",
+        "AAL" => "American",
+        "SWA" => "Southwest",
+        "JBU" => "JetBlue",
+        "ASA" => "Alaska",
+        "FFT" => "Frontier",
+        "NKS" => "Spirit",
+        "SKW" => "SkyWest",
+        "ACA" => "Air Canada",
+        "WJA" => "WestJet",
+        "AMX" => "Aeromexico",
+        "BAW" => "British Airways",
+        "VIR" => "Virgin Atlantic",
+        "DLH" => "Lufthansa",
+        "AFR" => "Air France",
+        "KLM" => "KLM",
+        "EZY" => "easyJet",
+        "RYR" => "Ryanair",
+        "EIN" => "Aer Lingus",
+        "ICE" => "Icelandair",
+        "UAE" => "Emirates",
+        "QTR" => "Qatar",
+        "THY" => "Turkish",
+        "SIA" => "Singapore",
+        "CPA" => "Cathay",
+        "QFA" => "Qantas",
+        "ANA" => "ANA",
+        "JAL" => "Japan Airlines",
+        "FDX" => "FedEx",
+        "UPS" => "UPS",
+        "GTI" => "Atlas Air",
+        _ => return None,
+    })
 }
 
 /// Compass octant label for a bearing in degrees — eight-way (N, NE, E,
@@ -61,6 +126,30 @@ pub fn bearing_octant(bearing_deg: f32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn info(callsign: &str, icao24: &str) -> FlightInfo {
+        FlightInfo {
+            callsign: callsign.into(),
+            icao24: icao24.into(),
+            altitude_ft: 34_000,
+            on_ground: false,
+            distance_km: 10.0,
+            bearing_deg: 0.0,
+            ground_speed_kt: Some(440),
+            heading_deg: Some(90.0),
+            country: "United States".into(),
+        }
+    }
+
+    #[test]
+    fn label_decodes_airline_then_falls_back() {
+        assert_eq!(info("UAL123", "a1").label(), "United 123");
+        assert_eq!(info("BAW276", "a2").label(), "British Airways 276");
+        // Unknown airline prefix → raw callsign.
+        assert_eq!(info("ZZZ999", "a3").label(), "ZZZ999");
+        // No callsign → ICAO24 hex (uppercased).
+        assert_eq!(info("  ", "abc123").label(), "ABC123");
+    }
 
     #[test]
     fn bearing_octant_cardinals() {

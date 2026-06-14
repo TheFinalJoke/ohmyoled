@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -21,27 +21,24 @@ impl Default for AuroraOptions {
     }
 }
 
-pub fn configure() -> Result<AuroraOptions, String> {
-    ui::section("Aurora (Kp index)");
-    ui::hint("NOAA planetary K-index, 0-9. The alert banner trips at or above your threshold.");
-
-    let alert_threshold = loop {
-        let raw = ui::read_line_default("Alert threshold (Kp 0-9)", "5");
-        match raw.trim().parse::<u8>() {
-            Ok(v) if v <= 9 => break v,
-            _ => ui::warn("Expected an integer in 0..=9"),
-        }
-    };
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-
-    ui::success(&format!("Aurora — alert at Kp ≥ {alert_threshold}"));
-    Ok(AuroraOptions {
-        run: true,
-        alert_threshold,
-        cache_ttl_secs,
-    })
-}
-
-pub fn summary_line(opts: &AuroraOptions) -> String {
-    format!("aurora (alert ≥ Kp {})", opts.alert_threshold)
+/// TUI form schema.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "alert_threshold",
+            "Alert threshold (Kp)",
+            "NOAA planetary K-index 0–9; the alert banner trips at or above this.",
+            FieldKind::Number {
+                default: 5,
+                min: 0,
+                max: 9,
+            },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }

@@ -487,6 +487,7 @@ mod tests {
             distance_km: dist_km,
             bearing_deg: bearing,
             ground_speed_kt: Some(450),
+            heading_deg: Some(bearing),
             country: "United States".into(),
         }
     }

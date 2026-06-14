@@ -6,13 +6,63 @@ mod preview;
 extern crate log;
 use clap::{Arg, ArgAction, Command};
 use oledlib::modules::{registry, scheduler};
-use ohmyoled_matrix::{MatrixOptions, RGBMatrix};
+use ohmyoled_matrix::{EinkDisplay, EinkMode, MatrixMode, MatrixOptions, RGBMatrix};
+use std::io::IsTerminal;
 
 fn parse_config_file(file: &str) -> serde_json::Value {
     config_io::load(file).unwrap_or_else(|e| {
         println!("Failed to load {file}: {e}");
         std::process::exit(32);
     })
+}
+
+/// Map a path's extension to the wizard's `ConfigFormat`, so loading a
+/// `.yaml` config defaults the format radio to YAML (saving keeps the format).
+fn format_for_path(path: &str) -> Option<createjson::tui::app::ConfigFormat> {
+    use createjson::tui::app::ConfigFormat;
+    config_io::Format::from_path(path).map(|f| match f {
+        config_io::Format::Json => ConfigFormat::Json,
+        config_io::Format::Yaml => ConfigFormat::Yaml,
+        config_io::Format::Toml => ConfigFormat::Toml,
+    })
+}
+
+/// Swap a path's extension (used when the `-c` wizard's chosen output format
+/// differs from the `-f` path's extension — the chosen format wins).
+fn swap_extension(path: &str, ext: &str) -> String {
+    std::path::Path::new(path)
+        .with_extension(ext)
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// Write the wizard's result, honoring the format it chose by adjusting the
+/// output path's extension. Returns `false` (writing nothing) when the user
+/// quit — the `{"failure": true}` sentinel. Removes the original `target_path`
+/// when the format-adjusted path differs, so there's no stale duplicate.
+fn finalize_wizard_config(
+    target_path: &str,
+    result: (serde_json::Value, Option<createjson::tui::app::ConfigFormat>),
+) -> bool {
+    let (value, fmt) = result;
+    if value
+        .get("failure")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
+        return false;
+    }
+    let out_path = match fmt {
+        Some(f) => swap_extension(target_path, f.ext()),
+        None => target_path.to_string(),
+    };
+    if filelib::check_if_exists(target_path) {
+        let _ = std::fs::remove_file(target_path);
+    }
+    ensure_config_dir(&out_path);
+    config_io::write(&out_path, &value).expect("write failed");
+    println!("Wrote config to {out_path}");
+    true
 }
 
 /// Resolve the default config path, preferring an existing file across
@@ -57,26 +107,66 @@ fn build_matrix(cfg: &createjson::MatrixOptions, dev: bool) -> RGBMatrix {
     }
 }
 
-// Async-signal-safe SIGINT handler.
-// Writes a message via raw libc::write, then calls libc::_exit to bypass
-// the tokio runtime's shutdown path so in-flight HTTP fetches don't panic.
-extern "C" fn sigint_handler(_: std::os::raw::c_int) {
-    unsafe {
-        let msg = b"\nInterrupted\n";
-        libc::write(libc::STDERR_FILENO, msg.as_ptr() as *const _, msg.len());
-        libc::_exit(130);
+/// Build an `EinkDisplay` from the parsed `eink` config block. Like
+/// `build_matrix`, `dev` forces the terminal (hardware-free) backend.
+fn build_eink_display(cfg: &registry::EinkRegistryConfig, dev: bool) -> EinkDisplay {
+    let opts = cfg.options();
+    if dev {
+        EinkDisplay::test(opts)
+    } else {
+        EinkDisplay::new(opts)
     }
 }
 
-fn install_sigint_handler() {
+// Async-signal-safe SIGINT/SIGTERM handler.
+// Writes a message via raw libc::write, then sets the shutdown flag. When an
+// e-ink panel is live, returns so the e-ink scheduler can blank the panel on
+// its own thread before exiting (e-paper retains its last image after
+// power-off — the LED panel doesn't, so it has no such need). Otherwise calls
+// libc::_exit to bypass the tokio runtime's shutdown path so in-flight HTTP
+// fetches don't panic.
+extern "C" fn signal_handler(sig: std::os::raw::c_int) {
+    use std::sync::atomic::Ordering;
     unsafe {
-        libc::signal(libc::SIGINT, sigint_handler as *const () as libc::sighandler_t);
+        let msg: &[u8] = if sig == libc::SIGTERM {
+            b"\nTerminating\n"
+        } else {
+            b"\nInterrupted\n"
+        };
+        libc::write(libc::STDERR_FILENO, msg.as_ptr() as *const _, msg.len());
+    }
+    scheduler::SHUTDOWN.store(true, Ordering::SeqCst);
+    // Defer to the e-ink scheduler's clear-and-exit when a panel is active; it
+    // owns the display and runs the (slow) SPI clear off the signal handler.
+    if scheduler::EINK_ACTIVE.load(Ordering::SeqCst) {
+        return;
+    }
+    let code = if sig == libc::SIGTERM { 143 } else { 130 };
+    unsafe { libc::_exit(code) };
+}
+
+fn install_signal_handlers() {
+    unsafe {
+        libc::signal(libc::SIGINT, signal_handler as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, signal_handler as *const () as libc::sighandler_t);
     }
 }
 
 #[derive(serde::Deserialize)]
 struct ParsedConfig {
+    /// LED-panel geometry. Optional: an eink-only config doesn't need it (the
+    /// defaults are used and the LED matrix isn't built unless it has tiles).
+    #[serde(default)]
     matrix_options: createjson::MatrixOptions,
+}
+
+/// Pulls just the top-level `eink` block out of the config. Separate pass so
+/// the LED `RegistryConfig` and `ParsedConfig` stay untouched and existing
+/// configs (no `eink` key) parse to the disabled default.
+#[derive(serde::Deserialize, Default)]
+struct EinkTopConfig {
+    #[serde(default)]
+    eink: registry::EinkRegistryConfig,
 }
 
 #[tokio::main]
@@ -105,7 +195,7 @@ async fn main() {
             .action(ArgAction::SetTrue),
         Arg::new("preview")
             .long("preview")
-            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, stock_chart, sport, golf, f1, iss, quake, aurora, flights, launch, hass, pihole")
+            .help("Render a single screen with built-in fake data and loop forever (no config or network). Names: time, weather, stock, stock_chart, sport, golf, f1, iss, quake, aurora, flights, launch, hass, pihole. Prefix with 'eink' for the e-paper display, e.g. 'eink:weather'")
             .value_name("NAME"),
         Arg::new("verbose")
             .short('v')
@@ -135,8 +225,21 @@ async fn main() {
     // config loading entirely so it works on a fresh clone with no setup.
     if let Some(name) = matches.get_one::<String>("preview") {
         let dev = std::env::var("DEV").is_ok();
+        install_signal_handlers();
+        // `--preview eink` (or `eink:weather` / `eink_weather`) drives the
+        // e-paper display instead of the LED matrix. Defaults to the weather
+        // screen. Backend follows OHMYOLED_EINK_MODE (terminal off-Pi).
+        if let Some(rest) = name.strip_prefix("eink") {
+            let sub = rest.trim_start_matches([':', '_', '-']);
+            let sub = if sub.is_empty() { "weather" } else { sub };
+            let display = EinkDisplay::new(ohmyoled_matrix::EinkOptions::default());
+            if let Err(e) = preview::run_eink(sub, display).await {
+                eprintln!("preview: {e}");
+                std::process::exit(2);
+            }
+            return;
+        }
         let matrix = build_matrix(&createjson::MatrixOptions::default(), dev);
-        install_sigint_handler();
         if let Err(e) = preview::run(name, matrix).await {
             eprintln!("preview: {e}");
             std::process::exit(2);
@@ -146,7 +249,7 @@ async fn main() {
 
     if matches.get_flag("dev_mode") {
         println!("Building a dev environment, replacing {target_path} with a dev config");
-        let main_json = createjson::create_json(true, None);
+        let (main_json, _) = createjson::create_json(true, None, None);
         if filelib::check_if_exists(&target_path) {
             std::fs::remove_file(&target_path).expect("Can not Remove file");
         }
@@ -172,46 +275,32 @@ async fn main() {
     }
 
     if matches.get_flag("create_config") {
-        if filelib::check_if_exists(&target_path) {
-            println!(
-                "Config exists at {}. (m)erge into existing entries, (o)verwrite, or (c)ancel? [m]",
-                &target_path
+        // The builder is now a full-screen TUI, so it needs a real terminal.
+        // Non-interactive / piped environments should use `--init-config`.
+        if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
+            eprintln!(
+                "`-c` opens an interactive terminal UI and needs a TTY.\n\
+                 For non-interactive setups, write a starter config with \
+                 `--init-config <path>` and edit it by hand."
             );
-            let raw = oledlib::get_input().unwrap_or_default();
-            let choice = raw.trim().to_lowercase();
-            let choice = if choice.is_empty() { "m" } else { choice.as_str() };
-            match choice {
-                "m" | "merge" => {
-                    let existing = parse_config_file(&target_path);
-                    let main_json = createjson::create_json(false, Some(existing));
-                    if main_json.get("failure").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        return;
-                    }
-                    std::fs::remove_file(&target_path).expect("Can not Remove file");
-                    ensure_config_dir(&target_path);
-                    config_io::write(&target_path, &main_json).expect("write failed");
-                    println!("Updated config at {target_path}");
-                }
-                "o" | "overwrite" => {
-                    let main_json = createjson::create_json(false, None);
-                    if main_json.get("failure").and_then(|v| v.as_bool()).unwrap_or(false) {
-                        return;
-                    }
-                    std::fs::remove_file(&target_path).expect("Can not Remove file");
-                    ensure_config_dir(&target_path);
-                    config_io::write(&target_path, &main_json).expect("write failed");
-                    println!("Wrote changes to File: {target_path}");
-                }
-                _ => {
-                    println!("Cancelled — config not changed");
-                    std::process::exit(0)
-                }
-            }
-        } else {
-            let main_json = createjson::create_json(false, None);
-            ensure_config_dir(&target_path);
-            config_io::write(&target_path, &main_json).expect("write failed");
+            std::process::exit(1);
         }
+        // Auto-load an existing config so the wizard opens on it for editing.
+        // The file's format seeds the format radio; the TUI itself is the
+        // editor (toggle tiles off, or quit without saving, to "start over").
+        let (existing, initial_fmt) = if filelib::check_if_exists(&target_path) {
+            println!("Loading {target_path} into the editor…");
+            (
+                Some(parse_config_file(&target_path)),
+                format_for_path(&target_path),
+            )
+        } else {
+            (None, None)
+        };
+        finalize_wizard_config(
+            &target_path,
+            createjson::create_json(false, existing, initial_fmt),
+        );
         return;
     }
 
@@ -234,6 +323,11 @@ async fn main() {
             println!("Failed to deserialize config at {}: {}", e.path(), e.inner());
             std::process::exit(33);
         });
+    let eink_top: EinkTopConfig = serde_path_to_error::deserialize(configuration.clone())
+        .unwrap_or_else(|e| {
+            println!("Failed to deserialize eink config at {}: {}", e.path(), e.inner());
+            std::process::exit(35);
+        });
     let registry_cfg: registry::RegistryConfig = serde_path_to_error::deserialize(configuration)
         .unwrap_or_else(|e| {
             println!(
@@ -244,22 +338,99 @@ async fn main() {
             std::process::exit(34);
         });
     let dev = std::env::var("DEV").is_ok();
+    install_signal_handlers();
 
-    let matrix = build_matrix(&parsed.matrix_options, dev);
-    log::debug!(
-        "matrix configured: chain={} parallel={} brightness={} slowdown={} mapping={}",
-        parsed.matrix_options.chain_length,
-        parsed.matrix_options.parallel,
-        parsed.matrix_options.brightness,
-        parsed.matrix_options.oled_slowdown,
-        parsed.matrix_options.hardware_mapping,
-    );
-    let modules = registry::build(&registry_cfg).await;
-    log::info!("registry built: {} module(s) active", modules.len());
+    // The LED matrix and the e-paper display are independent outputs that can
+    // run at the same time (they're separate physical panels). `eink.enabled`
+    // turns the e-paper side on; the LED side runs whenever it has tiles to
+    // show. Either, both, or neither may be active.
+    let eink_enabled = eink_top.eink.enabled;
 
-    install_sigint_handler();
-    if let Err(e) = scheduler::run(matrix, modules).await {
-        eprintln!("scheduler: {e}");
-        unsafe { libc::_exit(1) };
+    // ── e-paper side (opt-in) ───────────────────────────────────────────
+    let eink = if eink_enabled {
+        log::info!(
+            "eink display enabled (model={}, threshold={})",
+            eink_top.eink.model,
+            eink_top.eink.threshold
+        );
+        let display = build_eink_display(&eink_top.eink, dev);
+        let dims = (display.width(), display.height());
+        let modules = registry::build_eink(&eink_top.eink.modules, dims).await;
+        log::info!("eink registry built: {} module(s) active", modules.len());
+        Some((display, modules))
+    } else {
+        None
+    };
+
+    // ── LED side (default) ──────────────────────────────────────────────
+    let led_modules = registry::build(&registry_cfg).await;
+    log::info!("LED registry built: {} module(s) active", led_modules.len());
+    // Drive the LED panel when it has work, or when eink isn't taking over (so
+    // a bare config still behaves as before). When eink is the only thing with
+    // tiles, skip the LED path so we don't spin an idle loop — and, in dev
+    // mode, so it doesn't clobber the eink terminal output.
+    let run_led = !led_modules.is_empty() || !eink_enabled;
+    let matrix = if run_led {
+        log::debug!(
+            "matrix configured: chain={} parallel={} brightness={} slowdown={} mapping={}",
+            parsed.matrix_options.chain_length,
+            parsed.matrix_options.parallel,
+            parsed.matrix_options.brightness,
+            parsed.matrix_options.oled_slowdown,
+            parsed.matrix_options.hardware_mapping,
+        );
+        Some(build_matrix(&parsed.matrix_options, dev))
+    } else {
+        None
+    };
+
+    // Both outputs at once is supported. The one real conflict is when *both*
+    // resolve to their terminal/test backend: they'd share this single stdout
+    // and interleave into unreadable noise. Flag it rather than silently
+    // mangling the preview — on real hardware they drive separate panels.
+    if let (Some((display, _)), Some(m)) = (eink.as_ref(), matrix.as_ref()) {
+        if display.mode == EinkMode::Terminal && m.mode == MatrixMode::Test {
+            log::warn!(
+                "both LED matrix (test) and e-paper (terminal) are active and share this terminal — \
+                 their output will interleave. On hardware they drive separate panels; to preview \
+                 just one, disable the other (eink.enabled / remove LED tiles)."
+            );
+        } else {
+            log::info!("driving LED matrix and e-paper display concurrently");
+        }
+    }
+
+    // ── dispatch ────────────────────────────────────────────────────────
+    match (eink, matrix) {
+        // Both panels: run the two schedulers concurrently and exit if either
+        // returns (both normally loop forever).
+        (Some((display, emods)), Some(m)) => {
+            let (er, lr) =
+                tokio::join!(scheduler::run_eink(display, emods), scheduler::run(m, led_modules));
+            if let Err(e) = er {
+                eprintln!("eink scheduler: {e}");
+            }
+            if let Err(e) = lr {
+                eprintln!("scheduler: {e}");
+            }
+            unsafe { libc::_exit(1) };
+        }
+        // e-paper only.
+        (Some((display, emods)), None) => {
+            if let Err(e) = scheduler::run_eink(display, emods).await {
+                eprintln!("eink scheduler: {e}");
+                unsafe { libc::_exit(1) };
+            }
+        }
+        // LED only (the default path).
+        (None, Some(m)) => {
+            if let Err(e) = scheduler::run(m, led_modules).await {
+                eprintln!("scheduler: {e}");
+                unsafe { libc::_exit(1) };
+            }
+        }
+        // eink disabled forces run_led=true, so this is unreachable; handle it
+        // defensively rather than panicking.
+        (None, None) => log::warn!("no display active; nothing to run"),
     }
 }

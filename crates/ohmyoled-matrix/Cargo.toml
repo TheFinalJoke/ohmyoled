@@ -15,16 +15,33 @@ description = "LED matrix abstraction with terminal test mode and RPi hardware b
 # the hardware backend without any workflow changes.
 default = ["hardware"]
 hardware = ["dep:rpi-led-matrix"]
+# `eink` adds the Waveshare e-paper SPI backend. Like `hardware`, the actual
+# driver deps (`rppal` + `epd-waveshare`) are target-conditional below: only
+# pulled on arm / aarch64. On x86_64 the feature is a no-op — the e-paper
+# `EinkDisplay` falls back to its terminal backend at runtime, so the whole
+# e-ink layout pipeline still builds and runs in the devcontainer. The
+# terminal + buffer-packing code is always compiled (no feature needed); only
+# the Pi SPI flush is gated, mirroring how the LED terminal backend works.
+eink = ["dep:rppal", "dep:epd-waveshare", "dep:embedded-hal", "dep:embedded-hal-bus"]
 
 [dependencies]
 log = "0.4"
 image = "0.25"
 ab_glyph = "0.2"
+# Used only by the e-ink terminal backend to query the real terminal size
+# (TIOCGWINSZ) so the preview fits the window even when $COLUMNS isn't exported.
+libc = "0.2"
 
-# rpi-led-matrix is only declared for ARM targets so that x86_64 builds
-# never pull in rpi-led-matrix-sys (whose build script refuses to compile
-# off-Pi).
+# rpi-led-matrix / rppal / epd-waveshare are only declared for ARM targets so
+# that x86_64 builds never pull in rpi-led-matrix-sys (whose build script
+# refuses to compile off-Pi) or the Pi-only `rppal` GPIO/SPI crate.
 [target.'cfg(any(target_arch = "arm", target_arch = "aarch64"))'.dependencies]
 rpi-led-matrix = { version = "0.4", optional = true }
+rppal = { version = "0.19", optional = true, features = ["hal"] }
+epd-waveshare = { version = "0.6", optional = true }
+# embedded-hal traits + the ExclusiveDevice SpiBus→SpiDevice adapter that
+# bridges rppal's SPI to epd-waveshare. Pulled in only with `eink` on ARM.
+embedded-hal = { version = "1.0", optional = true }
+embedded-hal-bus = { version = "0.3", optional = true }
 
 [dev-dependencies]

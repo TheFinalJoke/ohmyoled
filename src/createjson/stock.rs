@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use oledlib::api::StockApi;
 use oledlib::serde_helpers::null_string_as_none;
 use serde::{Deserialize, Serialize};
@@ -32,57 +32,81 @@ impl Default for StockOptions {
     }
 }
 
-fn pick_api() -> StockApi {
-    let slug = ui::choose(
-        "Provider",
-        &[
-            ("finnhub", "Equity tickers — free tier, requires API key"),
-            ("coingecko", "Crypto coin ids — free, no key"),
-        ],
-        "finnhub",
-    );
-    StockApi::str_to_api(slug)
+/// TUI form schema. `api_key` is shown/required only for Finnhub; `symbol` is
+/// case-folded by provider in `form_module::section_to_value`.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "api",
+            "Provider",
+            "Equity tickers (Finnhub) or crypto coin ids (CoinGecko).",
+            FieldKind::Enum {
+                default: "finnhub",
+                choices: &[
+                    ("finnhub", "Equities — free tier, requires API key"),
+                    ("coingecko", "Crypto coin ids — free, no key"),
+                ],
+            },
+        ),
+        FieldDef::new(
+            "api_key",
+            "Finnhub API key",
+            "Required for Finnhub; CoinGecko's public tier is unauthenticated.",
+            FieldKind::Text { default: "" },
+        )
+        .when(|f| f.enum_slug("api") == Some("finnhub")),
+        FieldDef::new(
+            "symbol",
+            "Symbol",
+            "Ticker (AAPL) for Finnhub, or coin id (bitcoin) for CoinGecko.",
+            FieldKind::Text { default: "AAPL" },
+        ),
+        FieldDef::new(
+            "chart",
+            "Historical chart",
+            "Also show the 1D/1M/1Y line-chart tile.",
+            FieldKind::Bool { default: false },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }
 
-pub fn configure() -> Result<StockOptions, String> {
-    ui::section("Stock");
-    ui::hint("Polls a single ticker. Add this option again for multiple symbols.");
+#[cfg(test)]
+mod tests {
+    use crate::createjson::tui::form_module;
 
-    let api = pick_api();
-    // Finnhub needs an API key; CoinGecko's public tier is unauth.
-    let api_key = match api {
-        StockApi::Finnhub => Some(ui::read_required("Finnhub API key")),
-        StockApi::Coingecko => None,
-    };
-    let symbol_prompt = match api {
-        StockApi::Finnhub => "Ticker symbol (uppercased)",
-        StockApi::Coingecko => "CoinGecko coin id (e.g. bitcoin, ethereum)",
-    };
-    let raw_symbol = ui::read_line_default(symbol_prompt, "AAPL");
-    let symbol = match api {
-        StockApi::Finnhub => raw_symbol.trim().to_uppercase(),
-        StockApi::Coingecko => raw_symbol.trim().to_lowercase(),
-    };
+    #[test]
+    fn coingecko_drops_key_and_lowercases_symbol() {
+        let mut form = form_module::default_form("stock");
+        // switch api to coingecko (index 1), set symbol "BitCoin"
+        if let crate::createjson::tui::field::FieldValue::Enum(sel) = &mut form.values[0] {
+            *sel = 1;
+        }
+        form.values[2] =
+            crate::createjson::tui::field::FieldValue::Input(tui_input::Input::new("BitCoin".into()));
+        let v = form_module::section_to_value("stock", &form).unwrap();
+        assert_eq!(v["symbol"], serde_json::json!("bitcoin"));
+        // Canonicalized through StockOptions, so the absent key becomes null.
+        assert!(v["api_key"].is_null(), "coingecko has no api key");
+    }
 
-    let chart = ui::read_yes_no(
-        "Also enable the 1D/1M/1Y historical chart tile?",
-        false,
-    );
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-
-    let chart_tag = if chart { " + chart" } else { "" };
-    ui::success(&format!("Stock — {symbol} via {}{chart_tag}", api.get_api()));
-    Ok(StockOptions {
-        run: true,
-        api,
-        api_key,
-        symbol,
-        chart,
-        cache_ttl_secs,
-    })
-}
-
-pub fn summary_line(opts: &StockOptions) -> String {
-    let chart = if opts.chart { " + chart" } else { "" };
-    format!("stock: {} ({}){}", opts.symbol, opts.api.get_api(), chart)
+    #[test]
+    fn finnhub_requires_key_and_uppercases_symbol() {
+        let mut form = form_module::default_form("stock");
+        // finnhub default, but api_key blank -> strict error
+        assert!(form_module::section_to_value("stock", &form).is_err());
+        // fill the key
+        form.values[1] =
+            crate::createjson::tui::field::FieldValue::Input(tui_input::Input::new("KEY123".into()));
+        form.values[2] =
+            crate::createjson::tui::field::FieldValue::Input(tui_input::Input::new("aapl".into()));
+        let v = form_module::section_to_value("stock", &form).unwrap();
+        assert_eq!(v["symbol"], serde_json::json!("AAPL"));
+        assert_eq!(v["api_key"], serde_json::json!("KEY123"));
+    }
 }

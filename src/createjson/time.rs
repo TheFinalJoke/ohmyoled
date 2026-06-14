@@ -1,4 +1,4 @@
-use crate::createjson::ui;
+use crate::createjson::tui::field::{FieldDef, FieldKind};
 use oledlib::serde_helpers::null_string_as_none;
 use serde::{Deserialize, Serialize};
 
@@ -26,72 +26,44 @@ impl Default for TimeOptions {
     }
 }
 
-fn parse_color(s: &str) -> Option<(i32, i32, i32)> {
-    let parts: Vec<&str> = s
-        .split(|c: char| c.is_whitespace() || c == ',' || c == '/' || c == ';')
-        .filter(|p| !p.is_empty())
-        .collect();
-    if parts.len() != 3 {
-        return None;
-    }
-    let r = parts[0].parse::<i32>().ok()?;
-    let g = parts[1].parse::<i32>().ok()?;
-    let b = parts[2].parse::<i32>().ok()?;
-    if [r, g, b].iter().any(|c| !(0..=255).contains(c)) {
-        return None;
-    }
-    Some((r, g, b))
-}
-
-pub fn configure() -> TimeOptions {
-    ui::section("Time");
-    ui::hint("System clock with optional timezone override.");
-
-    if ui::read_yes_no("Use defaults (white, 12h, system timezone)?", true) {
-        ui::success("Time — defaults");
-        return TimeOptions::default();
-    }
-
-    let color = loop {
-        let raw = ui::read_line_default("Display color (R G B, 0–255)", "255 255 255");
-        match parse_color(&raw) {
-            Some(c) => break c,
-            None => ui::warn("Expected three integers in 0–255, e.g. '255 255 255'"),
-        }
-    };
-
-    let fmt_slug = ui::choose(
-        "Time format",
-        &[
-            ("system", "Use the system locale"),
-            ("12h", "12-hour with AM/PM"),
-            ("24h", "24-hour"),
-        ],
-        "system",
-    );
-    let time_format = if fmt_slug == "system" { None } else { Some(fmt_slug) };
-
-    let tz_raw = ui::read_line_default(
-        "Timezone (IANA name, blank = system)",
-        "",
-    );
-    let timezone = if tz_raw.trim().is_empty() { None } else { Some(tz_raw) };
-    let cache_ttl_secs = ui::read_cache_ttl_secs();
-
-    ui::success("Time configured");
-    TimeOptions {
-        run: true,
-        color,
-        time_format,
-        timezone,
-        cache_ttl_secs,
-    }
-}
-
-pub fn summary_line(opts: &TimeOptions) -> String {
-    let fmt = opts.time_format.as_deref().unwrap_or("system");
-    let tz = opts.timezone.as_deref().unwrap_or("system");
-    format!("time ({fmt}, tz={tz})")
+/// TUI form schema. `time_format` "system" is post-processed to JSON `null`
+/// (legacy semantics) in `form_module::section_to_value`.
+pub fn fields() -> Vec<FieldDef> {
+    vec![
+        FieldDef::new(
+            "color",
+            "Color (R G B)",
+            "Clock color, three values 0–255.",
+            FieldKind::Rgb {
+                default: (255, 255, 255),
+            },
+        ),
+        FieldDef::new(
+            "time_format",
+            "Time format",
+            "Clock style.",
+            FieldKind::Enum {
+                default: "system",
+                choices: &[
+                    ("system", "System locale"),
+                    ("12h", "12-hour with AM/PM"),
+                    ("24h", "24-hour"),
+                ],
+            },
+        ),
+        FieldDef::new(
+            "timezone",
+            "Timezone",
+            "IANA name (e.g. America/Chicago); blank = system.",
+            FieldKind::OptionalText { default: "" },
+        ),
+        FieldDef::new(
+            "cache_ttl_secs",
+            "Cache TTL (secs)",
+            super::CACHE_TTL_HELP,
+            FieldKind::CacheTtl,
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -123,18 +95,16 @@ mod tests {
         assert_eq!(parsed.timezone.as_deref(), Some("UTC"));
     }
 
+    /// The default form serializes to the same JSON as `TimeOptions::default`
+    /// (after the `system` ⇒ `null` post-process), guarding against schema
+    /// drift from the struct.
     #[test]
-    fn parse_color_accepts_various_separators() {
-        assert_eq!(parse_color("255 0 128"), Some((255, 0, 128)));
-        assert_eq!(parse_color("10,20,30"), Some((10, 20, 30)));
-        assert_eq!(parse_color("10/20/30"), Some((10, 20, 30)));
-    }
-
-    #[test]
-    fn parse_color_rejects_oob() {
-        assert!(parse_color("256 0 0").is_none());
-        assert!(parse_color("-1 0 0").is_none());
-        assert!(parse_color("a b c").is_none());
-        assert!(parse_color("1 2").is_none());
+    fn default_form_matches_struct_default() {
+        let form = crate::createjson::tui::form_module::default_form("time");
+        let v = crate::createjson::tui::form_module::section_to_value("time", &form).unwrap();
+        assert_eq!(v["color"], serde_json::json!([255, 255, 255]));
+        assert!(v["time_format"].is_null());
+        assert!(v["timezone"].is_null());
+        assert_eq!(v["run"], serde_json::json!(true));
     }
 }

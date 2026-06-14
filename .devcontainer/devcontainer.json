@@ -12,20 +12,14 @@
 	},
 	"customizations": {
 		"vscode": {
-			"settings": {
-				"python.editor.formatOnSave": true
-			},
 			"extensions": [
-				"ms-python.python",
-				"ms-python.vscode-pylance",
 				"rust-lang.rust-analyzer",
 				"anthropic.claude-code"
 			]
 		}
 	},
 	"containerEnv": {
-		"DEV": "1",
-		"PIP_BREAK_SYSTEM_PACKAGES": "1"
+		"DEV": "1"
 	},
 	"runArgs": ["--privileged"],
 	"remoteUser": "root",

@@ -64,6 +64,13 @@ use crate::matrix::stock::StockMatrix;
 use crate::matrix::stock_chart::StockChartMatrix;
 use crate::matrix::time::{TimeCollector, TimeMatrix};
 use crate::matrix::weather::WeatherMatrix;
+use crate::matrix::eink::{
+    EinkAuroraMatrix, EinkF1Matrix, EinkFlightsMatrix, EinkGolfMatrix, EinkHassMatrix, EinkIssMatrix,
+    EinkLaunchMatrix, EinkPiholeMatrix, EinkQuakeMatrix, EinkSportMatrix, EinkStockChartMatrix,
+    EinkStockMatrix, EinkTimeMatrix, EinkWeatherMatrix,
+};
+use crate::matrix::eink_renderer::EinkRenderer;
+use crate::modules::eink_module::{DynEinkModule, EinkModule};
 use crate::modules::{DynModule, Module};
 use crate::serde_helpers::one_or_many;
 use serde::Deserialize;
@@ -180,8 +187,17 @@ pub struct FlightsSection {
     /// bbox query = more credits/req against OpenSky's anonymous tier.
     #[serde(default = "default_flights_radius_km")]
     pub radius_km: f32,
+    /// Only show airborne traffic — drop aircraft parked/taxiing at a nearby
+    /// airport (OpenSky's `on_ground`). Defaults to `true`. Set `false` to
+    /// include ground traffic.
+    #[serde(default = "default_true")]
+    pub airborne_only: bool,
     #[serde(default)]
     pub cache_ttl_secs: Option<u64>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_flights_radius_km() -> f32 {
@@ -514,7 +530,10 @@ async fn build_time(t: &TimeSection) -> Result<Box<dyn DynModule>, String> {
     Ok(module_with_ttl(TimeCollector::new(), renderer, t.cache_ttl_secs))
 }
 
-async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String> {
+/// Build a `WeatherCollector` from a section's provider + credentials.
+/// Shared by the LED ([`build_weather`]) and e-paper ([`build_eink_weather`])
+/// tiles so both gather data the same way.
+fn weather_collector(w: &WeatherSection) -> Result<WeatherCollector, String> {
     let units = w
         .weather_format
         .clone()
@@ -551,6 +570,11 @@ async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String>
         })
         .map_err(|e| e.to_string())?,
     };
+    Ok(collector)
+}
+
+async fn build_weather(w: &WeatherSection) -> Result<Box<dyn DynModule>, String> {
+    let collector = weather_collector(w)?;
     let renderer = WeatherMatrix::new_with_animation_async(w.animation)
         .await
         .map_err(|e| format!("weather fonts: {e}"))?;
@@ -674,6 +698,7 @@ async fn build_flights(s: &FlightsSection) -> Result<Box<dyn DynModule>, String>
         user_lat: s.lat,
         user_lon: s.lon,
         radius_km: s.radius_km,
+        airborne_only: s.airborne_only,
     })
     .map_err(|e| e.to_string())?;
     let renderer = FlightsMatrix::new_async()
@@ -742,6 +767,444 @@ async fn build_team_sport(
         .await
         .map_err(|e| format!("sport fonts: {e}"))?;
     Ok(module_with_ttl(collector, renderer, cache_ttl_secs))
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// E-paper (e-ink) display
+// ──────────────────────────────────────────────────────────────────────────
+
+/// The independent e-paper display config, parsed from the top-level `eink`
+/// block. The e-ink screen shows its **own** content — its `modules` are a
+/// full, separate [`RegistryConfig`] (same section shapes and the same
+/// collectors as the LED display, chosen and tuned independently).
+///
+/// ```yaml
+/// eink:
+///   enabled: true
+///   model: "4in2"
+///   rotation: 0
+///   threshold: 128
+///   modules:
+///     weather: { run: true, api: nws, current_location: true }
+/// ```
+#[derive(Debug, Deserialize, Default)]
+pub struct EinkRegistryConfig {
+    /// Drive the e-paper display instead of the LED matrix. Off by default so
+    /// existing configs are unchanged.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Panel model id (e.g. `"4in2"`, `"7in5_v2"`) — sets resolution + driver.
+    #[serde(default = "default_eink_model")]
+    pub model: String,
+    /// Rotation in degrees (0/90/180/270).
+    #[serde(default)]
+    pub rotation: u16,
+    /// Luma threshold 0–255 for the black/white cut.
+    #[serde(default = "default_eink_threshold")]
+    pub threshold: u8,
+    /// Optional explicit width override. Set both `width` and `height` to drive
+    /// a panel not in the model table (or a custom dev size); otherwise the
+    /// resolution comes from `model`.
+    #[serde(default)]
+    pub width: Option<u32>,
+    /// Optional explicit height override (see `width`).
+    #[serde(default)]
+    pub height: Option<u32>,
+    /// Backend to drive: `"auto"` (hardware on a Pi, else terminal preview),
+    /// `"terminal"` (always the dev preview), or `"hardware"`. Omit for `auto`.
+    /// `OHMYOLED_EINK_MODE` overrides this at runtime.
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Make the terminal preview mimic real hardware — play the slow
+    /// full-refresh flash + dwell on every change. Dev/preview only (the
+    /// hardware backend always behaves this way). `OHMYOLED_EINK_EMULATE`
+    /// overrides this.
+    #[serde(default)]
+    pub emulate: Option<bool>,
+    /// Emulated full-refresh duration in ms when `emulate` is on (default
+    /// ~2500). `OHMYOLED_EINK_REFRESH_MS` overrides this.
+    #[serde(default)]
+    pub refresh_ms: Option<u64>,
+    /// This display's own tile selection — a full registry config.
+    #[serde(default)]
+    pub modules: RegistryConfig,
+}
+
+fn default_eink_model() -> String {
+    "7in5_v2".to_string()
+}
+
+fn default_eink_threshold() -> u8 {
+    128
+}
+
+impl EinkRegistryConfig {
+    /// Convert to the matrix crate's panel options.
+    pub fn options(&self) -> ohmyoled_matrix::EinkOptions {
+        // An unrecognised mode string falls back to auto rather than failing —
+        // but warn so a typo isn't silently ignored.
+        let mode = self.mode.as_deref().and_then(|s| {
+            let parsed = ohmyoled_matrix::parse_eink_mode(s);
+            if parsed.is_none() {
+                log::warn!("eink: unknown mode '{s}', using auto (valid: auto|terminal|hardware)");
+            }
+            parsed
+        });
+        ohmyoled_matrix::EinkOptions {
+            model: self.model.clone(),
+            rotation: self.rotation,
+            threshold: self.threshold,
+            width: self.width,
+            height: self.height,
+            mode,
+            emulate: self.emulate,
+            refresh_ms: self.refresh_ms,
+        }
+    }
+}
+
+/// Build the active e-paper modules from the `eink.modules` config.
+///
+/// Mirrors [`build`] but emits `DynEinkModule`s. For the first cut only the
+/// weather tile has an e-ink renderer; any other enabled section is counted
+/// and reported (a follow-up ports the rest), never silently dropped.
+pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn DynEinkModule>> {
+    let mut modules: Vec<Box<dyn DynEinkModule>> = Vec::new();
+
+    for t in cfg.time.iter().filter(|t| t.run) {
+        match build_eink_time(t, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: time loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink time: skipping module: {e}"),
+        }
+    }
+    for w in cfg.weather.iter().filter(|w| w.run) {
+        match build_eink_weather(w, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: weather loaded (provider={})", w.api.get_api());
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink weather: skipping module: {e}"),
+        }
+    }
+
+    for s in cfg.iss.iter().filter(|s| s.run) {
+        match build_eink_iss(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: iss loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink iss: skipping module: {e}"),
+        }
+    }
+    for s in cfg.quake.iter().filter(|s| s.run) {
+        match build_eink_quake(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: quake loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink quake: skipping module: {e}"),
+        }
+    }
+    for s in cfg.aurora.iter().filter(|s| s.run) {
+        match build_eink_aurora(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: aurora loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink aurora: skipping module: {e}"),
+        }
+    }
+    for s in cfg.pihole.iter().filter(|s| s.run) {
+        match build_eink_pihole(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: pihole loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink pihole: skipping module: {e}"),
+        }
+    }
+    for s in cfg.stock.iter().filter(|s| s.run) {
+        match build_eink_stock(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: stock loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink stock: skipping module: {e}"),
+        }
+        if s.chart {
+            match build_eink_stock_chart(s, dims).await {
+                Ok(m) => {
+                    log::info!("eink registry: stock_chart loaded");
+                    modules.push(m);
+                }
+                Err(e) => log::error!("eink stock_chart: skipping module: {e}"),
+            }
+        }
+    }
+    for s in cfg.flights.iter().filter(|s| s.run) {
+        match build_eink_flights(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: flights loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink flights: skipping module: {e}"),
+        }
+    }
+    for s in cfg.launch.iter().filter(|s| s.run) {
+        match build_eink_launch(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: launch loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink launch: skipping module: {e}"),
+        }
+    }
+    for s in cfg.hass.iter().filter(|s| s.run) {
+        match build_eink_hass(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: hass loaded");
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink hass: skipping module: {e}"),
+        }
+    }
+    for s in cfg.sport.iter().filter(|s| s.run()) {
+        match build_eink_sport(s, dims).await {
+            Ok(m) => {
+                log::info!("eink registry: {} loaded", m.id());
+                modules.push(m);
+            }
+            Err(e) => log::error!("eink sport: skipping module: {e}"),
+        }
+    }
+
+    modules
+}
+
+/// Dispatch a `sport` entry to the right e-paper renderer by variant, mirroring
+/// the LED [`build_sport`].
+async fn build_eink_sport(s: &SportSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let ttl = s.cache_ttl_secs();
+    match s {
+        SportSection::Basketball { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Basketball, team_logo, ttl, dims).await
+        }
+        SportSection::Baseball { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Baseball, team_logo, ttl, dims).await
+        }
+        SportSection::Football { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Football, team_logo, ttl, dims).await
+        }
+        SportSection::Hockey { team_logo, .. } => {
+            build_eink_team_sport(SportKind::Hockey, team_logo, ttl, dims).await
+        }
+        SportSection::Golf { tour, .. } => {
+            let collector = GolfCollector::from_espn(*tour);
+            let renderer = EinkGolfMatrix::new_async(dims)
+                .await
+                .map_err(|e| format!("eink golf fonts: {e}"))?
+                .with_tour(*tour);
+            Ok(eink_module_with_ttl(collector, renderer, ttl))
+        }
+        SportSection::F1 { .. } => {
+            let collector = F1Collector::from_jolpica();
+            let renderer = EinkF1Matrix::new_async(dims)
+                .await
+                .map_err(|e| format!("eink f1 fonts: {e}"))?;
+            Ok(eink_module_with_ttl(collector, renderer, ttl))
+        }
+    }
+}
+
+async fn build_eink_team_sport(
+    kind: SportKind,
+    team_logo: &crate::teams::Logo,
+    cache_ttl_secs: Option<u64>,
+    dims: (u32, u32),
+) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = SportCollector::from_espn(EspnConfig {
+        sport: kind,
+        team_name: team_logo.name.clone(),
+        team_abbreviation: team_logo.shorthand.clone(),
+    });
+    let renderer = EinkSportMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink sport fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, cache_ttl_secs))
+}
+
+async fn build_eink_time(t: &TimeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let format = parse_time_format(t.time_format.as_deref());
+    let renderer = EinkTimeMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink time fonts: {e}"))?
+        .with_format(format);
+    Ok(eink_module_with_ttl(TimeCollector::new(), renderer, t.cache_ttl_secs))
+}
+
+/// Parse the config `time_format` string into a [`TimeFormat`]. Anything
+/// 24-hour-ish selects 24h; everything else (incl. omitted) defaults to 12h.
+fn parse_time_format(s: Option<&str>) -> crate::matrix::time::TimeFormat {
+    use crate::matrix::time::TimeFormat;
+    match s.map(|s| s.trim().to_lowercase()).as_deref() {
+        Some("24h") | Some("24") | Some("twentyfour") | Some("military") => TimeFormat::TwentyFour,
+        _ => TimeFormat::Twelve,
+    }
+}
+
+async fn build_eink_weather(w: &WeatherSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = weather_collector(w)?;
+    let renderer = EinkWeatherMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink weather fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, w.cache_ttl_secs))
+}
+
+async fn build_eink_iss(s: &IssSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = IssCollector::from_wheretheiss(WhereTheIssConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkIssMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink iss fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_quake(s: &QuakeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = QuakeCollector::from_usgs(UsgsConfig { feed: s.feed })
+        .map_err(|e| e.to_string())?;
+    let renderer = EinkQuakeMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink quake fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_aurora(s: &AuroraSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = AuroraCollector::from_swpc(SwpcConfig {
+        alert_threshold: s.alert_threshold,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkAuroraMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink aurora fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_pihole(s: &PiholeSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = PiholeCollector::from_v5(PiholeV5Config {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkPiholeMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink pihole fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+/// The e-paper stock tile shows the live price *and* today's chart, so it pulls
+/// the same intraday history as the chart tile (Yahoo for equities, CoinGecko
+/// for coins) — the `api_key` is unused here (Finnhub history is paid-tier).
+async fn build_eink_stock(s: &StockSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = match s.api {
+        StockApi::Finnhub => StockHistoryCollector::from_yahoo(YahooConfig {
+            symbol: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+        StockApi::Coingecko => StockHistoryCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+    };
+    let renderer = EinkStockMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink stock fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_launch(s: &LaunchSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = LaunchCollector::from_lldev(LldevConfig {
+        agency_filter: s.agency_filter.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkLaunchMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink launch fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_hass(s: &HassSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = HassCollector::from_rest(HassRestConfig {
+        base_url: s.base_url.clone(),
+        token: s.token.clone(),
+        entity_id: s.entity_id.clone(),
+        label_override: s.label.clone(),
+    })
+    .map_err(|e| e.to_string())?;
+    let display = crate::matrix::hass::HassDisplay {
+        nominal_color: ohmyoled_matrix::Color::new(s.nominal_color.0, s.nominal_color.1, s.nominal_color.2),
+        alarm_color: ohmyoled_matrix::Color::new(s.alarm_color.0, s.alarm_color.1, s.alarm_color.2),
+        alarm_state: s.alarm_state.clone(),
+        mode: s.display_mode,
+    };
+    let renderer = EinkHassMatrix::new_async(display, dims)
+        .await
+        .map_err(|e| format!("eink hass fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_stock_chart(s: &StockSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = match s.api {
+        StockApi::Finnhub => StockHistoryCollector::from_yahoo(YahooConfig {
+            symbol: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+        StockApi::Coingecko => StockHistoryCollector::from_coingecko(CoingeckoConfig {
+            coin_id: s.symbol.clone(),
+        })
+        .map_err(|e| e.to_string())?,
+    };
+    let renderer = EinkStockChartMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink stock_chart fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+async fn build_eink_flights(s: &FlightsSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
+    let collector = FlightsCollector::from_opensky(OpenSkyConfig {
+        user_lat: s.lat,
+        user_lon: s.lon,
+        radius_km: s.radius_km,
+        airborne_only: s.airborne_only,
+    })
+    .map_err(|e| e.to_string())?;
+    let renderer = EinkFlightsMatrix::new_async(dims)
+        .await
+        .map_err(|e| format!("eink flights fonts: {e}"))?;
+    Ok(eink_module_with_ttl(collector, renderer, s.cache_ttl_secs))
+}
+
+/// E-paper analog of [`module_with_ttl`] — wraps a `(collector, eink renderer)`
+/// pair into a boxed `DynEinkModule`, resolving the cache TTL identically.
+fn eink_module_with_ttl<C, R>(
+    collector: C,
+    renderer: R,
+    cache_ttl_secs: Option<u64>,
+) -> Box<dyn DynEinkModule>
+where
+    C: crate::api::Collector + 'static,
+    R: EinkRenderer<Data = C::Output> + 'static,
+    C::Output: Send + Sync + 'static,
+{
+    let ttl = cache_ttl_secs
+        .map(std::time::Duration::from_secs)
+        .unwrap_or_else(|| collector.refresh_interval());
+    Box::new(EinkModule::new(collector, renderer, ttl))
 }
 
 /// Wrap a `(collector, renderer)` pair into a boxed `DynModule`,

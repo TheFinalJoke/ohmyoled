@@ -21,8 +21,8 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{Duration as ChDuration, Local, TimeZone};
-use ohmyoled_matrix::{Color, RGBMatrix};
+use chrono::{Duration as ChDuration, Local, TimeZone, Timelike};
+use ohmyoled_matrix::{Color, EinkDisplay, RGBMatrix};
 
 use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
 use oledlib::api::golf::{GolfData, GolfTour, LeaderboardEntry};
@@ -58,6 +58,14 @@ use oledlib::matrix::stock::{StockFonts, StockMatrix};
 use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
 use oledlib::matrix::weather::{WeatherAnimationMode, WeatherFonts, WeatherMatrix};
+use oledlib::matrix::eink::{
+    EinkAuroraFonts, EinkAuroraMatrix, EinkF1Fonts, EinkF1Matrix, EinkFlightsFonts,
+    EinkFlightsMatrix, EinkGolfFonts, EinkGolfMatrix, EinkHassFonts, EinkHassMatrix, EinkIssFonts,
+    EinkIssMatrix, EinkLaunchFonts, EinkLaunchMatrix, EinkPiholeFonts, EinkPiholeMatrix,
+    EinkQuakeFonts, EinkQuakeMatrix, EinkSportFonts, EinkSportMatrix, EinkStockChartFonts,
+    EinkStockChartMatrix, EinkStockFonts, EinkStockMatrix, EinkTimeFonts, EinkTimeMatrix,
+    EinkWeatherFonts, EinkWeatherMatrix,
+};
 use oledlib::matrix::{Renderer, TimeMatrix};
 
 pub const NAMES: &[&str] = &[
@@ -104,6 +112,461 @@ pub async fn run(name: &str, mut matrix: RGBMatrix) -> Result<(), String> {
             "unknown preview '{other}'. Available: {}",
             NAMES.join(", ")
         )),
+    }
+}
+
+/// E-paper preview names (used after the `eink` prefix, e.g. `--preview eink:weather`).
+pub const EINK_NAMES: &[&str] = &[
+    "time", "weather", "pihole", "iss", "aurora", "quake", "stock", "launch", "hass", "flights",
+    "stock_chart", "sport", "golf", "f1",
+];
+
+/// Drive an e-paper renderer live against an [`EinkDisplay`] with fake data.
+/// Backend is whatever `EinkDisplay` resolves to — the terminal inline-image
+/// (Sixel/PNG) view in the devcontainer (no hardware), the panel on a Pi.
+/// Unlike the module path this refreshes every few seconds so layout iteration
+/// is quick.
+pub async fn run_eink(name: &str, mut display: EinkDisplay) -> Result<(), String> {
+    let fonts = font_dir();
+    log::info!(
+        "preview: rendering eink '{name}' ({}x{}) with fonts from {}",
+        display.width(),
+        display.height(),
+        fonts.display()
+    );
+    match name {
+        "time" => preview_eink_time(&mut display, &fonts).await,
+        "weather" => preview_eink_weather(&mut display, &fonts).await,
+        "pihole" => preview_eink_pihole(&mut display, &fonts).await,
+        "iss" => preview_eink_iss(&mut display, &fonts).await,
+        "aurora" => preview_eink_aurora(&mut display, &fonts).await,
+        "quake" => preview_eink_quake(&mut display, &fonts).await,
+        "stock" => preview_eink_stock(&mut display, &fonts).await,
+        "launch" => preview_eink_launch(&mut display, &fonts).await,
+        "hass" => preview_eink_hass(&mut display, &fonts).await,
+        "flights" => preview_eink_flights(&mut display, &fonts).await,
+        "stock_chart" => preview_eink_stock_chart(&mut display, &fonts).await,
+        "sport" => preview_eink_sport(&mut display, &fonts).await,
+        "golf" => preview_eink_golf(&mut display, &fonts).await,
+        "f1" => preview_eink_f1(&mut display, &fonts).await,
+        other => Err(format!(
+            "unknown eink preview '{other}'. Available: {}",
+            EINK_NAMES.join(", ")
+        )),
+    }
+}
+
+async fn preview_eink_time(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkTimeMatrix::with_fonts_async(
+        EinkTimeFonts {
+            body: fonts.join("04B_03B_.TTF"),
+        },
+        dims,
+    )
+    .await?;
+    // Clean baseline, then tick every second with the fast (no-flash) refresh —
+    // mirrors EinkTimeMatrix::render so the preview shows real tick behavior.
+    display.show(&r.frame(Local::now(), display.width(), display.height()));
+    loop {
+        let until = 1_000_000_000 - Local::now().nanosecond().min(999_999_999);
+        tokio::time::sleep(std::time::Duration::from_nanos(until as u64)).await;
+        display.show_fast(&r.frame(Local::now(), display.width(), display.height()));
+    }
+}
+
+async fn preview_eink_weather(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkWeatherMatrix::with_fonts_async(
+        EinkWeatherFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            icon: fonts.join("weathericons.ttf"),
+        },
+        dims,
+    )
+    .await?;
+    let data = fake_weather();
+    loop {
+        // Compose + push directly (rather than `render()`, which dwells for the
+        // full 60 s cycle) so the preview redraws every few seconds.
+        let img = r.frame(&data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_pihole(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkPiholeMatrix::with_fonts_async(
+        EinkPiholeFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            big: fonts.join("04b24.otf"),
+        },
+        dims,
+    )
+    .await?;
+    let s = |pct: f32, q: u32, blk: u32| PiholeSummary {
+        percent_blocked: pct,
+        queries_today: q,
+        blocked_today: blk,
+        unique_clients: 12,
+    };
+    let cycle = [s(34.2, 12_348, 4_221), s(58.7, 88_500, 51_949), s(7.4, 2_100, 156)];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_iss(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkIssMatrix::with_fonts_async(EinkIssFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let distant = IssState {
+        ground_distance_km: 1247,
+        overhead: false,
+        lat: 23.5,
+        lon: -50.1,
+        altitude_km: 421.0,
+        velocity_kms: 7.66,
+        visibility: "daylight".into(),
+    };
+    let overhead = IssState { ground_distance_km: 120, overhead: true, ..distant.clone() };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &overhead } else { &distant };
+        toggle = !toggle;
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_aurora(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkAuroraMatrix::with_fonts_async(
+        EinkAuroraFonts {
+            body: fonts.join("04B_03B_.TTF"),
+            big: fonts.join("04b24.otf"),
+        },
+        dims,
+    )
+    .await?;
+    let now = chrono::Utc::now();
+    let make = |kp: u8, alert: bool| AuroraReading {
+        kp,
+        kp_index: kp as f32,
+        kp_text: format!("{kp}Z"),
+        alert,
+        sampled_at: now,
+    };
+    let cycle = [make(2, false), make(4, false), make(6, true), make(8, true)];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_quake(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkQuakeMatrix::with_fonts_async(EinkQuakeFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let now = chrono::Utc::now() - ChDuration::minutes(14);
+    let ev = |mag: f32, title: &str, lat: f32, lon: f32, felt: Option<u32>| {
+        QuakeStatus::Event(QuakeEvent {
+            magnitude: mag,
+            title: title.into(),
+            origin: now,
+            lat,
+            lon,
+            depth_km: 24.0,
+            felt,
+        })
+    };
+    let cycle = [
+        ev(6.2, "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN", 38.3, 142.1, Some(482)),
+        ev(4.7, "M 4.7 - 120km SW of San Francisco, CA", 37.0, -123.5, Some(37)),
+        ev(3.1, "M 3.1 - 14 km NE of Reykjavik, Iceland", 64.2, -21.6, None),
+        QuakeStatus::Quiet,
+    ];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_stock(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkStockMatrix::with_fonts_async(EinkStockFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let day = |slope: f64| HistorySeries::from_closes((0..26).map(|i| 188.0 + i as f64 * slope + ((i % 4) as f64 - 1.5)).collect());
+    let q = |current: f64, slope: f64| StockHistory {
+        api: StockApiSource::Yahoo,
+        symbol: "AAPL".into(),
+        current,
+        previous_close: 190.0,
+        day: day(slope),
+        month: HistorySeries::from_closes((0..30).map(|i| 180.0 + i as f64 * 0.4).collect()),
+        year: HistorySeries::from_closes((0..52).map(|i| 150.0 + i as f64 * 0.8).collect()),
+    };
+    let cycle = [q(195.2, 0.3), q(185.4, -0.25)];
+    let mut i = 0usize;
+    loop {
+        let img = r.frame(&cycle[i % cycle.len()], display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_launch(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkLaunchMatrix::with_fonts_async(EinkLaunchFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let l = |offset_secs: i64, status: LaunchStatus| UpcomingLaunch {
+        provider: "SpaceX".into(),
+        vehicle: "Falcon 9".into(),
+        mission: "Starlink Group 8-1".into(),
+        launch_at: chrono::Utc::now() + ChDuration::seconds(offset_secs),
+        status,
+        country_code: "USA".into(),
+    };
+    // Far → near → imminent → liftoff, so each countdown phase/badge shows.
+    let cycle = [
+        l(3 * 86_400, LaunchStatus::Go),
+        l(2 * 3600, LaunchStatus::Go),
+        l(42, LaunchStatus::Go),
+        l(-30, LaunchStatus::InFlight),
+    ];
+    let (w, h) = (display.width(), display.height());
+    // Tick the countdown every second (fast refresh); switch phase every 6s
+    // with a clean clear+draw so each layout/badge gets airtime.
+    let mut cur = 0usize;
+    display.show(&r.frame(&cycle[0], chrono::Utc::now(), w, h));
+    let mut sec = 0u64;
+    loop {
+        oledlib::matrix::eink_renderer::sleep_to_next_second().await;
+        sec += 1;
+        let phase = (sec / 6) as usize % cycle.len();
+        let img = r.frame(&cycle[phase], chrono::Utc::now(), w, h);
+        if phase != cur {
+            cur = phase;
+            display.show(&img);
+        } else {
+            display.show_fast(&img);
+        }
+    }
+}
+
+async fn preview_eink_hass(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let f = || EinkHassFonts { body: fonts.join("04B_03B_.TTF") };
+    let disp = |mode: HassDisplayMode, alarm: Option<&str>| HassDisplay {
+        alarm_state: alarm.map(|s| s.to_string()),
+        mode,
+        ..HassDisplay::default()
+    };
+    // One renderer per mode so all three layouts (state/historical/graph) and
+    // the alarm badge get airtime.
+    let renderers = [
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::State, None), dims).await?,
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::Graph, None), dims).await?,
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::Historical, None), dims).await?,
+        EinkHassMatrix::with_fonts_async(f(), disp(HassDisplayMode::State, Some("72.4")), dims).await?,
+    ];
+    let now = chrono::Utc::now();
+    let entity = HassEntity {
+        state: "72.4".into(),
+        unit: Some("F".into()),
+        label: "Kitchen Temp".into(),
+        last_changed: now - ChDuration::seconds(8),
+        history: (0..16)
+            .map(|i| HassSample {
+                at: now - ChDuration::minutes(16 - i),
+                value: 68.0 + (i as f64 * 0.4),
+            })
+            .collect(),
+    };
+    let mut i = 0usize;
+    loop {
+        let img = renderers[i % renderers.len()].frame(&entity, display.width(), display.height());
+        display.show(&img);
+        i = i.wrapping_add(1);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_flights(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkFlightsMatrix::with_fonts_async(EinkFlightsFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let f = |callsign: &str, dist: f32, bearing: f32, heading: f32| FlightInfo {
+        callsign: callsign.into(),
+        icao24: "a1b2c3".into(),
+        altitude_ft: 34_000,
+        on_ground: false,
+        distance_km: dist,
+        bearing_deg: bearing,
+        ground_speed_kt: Some(440),
+        heading_deg: Some(heading),
+        country: "United States".into(),
+    };
+    let nearby = vec![
+        f("UAL123", 8.0, 45.0, 270.0),
+        f("DAL456", 22.0, 200.0, 90.0),
+        f("SWA789", 41.0, 300.0, 180.0),
+        f("JBU221", 63.0, 120.0, 0.0),
+    ];
+    let busy = FlightSnapshot { count: nearby.len(), closest: Some(nearby[0].clone()), nearby, radius_km: 80.0 };
+    let empty = FlightSnapshot { count: 0, closest: None, nearby: vec![], radius_km: 80.0 };
+    let mut toggle = 0usize;
+    loop {
+        let data = if toggle % 3 == 2 { &empty } else { &busy };
+        toggle = toggle.wrapping_add(1);
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_stock_chart(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkStockChartMatrix::with_fonts_async(EinkStockChartFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let series = |n: usize, base: f64, slope: f64| {
+        HistorySeries::from_closes((0..n).map(|i| base + (i as f64 * slope) + ((i % 5) as f64 - 2.0)).collect())
+    };
+    let data = StockHistory {
+        api: StockApiSource::Yahoo,
+        symbol: "AAPL".into(),
+        current: 191.2,
+        previous_close: 190.0,
+        day: series(24, 188.0, 0.2),
+        month: series(30, 180.0, 0.5),
+        year: series(52, 150.0, 0.9),
+    };
+    loop {
+        let img = r.frame(&data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_sport(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkSportMatrix::with_fonts_async(EinkSportFonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let standings: Vec<StandingsEntry> = [
+        "Celtics", "76ers", "Knicks", "Bucks", "Heat", "Magic", "Pacers", "Cavaliers", "Bulls",
+        "Hawks", "Nets", "Raptors", "Hornets", "Pistons",
+    ]
+        .iter()
+        .enumerate()
+        .map(|(i, t)| StandingsEntry { position: i as u32 + 1, team_name: (*t).into() })
+        .collect();
+    let live = SportData {
+        api: SportApiSource::Espn,
+        sport: SportKind::Basketball,
+        team_name: "76ers".into(),
+        record: "41-21".into(),
+        next_game: Some(NextGame {
+            start: Local::now(),
+            status: GameStatus::InProgress,
+            home: TeamSide { name: "76ers".into(), abbreviation: "PHI".into(), logo_url: None, score: Some(88) },
+            away: TeamSide { name: "Celtics".into(), abbreviation: "BOS".into(), logo_url: None, score: Some(81) },
+            our_side: HomeOrAway::Home,
+        }),
+        standings,
+    };
+    let offseason = SportData {
+        api: SportApiSource::Espn,
+        sport: SportKind::Basketball,
+        team_name: "76ers".into(),
+        record: "—".into(),
+        next_game: None,
+        standings: vec![],
+    };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &offseason } else { &live };
+        toggle = !toggle;
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_golf(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkGolfMatrix::with_fonts_async(EinkGolfFonts { body: fonts.join("04B_03B_.TTF") }, dims)
+        .await?
+        .with_tour(GolfTour::Pga);
+    let board: Vec<LeaderboardEntry> = [
+        ("S. SCHEFFLER", "-12"), ("J. RAHM", "-9"), ("C. MORIKAWA", "-7"), ("J. SPIETH", "-5"),
+        ("P. CANTLAY", "-3"), ("X. SCHAUFFELE", "E"), ("R. MCILROY", "+1"), ("T. FINAU", "+4"),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (n, s))| LeaderboardEntry { position: i as u32 + 1, player_short: (*n).into(), score: (*s).into() })
+    .collect();
+    let live = GolfData { tour: GolfTour::Pga, event_name: "The Masters".into(), status: "Round 3".into(), leaderboard: board };
+    let offseason = GolfData { tour: GolfTour::Pga, event_name: "Next: Players Championship".into(), status: String::new(), leaderboard: vec![] };
+    let mut toggle = false;
+    loop {
+        let data = if toggle { &offseason } else { &live };
+        toggle = !toggle;
+        let img = r.frame(data, display.width(), display.height());
+        display.show(&img);
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+}
+
+async fn preview_eink_f1(display: &mut EinkDisplay, fonts: &Path) -> Result<(), String> {
+    let dims = (display.width(), display.height());
+    let r = EinkF1Matrix::with_fonts_async(EinkF1Fonts { body: fonts.join("04B_03B_.TTF") }, dims).await?;
+    let standings: Vec<DriverStanding> = [
+        ("VER", "Verstappen", 314.0), ("NOR", "Norris", 270.0), ("LEC", "Leclerc", 226.0),
+        ("PIA", "Piastri", 197.0), ("SAI", "Sainz", 184.0), ("HAM", "Hamilton", 150.0),
+    ]
+    .iter()
+    .enumerate()
+    .map(|(i, (c, n, p))| DriverStanding { position: i as u32 + 1, code: (*c).into(), family_name: (*n).into(), points: *p })
+    .collect();
+    // Rotate through a few circuits so the outlines can be eyeballed live, then
+    // show the off-season standings screen.
+    let circuits = [
+        ("Monaco Grand Prix", "Circuit de Monaco"),
+        ("Italian Grand Prix", "Autodromo Nazionale di Monza"),
+        ("Japanese Grand Prix", "Suzuka Circuit"),
+        ("Belgian Grand Prix", "Circuit de Spa-Francorchamps"),
+        ("Azerbaijan Grand Prix", "Baku City Circuit"),
+        ("United States Grand Prix", "Circuit of the Americas"),
+        ("Singapore Grand Prix", "Marina Bay Street Circuit"),
+        ("São Paulo Grand Prix", "Autódromo José Carlos Pace"),
+    ];
+    let offseason = F1Data { season: "2025".into(), next_race: None, standings: standings.clone() };
+    let mut i = 0usize;
+    loop {
+        let (name, circuit) = circuits[i % circuits.len()];
+        let in_season = F1Data {
+            season: "2025".into(),
+            next_race: Some(NextRace {
+                round: (i % circuits.len()) as u32 + 1,
+                name: name.into(),
+                circuit: circuit.into(),
+                start: Local::now() + ChDuration::days(3) + ChDuration::hours(4),
+            }),
+            standings: standings.clone(),
+        };
+        // Show each circuit, then the off-season screen between circuits.
+        for data in [&in_season, &offseason] {
+            let img = r.frame(data, Local::now(), display.width(), display.height());
+            display.show(&img);
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+        i += 1;
     }
 }
 
@@ -309,6 +772,8 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         magnitude: 6.2,
         title: "M 6.2 - OFF EAST COAST OF HONSHU, JAPAN".into(),
         origin: now,
+        lat: 38.3,
+        lon: 142.1,
         depth_km: 24.0,
         felt: Some(482),
     });
@@ -316,6 +781,8 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         magnitude: 4.7,
         title: "M 4.7 - 120km SW of San Francisco, CA".into(),
         origin: now,
+        lat: 37.0,
+        lon: -123.5,
         depth_km: 8.0,
         felt: Some(37),
     });
@@ -323,6 +790,8 @@ async fn preview_quake(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
         magnitude: 3.1,
         title: "M 3.1 - 14 km NE of Reykjavík, Iceland".into(),
         origin: now,
+        lat: 64.2,
+        lon: -21.6,
         depth_km: 5.0,
         felt: None,
     });
@@ -379,6 +848,7 @@ async fn preview_flights(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Str
         distance_km: dist,
         bearing_deg: bearing,
         ground_speed_kt: Some(440),
+        heading_deg: Some(bearing),
         country: "United States".into(),
     };
     let snap = |radius_km: f32, flights: Vec<FlightInfo>| FlightSnapshot {
@@ -568,8 +1038,10 @@ fn fake_weather() -> Weather {
         forecast: DayForecast {
             today_high: 74.0,
             today_low: 56.0,
-            sunrise: now - ChDuration::hours(6),
-            sunset: now + ChDuration::hours(8),
+            // Today's sunrise/sunset (relative to the real clock) so the sun/moon
+            // arc lands at the actual current time of day.
+            sunrise: Local::now().date_naive().and_hms_opt(6, 12, 0).unwrap().and_local_timezone(Local).single().unwrap(),
+            sunset: Local::now().date_naive().and_hms_opt(20, 45, 0).unwrap().and_local_timezone(Local).single().unwrap(),
         },
         hourly: (0..12)
             .map(|i| HourlyForecast {

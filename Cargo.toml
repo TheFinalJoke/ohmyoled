@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "ohmyoled"
-version = "3.6.2"
+version = "4.0.0"
 edition = "2021"
 default-run = "ohmyoled"
 
@@ -29,6 +29,11 @@ serde_yml = "0.0.12"
 toml = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
 async-trait = "0.1"
+# Full-screen TUI config builder (`-c`). ratatui re-exports its own crossterm,
+# and tui-input's default `ratatui-crossterm` feature binds to that same
+# re-export — so there's no separate crossterm dep and no version-skew footgun.
+ratatui = "0.30"
+tui-input = "0.15"
 sunrise = { version = "3", features = ["std"] }
 ohmyoled-matrix = { path = "crates/ohmyoled-matrix", default-features = false }
 
@@ -39,6 +44,10 @@ ohmyoled-matrix = { path = "crates/ohmyoled-matrix", default-features = false }
 # whose build script refuses to compile for non-Pi targets.
 default = ["hardware"]
 hardware = ["ohmyoled-matrix/hardware"]
+# E-paper (Waveshare B/W HAT) support. Off by default; enable for a Pi e-ink
+# build with `--features eink`. The e-ink terminal/dev path compiles without
+# this flag — the flag only adds the ARM-only SPI driver deps.
+eink = ["ohmyoled-matrix/eink"]
 
 [lib]
 name = "oledlib"
