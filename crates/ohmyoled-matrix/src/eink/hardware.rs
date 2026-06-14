@@ -82,17 +82,33 @@ impl OutputPin for NoCs {
 
 type EpdSpi = ExclusiveDevice<Spi, NoCs, Delay>;
 
+/// How many fast (partial) refreshes to run between full refreshes. Partial
+/// updates are quick and flash-free but accumulate ghosting; a periodic full
+/// refresh scrubs it. Lower = cleaner image, higher = more updates stay fast.
+const FULL_REFRESH_INTERVAL: u32 = 12;
+
 /// Hand-rolled driver for the Waveshare 7.5" V2 **B/W** panel (800×480).
 ///
 /// Talks to the controller directly over raw `rppal` SPI + GPIO, replicating
 /// the official `epd7in5_V2.py` command sequence. `rppal` asserts `CE0` per
 /// `write()`, so chip-select is handled implicitly; `DC` selects command (low)
 /// vs data (high).
+///
+/// Updates use the panel's **fast/partial** refresh ([`init_part`] +
+/// [`display_partial`]) so screen changes are quick and don't flash, with a
+/// periodic full refresh every [`FULL_REFRESH_INTERVAL`] updates to clear the
+/// ghosting partial refreshes leave behind.
 struct SevenIn5V2 {
     spi: Spi,
     rst: Out,
     dc: Out,
     busy: InputPin,
+    /// Partial refreshes since the last full one. Triggers a full refresh when
+    /// it reaches [`FULL_REFRESH_INTERVAL`].
+    partials_since_full: u32,
+    /// Whether the controller is currently in partial-update mode (`init_part`).
+    /// A full refresh resets this so the next update re-enters partial mode.
+    in_partial_mode: bool,
 }
 
 impl SevenIn5V2 {
@@ -102,7 +118,16 @@ impl SevenIn5V2 {
     const FRAME_BYTES: usize = (Self::WIDTH as usize / 8) * Self::HEIGHT as usize;
 
     fn new(spi: Spi, rst: Out, dc: Out, busy: InputPin) -> Result<Self, String> {
-        let mut p = Self { spi, rst, dc, busy };
+        let mut p = Self {
+            spi,
+            rst,
+            dc,
+            busy,
+            // Force the first update to be a full refresh: it scrubs whatever
+            // stale image the panel retained from a previous run.
+            partials_since_full: FULL_REFRESH_INTERVAL,
+            in_partial_mode: false,
+        };
         p.init()?;
         Ok(p)
     }
@@ -179,12 +204,25 @@ impl SevenIn5V2 {
         Ok(())
     }
 
-    /// Push one packed frame (1bpp, MSB-first, 1 = white) and refresh. Our
-    /// buffer is 1 = white, but the panel's new-frame buffer (0x13) is
-    /// 0 = white (see `clear`: writing 0x00 yields white), so 0x13 gets the
-    /// bitwise inverse. The previous-frame buffer (0x10) gets `packed` — the
-    /// inverse of 0x13 — so every pixel transitions for a clean full refresh.
-    fn display(&mut self, packed: &[u8]) -> Result<(), String> {
+    /// Lighter init for fast/partial updates — `epd7in5_V2.py` `init_part()`.
+    /// Powers on and loads the fast-update registers (`0xE0`, `0xE5`) instead of
+    /// the full booster/TRES/TCON setup. Required before [`display_partial`].
+    fn init_part(&mut self) -> Result<(), String> {
+        self.reset();
+        self.cmd_data(0x00, &[0x1F])?; // Panel setting
+        self.cmd(0x04)?; // Power on
+        sleep(Duration::from_millis(100));
+        self.wait_until_idle()?;
+        self.cmd_data(0xE0, &[0x02])?; // Cascade setting (fast mode)
+        self.cmd_data(0xE5, &[0x6E])?; // Force temperature (fast mode)
+        Ok(())
+    }
+
+    /// Full, ghost-free refresh. Our buffer is 1 = white, but the panel's
+    /// new-frame buffer (0x13) is 0 = white (see `clear`: writing 0x00 yields
+    /// white), so 0x13 gets the bitwise inverse. The previous-frame buffer
+    /// (0x10) gets `packed` — the inverse of 0x13 — so every pixel transitions.
+    fn display_full(&mut self, packed: &[u8]) -> Result<(), String> {
         let inverse: Vec<u8> = packed.iter().map(|b| !b).collect();
         self.cmd_data(0x10, packed)?; // previous frame
         self.cmd_data(0x13, &inverse)?; // new frame (0 = white)
@@ -193,8 +231,61 @@ impl SevenIn5V2 {
         self.wait_until_idle()
     }
 
-    /// Blank the panel to white. Mirrors `epd7in5_V2.py` `Clear()`.
+    /// Fast/partial full-screen refresh — `epd7in5_V2.py` `display_Partial()`
+    /// with the window set to the whole panel. Quick and flash-free, but ghosts
+    /// over many calls (scrubbed by the periodic full refresh in [`update`]).
+    /// Only `0x13` is written (the inverse of `packed`, matching `display_full`
+    /// polarity); no `0x10`.
+    fn display_partial(&mut self, packed: &[u8]) -> Result<(), String> {
+        let (xs, xe, ys, ye) = (0u32, Self::WIDTH, 0u32, Self::HEIGHT);
+        self.cmd_data(0x50, &[0xA9, 0x07])?; // VCOM/data interval (partial)
+        self.cmd(0x91)?; // enter partial mode
+        self.cmd_data(
+            0x90, // resolution/window: x_start, x_end-1, y_start, y_end-1, 0x01
+            &[
+                (xs >> 8) as u8,
+                (xs & 0xFF) as u8,
+                ((xe - 1) >> 8) as u8,
+                ((xe - 1) & 0xFF) as u8,
+                (ys >> 8) as u8,
+                (ys & 0xFF) as u8,
+                ((ye - 1) >> 8) as u8,
+                ((ye - 1) & 0xFF) as u8,
+                0x01,
+            ],
+        )?;
+        let inverse: Vec<u8> = packed.iter().map(|b| !b).collect();
+        self.cmd_data(0x13, &inverse)?; // new frame (0 = white)
+        self.cmd(0x12)?; // display refresh
+        sleep(Duration::from_millis(100));
+        self.wait_until_idle()
+    }
+
+    /// Push one packed frame. Uses fast/partial refresh, dropping to a full
+    /// refresh every [`FULL_REFRESH_INTERVAL`] updates to clear ghosting.
+    fn update(&mut self, packed: &[u8]) -> Result<(), String> {
+        if self.partials_since_full >= FULL_REFRESH_INTERVAL {
+            self.init()?; // restore full mode (also scrubs ghosting)
+            self.in_partial_mode = false;
+            self.display_full(packed)?;
+            self.partials_since_full = 0;
+            return Ok(());
+        }
+        if !self.in_partial_mode {
+            self.init_part()?;
+            self.in_partial_mode = true;
+        }
+        self.display_partial(packed)?;
+        self.partials_since_full += 1;
+        Ok(())
+    }
+
+    /// Blank the panel to white. Restores full mode first (partial mode leaves
+    /// fast-update registers set), then mirrors `epd7in5_V2.py` `Clear()`.
     fn clear(&mut self) -> Result<(), String> {
+        self.init()?;
+        self.in_partial_mode = false;
+        self.partials_since_full = 0;
         let n = Self::FRAME_BYTES;
         self.cmd_data(0x10, &vec![0xFF; n])?;
         self.cmd_data(0x13, &vec![0x00; n])?;
@@ -298,7 +389,7 @@ impl EinkBackend for EinkHardwareBackend {
             Panel::FourIn2 { spi, epd, delay } => epd
                 .update_and_display_frame(spi, packed, delay)
                 .map_err(|e| format!("{e:?}")),
-            Panel::SevenIn5V2(p) => p.display(packed),
+            Panel::SevenIn5V2(p) => p.update(packed),
         };
         if let Err(e) = r {
             log::error!("eink: frame update failed: {e}");
