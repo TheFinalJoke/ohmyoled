@@ -82,11 +82,6 @@ impl OutputPin for NoCs {
 
 type EpdSpi = ExclusiveDevice<Spi, NoCs, Delay>;
 
-/// How many fast (partial) refreshes to run between full refreshes. Partial
-/// updates are quick and flash-free but accumulate ghosting; a periodic full
-/// refresh scrubs it. Lower = cleaner image, higher = more updates stay fast.
-const FULL_REFRESH_INTERVAL: u32 = 12;
-
 /// Hand-rolled driver for the Waveshare 7.5" V2 **B/W** panel (800×480).
 ///
 /// Talks to the controller directly over raw `rppal` SPI + GPIO, replicating
@@ -95,19 +90,17 @@ const FULL_REFRESH_INTERVAL: u32 = 12;
 /// vs data (high).
 ///
 /// Updates use the panel's **fast/partial** refresh ([`init_part`] +
-/// [`display_partial`]) so screen changes are quick and don't flash, with a
-/// periodic full refresh every [`FULL_REFRESH_INTERVAL`] updates to clear the
-/// ghosting partial refreshes leave behind.
+/// [`display_partial`]) so screen changes are quick and never do the slow,
+/// flashy full-screen refresh. Each [`update`] clears to white then draws the
+/// new frame — both partial refreshes — so the previous frame's ghost is
+/// scrubbed without a full refresh.
 struct SevenIn5V2 {
     spi: Spi,
     rst: Out,
     dc: Out,
     busy: InputPin,
-    /// Partial refreshes since the last full one. Triggers a full refresh when
-    /// it reaches [`FULL_REFRESH_INTERVAL`].
-    partials_since_full: u32,
     /// Whether the controller is currently in partial-update mode (`init_part`).
-    /// A full refresh resets this so the next update re-enters partial mode.
+    /// [`clear`] re-enters full mode, so the next update re-arms partial mode.
     in_partial_mode: bool,
 }
 
@@ -123,11 +116,10 @@ impl SevenIn5V2 {
             rst,
             dc,
             busy,
-            // Force the first update to be a full refresh: it scrubs whatever
-            // stale image the panel retained from a previous run.
-            partials_since_full: FULL_REFRESH_INTERVAL,
             in_partial_mode: false,
         };
+        // Full power-on setup (resolution, VCOM, TCON). Updates then switch to
+        // partial mode; the first update's clear scrubs any retained image.
         p.init()?;
         Ok(p)
     }
@@ -261,37 +253,29 @@ impl SevenIn5V2 {
         self.wait_until_idle()
     }
 
-    /// Push one packed frame. Uses fast/partial refresh, dropping to a full
-    /// refresh every [`FULL_REFRESH_INTERVAL`] updates to clear ghosting.
+    /// Push one packed frame: clear to white, then draw it — both fast partial
+    /// refreshes. The white clear scrubs the previous frame's ghost without the
+    /// slow full-screen refresh.
     fn update(&mut self, packed: &[u8]) -> Result<(), String> {
-        if self.partials_since_full >= FULL_REFRESH_INTERVAL {
-            self.init()?; // restore full mode (also scrubs ghosting)
-            self.in_partial_mode = false;
-            self.display_full(packed)?;
-            self.partials_since_full = 0;
-            return Ok(());
-        }
         if !self.in_partial_mode {
             self.init_part()?;
             self.in_partial_mode = true;
         }
+        let white = vec![0xFF; Self::FRAME_BYTES];
+        self.display_partial(&white)?;
         self.display_partial(packed)?;
-        self.partials_since_full += 1;
         Ok(())
     }
 
-    /// Blank the panel to white. Restores full mode first (partial mode leaves
-    /// fast-update registers set), then mirrors `epd7in5_V2.py` `Clear()`.
+    /// Blank the panel to white with a clean full refresh. Restores full mode
+    /// first (partial mode leaves fast-update registers set). An all-white
+    /// frame through `display_full` is `epd7in5_V2.py` `Clear()` (0x10←0xFF,
+    /// 0x13←0x00). Used on shutdown for a ghost-free blank.
     fn clear(&mut self) -> Result<(), String> {
         self.init()?;
         self.in_partial_mode = false;
-        self.partials_since_full = 0;
-        let n = Self::FRAME_BYTES;
-        self.cmd_data(0x10, &vec![0xFF; n])?;
-        self.cmd_data(0x13, &vec![0x00; n])?;
-        self.cmd(0x12)?; // display refresh
-        sleep(Duration::from_millis(100));
-        self.wait_until_idle()
+        let white = vec![0xFF; Self::FRAME_BYTES];
+        self.display_full(&white)
     }
 }
 
