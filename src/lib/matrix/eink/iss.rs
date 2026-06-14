@@ -163,7 +163,7 @@ impl EinkRenderer for EinkIssMatrix {
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &IssState) -> Result<(), RenderError> {
         let img = self.frame(data, display.width(), display.height());
-        display.show(&img);
+        display.show_full(&img); // full refresh — the fine map stipple needs it
         // The station moves ~7.6 km/s, so refresh faster during a pass.
         let dwell = if data.overhead { 15 } else { 60 };
         tokio::time::sleep(Duration::from_secs(dwell)).await;

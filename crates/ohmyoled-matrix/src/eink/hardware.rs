@@ -283,6 +283,18 @@ impl SevenIn5V2 {
         self.display_partial(packed)
     }
 
+    /// Push one packed frame with a full, high-fidelity refresh — for detail-
+    /// dense static tiles (the world maps). Restores full mode first (partial
+    /// mode leaves the fast-update registers set), then does the crisp
+    /// dual-buffer refresh the fine stipple needs.
+    fn update_full(&mut self, packed: &[u8]) -> Result<(), String> {
+        if self.in_partial_mode {
+            self.init()?;
+            self.in_partial_mode = false;
+        }
+        self.display_full(packed)
+    }
+
     /// Blank the panel to white with a clean full refresh. Restores full mode
     /// first (partial mode leaves fast-update registers set). An all-white
     /// frame through `display_full` is `epd7in5_V2.py` `Clear()` (0x10←0xFF,
@@ -406,6 +418,18 @@ impl EinkBackend for EinkHardwareBackend {
         };
         if let Err(e) = r {
             log::error!("eink: fast frame update failed: {e}");
+        }
+    }
+
+    fn flush_full(&mut self, packed: &[u8], _width: u32, _height: u32) {
+        let r = match &mut self.panel {
+            Panel::FourIn2 { spi, epd, delay } => epd
+                .update_and_display_frame(spi, packed, delay)
+                .map_err(|e| format!("{e:?}")),
+            Panel::SevenIn5V2(p) => p.update_full(packed),
+        };
+        if let Err(e) = r {
+            log::error!("eink: full frame update failed: {e}");
         }
     }
 

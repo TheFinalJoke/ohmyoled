@@ -219,7 +219,7 @@ impl EinkRenderer for EinkQuakeMatrix {
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &QuakeStatus) -> Result<(), RenderError> {
         let img = self.frame(data, display.width(), display.height());
-        display.show(&img);
+        display.show_full(&img); // full refresh — the fine map stipple needs it
         tokio::time::sleep(self.cycle_duration()).await;
         Ok(())
     }

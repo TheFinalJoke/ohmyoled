@@ -162,6 +162,13 @@ pub trait EinkBackend: Send {
     fn flush_fast(&mut self, packed: &[u8], width: u32, height: u32) {
         self.flush(packed, width, height);
     }
+    /// Push a frame with a full (slow, high-fidelity) refresh — for static,
+    /// detail-dense tiles (the world maps) whose fine stipple the fast partial
+    /// refresh can't fully develop on the panel. The default delegates to
+    /// [`flush`].
+    fn flush_full(&mut self, packed: &[u8], width: u32, height: u32) {
+        self.flush(packed, width, height);
+    }
     /// Blank the panel to white.
     fn clear(&mut self);
 }
@@ -301,6 +308,18 @@ impl EinkDisplay {
             return;
         }
         self.backend.flush_fast(&packed, self.width, self.height);
+        self.last_packed = Some(packed);
+    }
+
+    /// Push a frame with a full, high-fidelity refresh — for static, detail-dense
+    /// tiles (the world maps) whose fine stipple the fast partial refresh can't
+    /// fully render on the panel. Slower and flashes once, but crisp.
+    pub fn show_full(&mut self, img: &RgbImage) {
+        let packed = pack_1bpp(img, self.width, self.height, self.threshold);
+        if self.last_packed.as_deref() == Some(packed.as_slice()) {
+            return;
+        }
+        self.backend.flush_full(&packed, self.width, self.height);
         self.last_packed = Some(packed);
     }
 
