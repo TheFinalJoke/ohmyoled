@@ -21,7 +21,7 @@
 
 use std::path::{Path, PathBuf};
 
-use chrono::{Duration as ChDuration, Local, TimeZone};
+use chrono::{Duration as ChDuration, Local, TimeZone, Timelike};
 use ohmyoled_matrix::{Color, EinkDisplay, RGBMatrix};
 
 use oledlib::api::f1::{DriverStanding, F1Data, NextRace};
@@ -165,10 +165,13 @@ async fn preview_eink_time(display: &mut EinkDisplay, fonts: &Path) -> Result<()
         dims,
     )
     .await?;
+    // Clean baseline, then tick every second with the fast (no-flash) refresh —
+    // mirrors EinkTimeMatrix::render so the preview shows real tick behavior.
+    display.show(&r.frame(Local::now(), display.width(), display.height()));
     loop {
-        let img = r.frame(Local::now(), display.width(), display.height());
-        display.show(&img);
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let until = 1_000_000_000 - Local::now().nanosecond().min(999_999_999);
+        tokio::time::sleep(std::time::Duration::from_nanos(until as u64)).await;
+        display.show_fast(&r.frame(Local::now(), display.width(), display.height()));
     }
 }
 

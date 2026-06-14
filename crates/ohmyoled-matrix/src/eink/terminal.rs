@@ -203,14 +203,13 @@ impl EinkTerminalBackend {
             .as_deref()
             .unwrap_or_else(|| self.fallback_png.to_str().unwrap_or("ohmyoled-eink-preview.png"))
     }
-}
 
-impl EinkBackend for EinkTerminalBackend {
-    fn flush(&mut self, packed: &[u8], width: u32, height: u32) {
+    /// Paint one settled frame: write the PNG, emit to the terminal, and log the
+    /// one-time hint. Shared by [`EinkBackend::flush`] and
+    /// [`EinkBackend::flush_fast`]; the only difference between them is whether
+    /// the emulated full-refresh flash plays first.
+    fn paint(&mut self, packed: &[u8], width: u32, height: u32) {
         let stride = width.div_ceil(8) as usize;
-        if self.emulate {
-            self.play_full_refresh(stride, width, height);
-        }
         match self.mode {
             RenderMode::Sixel => {
                 let (tw, th) = sixel_target(width, height);
@@ -264,6 +263,23 @@ impl EinkBackend for EinkTerminalBackend {
                 emu
             );
         }
+    }
+}
+
+impl EinkBackend for EinkTerminalBackend {
+    fn flush(&mut self, packed: &[u8], width: u32, height: u32) {
+        if self.emulate {
+            let stride = width.div_ceil(8) as usize;
+            self.play_full_refresh(stride, width, height);
+        }
+        self.paint(packed, width, height);
+    }
+
+    fn flush_fast(&mut self, packed: &[u8], width: u32, height: u32) {
+        // Fast/partial update: paint the new frame with no emulated
+        // full-refresh flash, matching the hardware fast path (a ticking clock
+        // must not strobe every second).
+        self.paint(packed, width, height);
     }
 
     fn clear(&mut self) {
