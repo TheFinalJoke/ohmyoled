@@ -3,12 +3,12 @@
 //!
 //! The 4.2" panel is driven via the `epd-waveshare` crate. The 7.5" V2 panel is
 //! driven by a **hand-rolled** controller sequence ([`SevenIn5V2`]) rather than
-//! `epd-waveshare`, because that crate's `epd7in5_v2` init is modeled on the
-//! 3-color B/C panel (it sends a `BoosterSoftStart`, a `0x17` `PowerSetting`
-//! byte, and a `PllControl` the B/W panel doesn't take). On a B/W 7.5" V2 that
-//! sequence never completes `PowerOn`, so BUSY never releases and init hangs
-//! forever. We instead replicate the official `epd7in5_V2.py` B/W sequence,
-//! which the panel acknowledges correctly. See caemor/epd-waveshare#70.
+//! `epd-waveshare`, because that crate's `epd7in5_v2` power-on bytes are wrong
+//! for the B/W panel (`PowerSetting 0x07,0x17,0x3F,0x3F` + a stray `PllControl`,
+//! vs the panel's required `0x07,0x07,0x28,0x17` with no PLL). With the wrong
+//! values `PowerOn` never completes, BUSY never releases, and init hangs forever
+//! (caemor/epd-waveshare#70). We instead replicate the official `epd7in5_V2.py`
+//! B/W sequence byte-for-byte, which the panel acknowledges correctly.
 //!
 //! Compiled only when the `eink` feature is enabled **and** we're building for
 //! an ARM target (`rppal` is Pi-only). On any other target the dispatcher in
@@ -154,35 +154,46 @@ impl SevenIn5V2 {
         Ok(())
     }
 
-    /// Power-on + panel configuration for the B/W 7.5" V2 — the exact sequence
-    /// from `waveshareteam/e-Paper` `epd7in5_V2.py`. Deliberately omits the
-    /// 3-color `BoosterSoftStart`/`PllControl` that hang this panel.
+    /// Power-on + panel configuration for the B/W 7.5" V2 — the exact byte
+    /// sequence from `waveshareteam/e-Paper` `epd7in5_V2.py` `init()`. The
+    /// `BoosterSoftStart` (0x06) and the `0x28,0x17` `PowerSetting` tail are
+    /// load-bearing: without them PowerOn never completes and BUSY hangs.
     fn init(&mut self) -> Result<(), String> {
         self.reset();
-        self.cmd_data(0x01, &[0x07, 0x07, 0x3F, 0x3F])?; // POWER SETTING
-        self.cmd(0x04)?; // POWER ON
+        self.cmd_data(0x06, &[0x17, 0x17, 0x28, 0x17])?; // Booster soft start
+        self.cmd_data(0x01, &[0x07, 0x07, 0x28, 0x17])?; // Power setting
+        self.cmd(0x04)?; // Power on
         sleep(Duration::from_millis(100));
         self.wait_until_idle()?;
-        self.cmd_data(0x00, &[0x1F])?; // PANEL SETTING (KW, no rotate)
+        self.cmd_data(0x00, &[0x1F])?; // Panel setting (KW, no rotate)
         self.cmd_data(0x61, &[0x03, 0x20, 0x01, 0xE0])?; // TRES: 800×480
-        self.cmd_data(0x15, &[0x00])?; // DUAL SPI off
+        self.cmd_data(0x15, &[0x00])?; // Dual SPI off
         self.cmd_data(0x50, &[0x10, 0x07])?; // VCOM + data interval
         self.cmd_data(0x60, &[0x22])?; // TCON
         Ok(())
     }
 
-    /// Push one packed frame (1bpp, MSB-first, 1 = white) and refresh.
+    /// Push one packed frame (1bpp, MSB-first, 1 = white) and refresh. Mirrors
+    /// `epd7in5_V2.py` `display()`: the previous-frame buffer (0x10) gets the
+    /// bitwise inverse and the new-frame buffer (0x13) gets the image, so every
+    /// pixel transitions for a clean full refresh.
     fn display(&mut self, packed: &[u8]) -> Result<(), String> {
-        self.cmd_data(0x13, packed)?; // DATA_START_TRANSMISSION_2 (new frame)
-        self.cmd(0x12)?; // DISPLAY_REFRESH
+        let inverse: Vec<u8> = packed.iter().map(|b| !b).collect();
+        self.cmd_data(0x10, &inverse)?; // previous frame
+        self.cmd_data(0x13, packed)?; // new frame
+        self.cmd(0x12)?; // display refresh
         sleep(Duration::from_millis(100));
         self.wait_until_idle()
     }
 
-    /// Blank the panel to white (all 1 bits).
+    /// Blank the panel to white. Mirrors `epd7in5_V2.py` `Clear()`.
     fn clear(&mut self) -> Result<(), String> {
-        let white = vec![0xFF; Self::FRAME_BYTES];
-        self.display(&white)
+        let n = Self::FRAME_BYTES;
+        self.cmd_data(0x10, &vec![0xFF; n])?;
+        self.cmd_data(0x13, &vec![0x00; n])?;
+        self.cmd(0x12)?; // display refresh
+        sleep(Duration::from_millis(100));
+        self.wait_until_idle()
     }
 }
 
