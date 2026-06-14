@@ -118,20 +118,37 @@ fn build_eink_display(cfg: &registry::EinkRegistryConfig, dev: bool) -> EinkDisp
     }
 }
 
-// Async-signal-safe SIGINT handler.
-// Writes a message via raw libc::write, then calls libc::_exit to bypass
-// the tokio runtime's shutdown path so in-flight HTTP fetches don't panic.
-extern "C" fn sigint_handler(_: std::os::raw::c_int) {
+// Async-signal-safe SIGINT/SIGTERM handler.
+// Writes a message via raw libc::write, then sets the shutdown flag. When an
+// e-ink panel is live, returns so the e-ink scheduler can blank the panel on
+// its own thread before exiting (e-paper retains its last image after
+// power-off — the LED panel doesn't, so it has no such need). Otherwise calls
+// libc::_exit to bypass the tokio runtime's shutdown path so in-flight HTTP
+// fetches don't panic.
+extern "C" fn signal_handler(sig: std::os::raw::c_int) {
+    use std::sync::atomic::Ordering;
     unsafe {
-        let msg = b"\nInterrupted\n";
+        let msg: &[u8] = if sig == libc::SIGTERM {
+            b"\nTerminating\n"
+        } else {
+            b"\nInterrupted\n"
+        };
         libc::write(libc::STDERR_FILENO, msg.as_ptr() as *const _, msg.len());
-        libc::_exit(130);
     }
+    scheduler::SHUTDOWN.store(true, Ordering::SeqCst);
+    // Defer to the e-ink scheduler's clear-and-exit when a panel is active; it
+    // owns the display and runs the (slow) SPI clear off the signal handler.
+    if scheduler::EINK_ACTIVE.load(Ordering::SeqCst) {
+        return;
+    }
+    let code = if sig == libc::SIGTERM { 143 } else { 130 };
+    unsafe { libc::_exit(code) };
 }
 
-fn install_sigint_handler() {
+fn install_signal_handlers() {
     unsafe {
-        libc::signal(libc::SIGINT, sigint_handler as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGINT, signal_handler as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, signal_handler as *const () as libc::sighandler_t);
     }
 }
 
@@ -208,7 +225,7 @@ async fn main() {
     // config loading entirely so it works on a fresh clone with no setup.
     if let Some(name) = matches.get_one::<String>("preview") {
         let dev = std::env::var("DEV").is_ok();
-        install_sigint_handler();
+        install_signal_handlers();
         // `--preview eink` (or `eink:weather` / `eink_weather`) drives the
         // e-paper display instead of the LED matrix. Defaults to the weather
         // screen. Backend follows OHMYOLED_EINK_MODE (terminal off-Pi).
@@ -321,7 +338,7 @@ async fn main() {
             std::process::exit(34);
         });
     let dev = std::env::var("DEV").is_ok();
-    install_sigint_handler();
+    install_signal_handlers();
 
     // The LED matrix and the e-paper display are independent outputs that can
     // run at the same time (they're separate physical panels). `eink.enabled`
