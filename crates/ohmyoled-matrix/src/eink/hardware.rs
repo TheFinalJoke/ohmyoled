@@ -17,9 +17,10 @@
 //! # Pin mapping
 //!
 //! Uses the standard Waveshare e-Paper HAT wiring on SPI0:
-//! `RST=GPIO17, DC=GPIO25, BUSY=GPIO24`, chip-select on `CE0` (driven by
-//! `rppal` via `SlaveSelect::Ss0`). The HAT's Interface Config switch must be
-//! **0 (4-line SPI)** and Display Config **A**.
+//! `RST=GPIO17, DC=GPIO25, BUSY=GPIO24, PWR=GPIO18`, chip-select on `CE0`
+//! (driven by `rppal` via `SlaveSelect::Ss0`). `PWR` is the rev2.2+ HAT's
+//! power-enable and must be driven HIGH or the panel never powers on. The HAT's
+//! Interface Config switch must be **0 (4-line SPI)** and Display Config **A**.
 //!
 //! # On-hardware verification
 //!
@@ -48,6 +49,11 @@ const SPI_CLOCK_HZ: u32 = 4_000_000;
 const PIN_RST: u8 = 17;
 const PIN_DC: u8 = 25;
 const PIN_BUSY: u8 = 24;
+/// Power-enable pin on the rev2.2+ e-Paper Driver HAT. `epdconfig.py`'s
+/// `module_init()` drives this HIGH to power the panel; without it the
+/// controller never powers on and BUSY never releases. Held high for the
+/// backend's lifetime (rppal resets pins to input on drop, cutting power).
+const PIN_PWR: u8 = 18;
 
 /// Upper bound on a single BUSY wait. A full 7.5" refresh takes a few seconds;
 /// 30 s leaves generous headroom while still bailing out (rather than spinning
@@ -214,6 +220,10 @@ enum Panel {
 /// `Err` path in [`Self::init`].
 pub struct EinkHardwareBackend {
     panel: Panel,
+    /// Power-enable pin (GPIO18), held HIGH for the backend's lifetime. Kept as
+    /// a field purely to own the pin — dropping it would reset GPIO18 and cut
+    /// panel power. Underscore-prefixed because it's never read after init.
+    _pwr: Out,
 }
 
 impl EinkHardwareBackend {
@@ -223,6 +233,15 @@ impl EinkHardwareBackend {
         let model = options.model.to_lowercase().replace(['-', '.', ' '], "_");
 
         let gpio = Gpio::new().map_err(|e| format!("gpio open failed: {e}"))?;
+        // Power the panel first: the rev2.2+ HAT gates panel power through
+        // GPIO18, and the controller won't respond (BUSY stays low) until it's
+        // high. Mirrors epdconfig.py module_init(). Held for the lifetime below.
+        let mut pwr = gpio
+            .get(PIN_PWR)
+            .map_err(|e| format!("gpio {PIN_PWR} (PWR): {e}"))?
+            .into_output();
+        pwr.set_high();
+        sleep(Duration::from_millis(10));
         let rst = gpio
             .get(PIN_RST)
             .map_err(|e| format!("gpio {PIN_RST} (RST): {e}"))?
@@ -266,7 +285,7 @@ impl EinkHardwareBackend {
             }
         };
 
-        Ok(Self { panel })
+        Ok(Self { panel, _pwr: pwr })
     }
 }
 
