@@ -39,3 +39,13 @@ pub trait EinkRenderer: Send {
         data: &Self::Data,
     ) -> Result<(), RenderError>;
 }
+
+/// Sleep until the next whole-second boundary. Per-second tick renderers (the
+/// clock, the launch countdown) call this between fast refreshes so their
+/// updates stay aligned to the wall clock even as the panel refresh consumes
+/// part of each second.
+pub async fn sleep_to_next_second() {
+    use chrono::Timelike;
+    let ns = chrono::Local::now().nanosecond().min(999_999_999);
+    tokio::time::sleep(Duration::from_nanos((1_000_000_000 - ns) as u64)).await;
+}

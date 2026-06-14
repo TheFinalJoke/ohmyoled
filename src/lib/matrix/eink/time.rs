@@ -28,7 +28,7 @@
 //! ```
 
 use crate::matrix::eink::layout::{center_text, fill_rect, scaled_px};
-use crate::matrix::eink_renderer::EinkRenderer;
+use crate::matrix::eink_renderer::{sleep_to_next_second, EinkRenderer};
 use crate::matrix::error::RenderError;
 use crate::matrix::time::{TimeFormat, TimeSnapshot};
 use async_trait::async_trait;
@@ -246,14 +246,6 @@ impl EinkRenderer for EinkTimeMatrix {
         }
         Ok(())
     }
-}
-
-/// Sleep until the next whole-second boundary, so ticks stay aligned to the
-/// wall clock even as the panel refresh consumes part of each second.
-async fn sleep_to_next_second() {
-    let ns = Local::now().nanosecond().min(999_999_999);
-    let until = 1_000_000_000 - ns;
-    tokio::time::sleep(Duration::from_nanos(until as u64)).await;
 }
 
 #[cfg(test)]

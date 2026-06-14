@@ -343,12 +343,23 @@ async fn preview_eink_launch(display: &mut EinkDisplay, fonts: &Path) -> Result<
         l(42, LaunchStatus::Go),
         l(-30, LaunchStatus::InFlight),
     ];
-    let mut i = 0usize;
+    let (w, h) = (display.width(), display.height());
+    // Tick the countdown every second (fast refresh); switch phase every 6s
+    // with a clean clear+draw so each layout/badge gets airtime.
+    let mut cur = 0usize;
+    display.show(&r.frame(&cycle[0], chrono::Utc::now(), w, h));
+    let mut sec = 0u64;
     loop {
-        let img = r.frame(&cycle[i % cycle.len()], chrono::Utc::now(), display.width(), display.height());
-        display.show(&img);
-        i = i.wrapping_add(1);
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        oledlib::matrix::eink_renderer::sleep_to_next_second().await;
+        sec += 1;
+        let phase = (sec / 6) as usize % cycle.len();
+        let img = r.frame(&cycle[phase], chrono::Utc::now(), w, h);
+        if phase != cur {
+            cur = phase;
+            display.show(&img);
+        } else {
+            display.show_fast(&img);
+        }
     }
 }
 

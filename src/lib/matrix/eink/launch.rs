@@ -23,7 +23,7 @@ use crate::api::launch::model::{LaunchStatus, UpcomingLaunch};
 use crate::matrix::eink::layout::{
     badge, badge_width, center_text, fill_rect, fit_text, footer, header_band, margin, rect, scaled_px,
 };
-use crate::matrix::eink_renderer::EinkRenderer;
+use crate::matrix::eink_renderer::{sleep_to_next_second, EinkRenderer};
 use crate::matrix::error::RenderError;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -31,7 +31,7 @@ use image::RgbImage;
 use ohmyoled_matrix::graphics::{draw_circle, draw_line, draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const FONT_DIR: &str = "/usr/share/fonts";
 
@@ -244,15 +244,16 @@ impl EinkRenderer for EinkLaunchMatrix {
     }
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &UpcomingLaunch) -> Result<(), RenderError> {
-        let now = Utc::now();
-        let img = self.frame(data, now, display.width(), display.height());
-        display.show(&img);
-        // Tick faster through the final minute / liftoff.
-        let dwell = match phase_of(data, now) {
-            Phase::Imminent | Phase::Liftoff => 15,
-            _ => 60,
-        };
-        tokio::time::sleep(Duration::from_secs(dwell)).await;
+        let (w, h) = (display.width(), display.height());
+        // Clean baseline, then tick the countdown's seconds with the fast
+        // (no-flash) partial refresh — the SEC field counts down smoothly
+        // instead of jumping by the dwell interval.
+        display.show(&self.frame(data, Utc::now(), w, h));
+        let deadline = Instant::now() + self.cycle_duration();
+        while Instant::now() < deadline {
+            sleep_to_next_second().await;
+            display.show_fast(&self.frame(data, Utc::now(), w, h));
+        }
         Ok(())
     }
 }
