@@ -65,6 +65,14 @@ const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 /// controller latches data across chunks, matching Waveshare's `send_data2`.
 const SPI_CHUNK: usize = 4096;
 
+/// How many fast/partial refreshes to allow before forcing a full-refresh
+/// deep-clean. Partial refreshes don't fully drive the pixels, so charge and
+/// ghosting accumulate; routing every Nth tile update through a full refresh
+/// resets the panel so the image never fades. Counted across tile changes (the
+/// per-second clock tick increments it but never triggers the clean mid-dwell,
+/// so a ticking tile doesn't flash).
+const FULL_REFRESH_EVERY: u32 = 12;
+
 /// No-op chip-select for `embedded-hal-bus`: `rppal` drives the real `CE0`
 /// line per transfer, so the `SpiDevice` abstraction's CS toggling is inert.
 struct NoCs;
@@ -90,10 +98,12 @@ type EpdSpi = ExclusiveDevice<Spi, NoCs, Delay>;
 /// vs data (high).
 ///
 /// Updates use the panel's **fast/partial** refresh ([`init_part`] +
-/// [`display_partial`]) so screen changes are quick and never do the slow,
-/// flashy full-screen refresh. Each [`update`] clears to white then draws the
-/// new frame — both partial refreshes — so the previous frame's ghost is
-/// scrubbed without a full refresh.
+/// [`display_partial`]) so screen changes are quick. Each [`update`] clears to
+/// white then draws the new frame — both partial refreshes — so the previous
+/// frame's ghost is scrubbed. Partial refreshes don't fully drive the pixels,
+/// though, so every [`FULL_REFRESH_EVERY`] updates one is promoted to a full
+/// refresh ([`update_full`]) to reset accumulated ghosting before it fades the
+/// image.
 struct SevenIn5V2 {
     spi: Spi,
     rst: Out,
@@ -102,6 +112,10 @@ struct SevenIn5V2 {
     /// Whether the controller is currently in partial-update mode (`init_part`).
     /// [`clear`] re-enters full mode, so the next update re-arms partial mode.
     in_partial_mode: bool,
+    /// Fast/partial refreshes since the last full refresh. Drives the periodic
+    /// [`FULL_REFRESH_EVERY`] deep-clean so accumulated ghosting never fades the
+    /// image. Reset by any full refresh ([`update_full`]/[`clear`]).
+    partial_since_full: u32,
 }
 
 impl SevenIn5V2 {
@@ -117,6 +131,7 @@ impl SevenIn5V2 {
             dc,
             busy,
             in_partial_mode: false,
+            partial_since_full: 0,
         };
         // Full power-on setup (resolution, VCOM, TCON). Updates then switch to
         // partial mode; the first update's clear scrubs any retained image.
@@ -261,6 +276,12 @@ impl SevenIn5V2 {
     /// refreshes. The white clear scrubs the previous frame's ghost without the
     /// slow full-screen refresh.
     fn update(&mut self, packed: &[u8]) -> Result<(), String> {
+        // Periodic deep-clean: partial refreshes accumulate ghosting and fade,
+        // so every FULL_REFRESH_EVERY tile updates we route through a full
+        // refresh (which resets the counter) instead of the fast partial path.
+        if self.partial_since_full >= FULL_REFRESH_EVERY {
+            return self.update_full(packed);
+        }
         if !self.in_partial_mode {
             self.init_part()?;
             self.in_partial_mode = true;
@@ -268,6 +289,7 @@ impl SevenIn5V2 {
         let white = vec![0xFF; Self::FRAME_BYTES];
         self.display_partial(&white)?;
         self.display_partial(packed)?;
+        self.partial_since_full += 1;
         Ok(())
     }
 
@@ -280,6 +302,11 @@ impl SevenIn5V2 {
             self.init_part()?;
             self.in_partial_mode = true;
         }
+        // Count toward the deep-clean budget but never trigger it here: a
+        // ticking tile (clock, countdown) calls this every second and must not
+        // flash a full refresh mid-dwell. The accumulated count is paid off by
+        // the next per-tile `update`, which de-ghosts the ticking tile's trail.
+        self.partial_since_full = self.partial_since_full.saturating_add(1);
         self.display_partial(packed)
     }
 
@@ -292,7 +319,15 @@ impl SevenIn5V2 {
             self.init()?;
             self.in_partial_mode = false;
         }
-        self.display_full(packed)
+        // Clear to white first so the fine stipple develops on a clean substrate
+        // — a single transition pass can leave residual ghosting on detail-dense
+        // frames, which is exactly where the fade shows worst (the world maps).
+        let white = vec![0xFF; Self::FRAME_BYTES];
+        self.display_full(&white)?;
+        self.display_full(packed)?;
+        // A full refresh resets the panel; the ghosting budget starts over.
+        self.partial_since_full = 0;
+        Ok(())
     }
 
     /// Blank the panel to white with a clean full refresh. Restores full mode
@@ -302,6 +337,7 @@ impl SevenIn5V2 {
     fn clear(&mut self) -> Result<(), String> {
         self.init()?;
         self.in_partial_mode = false;
+        self.partial_since_full = 0;
         let white = vec![0xFF; Self::FRAME_BYTES];
         self.display_full(&white)
     }

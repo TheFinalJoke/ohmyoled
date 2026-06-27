@@ -477,6 +477,7 @@ async fn preview_eink_sport(display: &mut EinkDisplay, fonts: &Path) -> Result<(
             home: TeamSide { name: "76ers".into(), abbreviation: "PHI".into(), logo_url: None, score: Some(88) },
             away: TeamSide { name: "Celtics".into(), abbreviation: "BOS".into(), logo_url: None, score: Some(81) },
             our_side: HomeOrAway::Home,
+            playoff_note: Some("EAST 1ST ROUND - Game 5 · Series tied 2-2".into()),
         }),
         standings,
     };
@@ -675,6 +676,7 @@ async fn preview_sport(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
                 score: Some(100),
             },
             our_side: HomeOrAway::Home,
+            playoff_note: None,
         }),
         standings: (1..=5)
             .map(|i| StandingsEntry {

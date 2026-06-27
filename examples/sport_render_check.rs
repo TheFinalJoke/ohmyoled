@@ -53,6 +53,7 @@ fn main() {
                 score: Some(100),
             },
             our_side: HomeOrAway::Home,
+            playoff_note: None,
         }),
         standings: (1..=5)
             .map(|i| StandingsEntry {
