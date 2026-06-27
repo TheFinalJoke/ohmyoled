@@ -37,7 +37,9 @@ use crate::matrix::error::RenderError;
 use async_trait::async_trait;
 use image::imageops::FilterType;
 use image::RgbImage;
-use std::collections::HashMap;
+use chrono::Local;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use ohmyoled_matrix::graphics::{draw_text, Font};
 use ohmyoled_matrix::{Color, EinkDisplay};
 use std::path::{Path, PathBuf};
@@ -67,9 +69,16 @@ pub struct EinkSportMatrix {
     score: Font,
     status: Font,
     row: Font,
-    /// Fetched + resized team logos, keyed by team name. Populated lazily in
-    /// `render`; `frame` draws from it (abbreviation box on a miss).
-    logo_cache: HashMap<String, RgbImage>,
+    /// Fetched + resized team logos, keyed by team name. Populated by a
+    /// background task spawned from `render` (never on the render path); `frame`
+    /// draws from it (abbreviation box on a miss). Shared (`Arc<Mutex<…>>`) so
+    /// the spawned fetch can insert without blocking the display. A `std::Mutex`
+    /// is fine here — the guard is only ever held for a `get`/`insert`, never
+    /// across an `.await` — and `frame` is sync so it can't await a tokio lock.
+    logo_cache: Arc<Mutex<HashMap<String, RgbImage>>>,
+    /// Team names with a logo fetch currently in flight, so at most one task is
+    /// spawned per team even while the fetch is still pending.
+    logo_inflight: Arc<Mutex<HashSet<String>>>,
 }
 
 impl EinkSportMatrix {
@@ -90,23 +99,37 @@ impl EinkSportMatrix {
             score: Font::load_ttf(&paths.body, scaled_px(96.0, h))?,
             status: Font::load_ttf(&paths.body, scaled_px(26.0, h))?,
             row: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
-            logo_cache: HashMap::new(),
+            logo_cache: Arc::new(Mutex::new(HashMap::new())),
+            logo_inflight: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
-    /// Fetch + decode + resize a team's logo into the cache (idempotent). A
-    /// miss or failure leaves the renderer to draw the abbreviation box.
-    async fn ensure_logo(&mut self, side: &TeamSide) {
-        if self.logo_cache.contains_key(&side.name) {
+    /// Kick off a background fetch of a team's logo into the shared cache.
+    /// Returns immediately — never blocks the render path on the network. At
+    /// most one task is spawned per team (in-flight guard); a miss or failure
+    /// just leaves `frame` to draw the abbreviation box until the logo lands.
+    fn prefetch_logo(&self, side: &TeamSide) {
+        let Some(url) = side.logo_url.clone() else { return };
+        let name = side.name.clone();
+        // Already cached → nothing to do.
+        if self.logo_cache.lock().unwrap().contains_key(&name) {
             return;
         }
-        let Some(url) = side.logo_url.clone() else { return };
-        match fetch_logo(&url).await {
-            Ok(logo) => {
-                self.logo_cache.insert(side.name.clone(), logo);
-            }
-            Err(e) => log::warn!("eink sport: logo fetch failed for {} ({url}): {e}", side.name),
+        // Claim the in-flight slot; bail if another task is already fetching it.
+        if !self.logo_inflight.lock().unwrap().insert(name.clone()) {
+            return;
         }
+        let cache = Arc::clone(&self.logo_cache);
+        let inflight = Arc::clone(&self.logo_inflight);
+        tokio::spawn(async move {
+            match fetch_logo(&url).await {
+                Ok(logo) => {
+                    cache.lock().unwrap().insert(name.clone(), logo);
+                }
+                Err(e) => log::warn!("eink sport: logo fetch failed for {name} ({url}): {e}"),
+            }
+            inflight.lock().unwrap().remove(&name);
+        });
     }
 
     pub async fn with_fonts_async(paths: EinkSportFonts, dims: (u32, u32)) -> Result<Self, String> {
@@ -128,7 +151,7 @@ impl EinkSportMatrix {
 
         let standings_top = if data.standings.is_empty() { hi } else { hi - hi * 50 / 100 };
 
-        match &data.next_game {
+        match data.current_game(Local::now()) {
             Some(game) => self.draw_scoreboard(&mut img, game, content_top, standings_top, fg),
             None => {
                 let label = if data.standings.is_empty() {
@@ -160,6 +183,13 @@ impl EinkSportMatrix {
         // Everything hangs off the band's vertical center so the scoreboard
         // fills the space rather than hugging the top.
         let score_cy = top + band_h / 2;
+
+        // Playoff context (round/game headline + series score) pinned to the top
+        // of the band. Absent in the regular season, so this is postseason-only.
+        if let Some(note) = &game.playoff_note {
+            let note = fit_text(&self.status, &note.to_uppercase(), wi - 2 * m);
+            center_text(img, &self.status, cx, top + self.status.ascent(), fg, &note);
+        }
 
         // Team crest (logo if fetched, else an abbreviation box) + name,
         // vertically centered as a unit on the score line.
@@ -205,8 +235,9 @@ impl EinkSportMatrix {
     /// box with the abbreviation.
     fn draw_crest(&self, img: &mut RgbImage, cx: i32, box_top: i32, box_w: i32, side: &TeamSide, fg: Color) {
         let bx = cx - box_w / 2;
-        if let Some(logo) = self.logo_cache.get(&side.name) {
-            draw_logo_silhouette(img, logo, bx, box_top, box_w, fg);
+        let cached = self.logo_cache.lock().unwrap().get(&side.name).cloned();
+        if let Some(logo) = cached {
+            draw_logo_silhouette(img, &logo, bx, box_top, box_w, fg);
         } else {
             rect(img, bx, box_top, box_w, box_w, fg);
             center_text(img, &self.abbr, cx, box_top + box_w / 2 + self.abbr.ascent() / 2, fg, &side.abbreviation);
@@ -277,11 +308,12 @@ impl EinkRenderer for EinkSportMatrix {
     }
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &SportData) -> Result<(), RenderError> {
-        // Fetch both teams' logos (cached) before composing.
-        if let Some(game) = &data.next_game {
-            let (home, away) = (game.home.clone(), game.away.clone());
-            self.ensure_logo(&home).await;
-            self.ensure_logo(&away).await;
+        // Kick off logo fetches in the background — never block the panel on
+        // the network. `frame` draws the abbreviation box until a logo lands.
+        // Only for a current game (off-season has no scoreboard to fill).
+        if let Some(game) = data.current_game(Local::now()) {
+            self.prefetch_logo(&game.home);
+            self.prefetch_logo(&game.away);
         }
         let img = self.frame(data, display.width(), display.height());
         display.show(&img);
@@ -290,10 +322,47 @@ impl EinkRenderer for EinkSportMatrix {
     }
 }
 
-/// HTTP fetch + decode + resize a logo to `LOGO_PX` square, composited onto a
-/// white background (so transparency reads as background for the silhouette).
+/// Square size every cached logo is normalized to.
+const LOGO_PX: u32 = 120;
+
+/// On-disk cache directory for processed logos. Honors `XDG_CACHE_HOME`, then
+/// `$HOME/.cache`, then `/tmp`. Team logos never change, so once a processed
+/// crest is written here it's reused across restarts with no network at all.
+fn logo_cache_dir() -> PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("ohmyoled").join("logos")
+}
+
+/// Stable cache path for a logo URL at the current size. `DefaultHasher::new()`
+/// is fixed-seed (not `RandomState`), so the name is deterministic across runs.
+fn logo_cache_path(url: &str) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut h);
+    LOGO_PX.hash(&mut h);
+    logo_cache_dir().join(format!("{:016x}.png", h.finish()))
+}
+
+/// Load a processed logo: disk cache first (static, so a hit means zero
+/// network), otherwise HTTP fetch → decode → resize → composite, then write it
+/// back to disk so every subsequent run (this team, forever) is a disk hit.
 async fn fetch_logo(url: &str) -> Result<RgbImage, String> {
-    const LOGO_PX: u32 = 120;
+    let path = logo_cache_path(url);
+
+    // Disk hit — reuse the already-processed crest, no network.
+    let read_path = path.clone();
+    if let Ok(Ok(img)) = tokio::task::spawn_blocking(move || {
+        image::open(&read_path).map(|i| i.to_rgb8())
+    })
+    .await
+    {
+        log::debug!("eink sport: logo disk-cache hit for {url}");
+        return Ok(img);
+    }
+
     let bytes = shared_client()
         .get(url)
         .send()
@@ -313,6 +382,16 @@ async fn fetch_logo(url: &str) -> Result<RgbImage, String> {
             let a = p[3] as f32 / 255.0;
             let blend = |c: u8| (c as f32 * a + 255.0 * (1.0 - a)).round() as u8;
             out.put_pixel(x, y, image::Rgb([blend(p[0]), blend(p[1]), blend(p[2])]));
+        }
+        // Persist the processed crest (best-effort — a cache write failure must
+        // never fail the render; we just re-fetch next time).
+        if let Some(dir) = path.parent() {
+            let saved = std::fs::create_dir_all(dir)
+                .map_err(|e| e.to_string())
+                .and_then(|_| out.save(&path).map_err(|e| e.to_string()));
+            if let Err(e) = saved {
+                log::debug!("eink sport: logo cache write failed ({}): {e}", path.display());
+            }
         }
         Ok(out)
     })
@@ -355,6 +434,7 @@ mod tests {
                 home: side("76ers", "PHI", Some(88)),
                 away: side("Celtics", "BOS", Some(81)),
                 our_side: HomeOrAway::Home,
+                playoff_note: Some("EAST 1ST ROUND - Game 5 · Series tied 2-2".into()),
             }),
             standings: standings(),
         }

@@ -169,7 +169,7 @@ impl Renderer for SportMatrix {
             return Ok(());
         }
 
-        if let Some(ng) = &data.next_game {
+        if let Some(ng) = data.current_game(Local::now()) {
             self.ensure_logo(&ng.home).await;
             self.ensure_logo(&ng.away).await;
         }
@@ -196,7 +196,9 @@ impl SportMatrix {
     /// Render one composed frame at the given scroll offset.
     pub fn draw_frame(&self, data: &SportData, xpos: i32) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
-        if let Some(ng) = &data.next_game {
+        // Only the *current* game gets a scoreboard — a stale ESPN `next_event`
+        // (weeks-old final / next-season opener) falls through to standings only.
+        if let Some(ng) = data.current_game(Local::now()) {
             self.draw_top(&mut img, ng, xpos);
             self.draw_middle(&mut img, ng);
         }
@@ -281,7 +283,7 @@ impl SportMatrix {
         let font = &self.body_font;
         let baseline = top_to_baseline(25, font.ascent());
 
-        let text = if data.standings.is_empty() {
+        let standings_text = if data.standings.is_empty() {
             format!("{} ({}) {}", data.team_name, data.record, data.sport.display_name())
         } else {
             let mut parts: Vec<String> = data
@@ -291,6 +293,13 @@ impl SportMatrix {
                 .collect();
             parts.push(format!("({})", data.record));
             parts.join("  ")
+        };
+
+        // In the postseason, lead the marquee with the playoff round/series note
+        // (no spare rows on a 64×32 panel, so it shares the bottom scroll).
+        let text = match data.current_game(Local::now()).and_then(|g| g.playoff_note.as_deref()) {
+            Some(note) => format!("{note}  ·  {standings_text}"),
+            None => standings_text,
         };
 
         // Text width ≈ 4px/char for 04B_03B; loop scroll modulo total width.
@@ -452,7 +461,6 @@ fn decode_and_resize(bytes: &[u8]) -> Result<RgbImage, String> {
 mod tests {
     use super::*;
     use crate::api::sport::model::{SportApiSource, StandingsEntry};
-    use chrono::TimeZone;
     use std::path::PathBuf;
 
     fn repo_fonts() -> SportFonts {
@@ -466,7 +474,9 @@ mod tests {
     fn make_data(with_game: bool, with_standings: bool, status: GameStatus) -> SportData {
         let next_game = if with_game {
             Some(NextGame {
-                start: Local.with_ymd_and_hms(2024, 6, 15, 19, 30, 0).unwrap(),
+                // Near-now so the game counts as *current* (not stale); the exact
+                // wall-clock instant doesn't matter to these layout assertions.
+                start: Local::now(),
                 status,
                 home: TeamSide {
                     name: "Boston Celtics".into(),
@@ -481,6 +491,7 @@ mod tests {
                     score: Some(100),
                 },
                 our_side: HomeOrAway::Home,
+                playoff_note: None,
             })
         } else {
             None
