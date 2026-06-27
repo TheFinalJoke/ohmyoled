@@ -32,6 +32,7 @@ backstory.
   - [`launch`](#launch)
   - [`hass`](#hass)
   - [`pihole`](#pihole)
+  - [`sleep`](#sleep)
 - [Environment variables](#environment-variables)
 - [Fonts](#fonts)
 - [Gotchas](#gotchas)
@@ -581,6 +582,48 @@ Refresh: 30 s. Data source: Pi-hole v5 `admin/api.php?summaryRaw`
 endpoint. The Pi-hole v6 API moves auth to a session-token model and
 isn't implemented yet — the `PiholeSource` enum has a slot for it
 when the v6 ergonomics settle.
+
+---
+
+### `sleep`
+
+A schedule-driven **sleep mode**. When `enabled: true`, the daemon **blanks
+both panels** (LED matrix and e-paper) and **pauses all API polling** while the
+schedule says it's asleep — useful overnight to save the panel and your API
+quotas. It's purely schedule-driven (no manual toggle), so it behaves the same
+in a Docker container as on bare metal.
+
+Three schedule shapes are supported and **OR'd together** — it's asleep if
+**any** of them matches. All times are evaluated against the **system local
+clock**, so mount `/etc/localtime` (or set `TZ`) in Docker to match your wall
+time.
+
+```yaml
+sleep:
+  enabled: true
+  # 1. Cron pair — enter sleep / wake at these instants (handles overnight).
+  sleep: "0 22 * * *"     # 10:00 PM → panels off
+  wake:  "0 7 * * *"      # 7:00 AM  → back on
+  # 2. Plain HH:MM window (wraps past midnight when start > end).
+  start: null
+  end:   null
+  # 3. Cron-anchored windows — asleep for `for_mins` after each firing.
+  windows:
+    - { at: "0 13 * * 6,0", for_mins: 120 }   # 2 h nap at 1 PM on weekends
+```
+
+| Field     | Type            | Required | Notes                                                                                  |
+| --------- | --------------- | -------- | -------------------------------------------------------------------------------------- |
+| `enabled` | bool            | yes      | Master switch. Omitted/false leaves every existing config unchanged.                   |
+| `sleep`   | string (cron)   | no       | 5-field crontab marking when to enter sleep. Must be paired with `wake`.               |
+| `wake`    | string (cron)   | no       | 5-field crontab marking when to wake. Must be paired with `sleep`.                      |
+| `start`   | string (`HH:MM`)| no       | Clock window start. Must be paired with `end`; wraps midnight when `start > end`.       |
+| `end`     | string (`HH:MM`)| no       | Clock window end (exclusive).                                                           |
+| `windows` | array           | no       | Each `{ at: <cron>, for_mins: <int> }` keeps the panels off for `for_mins` after `at`.  |
+
+A malformed cron / time string (or a half-configured pair) logs an error and
+leaves sleep mode disabled rather than failing startup. Evaluation re-runs every
+30 s, so transitions land within half a minute of the scheduled instant.
 
 ---
 

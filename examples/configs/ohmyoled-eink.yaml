@@ -11,6 +11,13 @@
 # need a key or a local service (hass, pihole, finnhub stock) are left
 # `run: false` with placeholders — flip them on and fill in the values.
 
+# Sleep mode (opt-in): blanks the panel and pauses all polling on a schedule.
+# Evaluated against system local time; the three shapes below are OR'd together.
+sleep:
+  enabled: false
+  sleep: "0 22 * * *"          # enter sleep at 10:00 PM …
+  wake: "0 7 * * *"            # … wake at 7:00 AM
+
 eink:
   enabled: true
   model: "7in5_v2"            # 800x480 7.5" — the recommended panel

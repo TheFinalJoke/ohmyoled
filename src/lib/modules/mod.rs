@@ -29,6 +29,7 @@ pub mod eink_module;
 pub mod error;
 pub mod registry;
 pub mod scheduler;
+pub mod sleep;
 
 use crate::api::Collector;
 use crate::matrix::Renderer;
@@ -208,6 +209,12 @@ async fn background_poll<C>(
         if tx.is_closed() {
             log::debug!("[{id}] watch receivers dropped; stopping poll task");
             return;
+        }
+        // Pause polling while the daemon is asleep — no API calls until wake.
+        if crate::modules::sleep::is_sleeping() {
+            log::debug!("[{id}] asleep; pausing polls until wake");
+            crate::modules::sleep::wait_until_awake().await;
+            continue;
         }
         let started = std::time::Instant::now();
         match collector.poll().await {

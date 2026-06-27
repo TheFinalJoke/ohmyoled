@@ -5,7 +5,7 @@ mod logger;
 mod preview;
 extern crate log;
 use clap::{Arg, ArgAction, Command};
-use oledlib::modules::{registry, scheduler};
+use oledlib::modules::{registry, scheduler, sleep};
 use ohmyoled_matrix::{EinkDisplay, EinkMode, MatrixMode, MatrixOptions, RGBMatrix};
 use std::io::IsTerminal;
 
@@ -169,6 +169,15 @@ struct EinkTopConfig {
     eink: registry::EinkRegistryConfig,
 }
 
+/// Pulls just the top-level `sleep` block out of the config (same separate-pass
+/// pattern as [`EinkTopConfig`]). Configs without a `sleep` key parse to the
+/// disabled default, so sleep mode is fully opt-in.
+#[derive(serde::Deserialize, Default)]
+struct SleepTopConfig {
+    #[serde(default)]
+    sleep: registry::SleepConfig,
+}
+
 #[tokio::main]
 async fn main() {
     let cmd = Command::new("ohmyoled").version(env!("CARGO_PKG_VERSION"));
@@ -328,6 +337,11 @@ async fn main() {
             println!("Failed to deserialize eink config at {}: {}", e.path(), e.inner());
             std::process::exit(35);
         });
+    let sleep_top: SleepTopConfig = serde_path_to_error::deserialize(configuration.clone())
+        .unwrap_or_else(|e| {
+            println!("Failed to deserialize sleep config at {}: {}", e.path(), e.inner());
+            std::process::exit(36);
+        });
     let registry_cfg: registry::RegistryConfig = serde_path_to_error::deserialize(configuration)
         .unwrap_or_else(|e| {
             println!(
@@ -339,6 +353,13 @@ async fn main() {
         });
     let dev = std::env::var("DEV").is_ok();
     install_signal_handlers();
+
+    // Sleep mode (opt-in): seed the gate and spawn the supervisor BEFORE the
+    // registries are built, so the modules' poll tasks observe the gate from
+    // their first tick and don't fire a poll during a cold-start sleep window.
+    if sleep_top.sleep.enabled {
+        sleep::init(&sleep_top.sleep);
+    }
 
     // The LED matrix and the e-paper display are independent outputs that can
     // run at the same time (they're separate physical panels). `eink.enabled`

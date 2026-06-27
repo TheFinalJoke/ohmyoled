@@ -105,6 +105,10 @@ pub struct App {
     pub should_quit: bool,
     /// `Some` on save (config + chosen format), `None` while running / on quit.
     pub result: Option<(Value, ConfigFormat)>,
+    /// Top-level `sleep` block carried over from a loaded config. The wizard
+    /// doesn't edit sleep mode, but it must not drop it on re-save — so it's
+    /// stashed here and re-emitted verbatim by [`super::preview::build_value`].
+    pub preserved_sleep: Option<Value>,
 }
 
 impl App {
@@ -123,6 +127,7 @@ impl App {
             .map(|v| load_instances(v, target))
             .unwrap_or_default();
         let fmt = initial_fmt.unwrap_or(ConfigFormat::Json);
+        let preserved_sleep = existing.as_ref().and_then(|v| v.get("sleep").cloned());
         let (screen, status) = if existing.is_some() {
             (
                 Screen::Modules,
@@ -149,6 +154,7 @@ impl App {
             status,
             should_quit: false,
             result: None,
+            preserved_sleep,
         }
     }
 
