@@ -49,6 +49,7 @@ fn build_matrix(app: &App, strict: bool, errs: &mut Vec<(String, String)>) -> Va
             map.insert(key.to_string(), v);
         }
     }
+    preserve_sleep(app, &mut map);
     Value::Object(map)
 }
 
@@ -68,7 +69,18 @@ fn build_eink(app: &App, strict: bool, errs: &mut Vec<(String, String)>) -> Valu
     block.insert("modules".to_string(), Value::Object(modules));
     let mut root = Map::new();
     root.insert("eink".to_string(), Value::Object(block));
+    preserve_sleep(app, &mut root);
     Value::Object(root)
+}
+
+/// Re-emit a `sleep` block carried over from a loaded config. The wizard never
+/// edits sleep mode, so this just keeps it from being silently dropped on save
+/// (works for either target, since `sleep` is a top-level, target-independent
+/// block).
+fn preserve_sleep(app: &App, map: &mut Map<String, Value>) {
+    if let Some(sleep) = &app.preserved_sleep {
+        map.insert("sleep".to_string(), sleep.clone());
+    }
 }
 
 /// Serialize the active target form (matrix options or eink-block scalars).
@@ -230,6 +242,28 @@ mod tests {
             assert!(stock.is_array(), "two stocks should be an array on {target:?}");
             assert_eq!(stock.as_array().unwrap().len(), 2);
         }
+    }
+
+    #[test]
+    fn preserves_loaded_sleep_block_on_both_targets() {
+        let cfg = json!({
+            "matrix_options": {"chain_length": 1},
+            "time": {"run": true, "color": [255, 255, 255]},
+            "sleep": {"enabled": true, "sleep": "0 22 * * *", "wake": "0 7 * * *"}
+        });
+        // Matrix target round-trips the sleep block verbatim.
+        let app = App::new(Some(cfg.clone()), None);
+        let v = preview_value(&app);
+        assert_eq!(v["sleep"], cfg["sleep"]);
+
+        // And an eink config keeps it too (top-level, target-independent).
+        let eink_cfg = json!({
+            "eink": {"enabled": true, "model": "7in5_v2", "modules": {"time": {"run": true}}},
+            "sleep": {"enabled": true, "start": "22:00", "end": "07:00"}
+        });
+        let app = App::new(Some(eink_cfg.clone()), None);
+        let v = preview_value(&app);
+        assert_eq!(v["sleep"], eink_cfg["sleep"]);
     }
 
     #[test]

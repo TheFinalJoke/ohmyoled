@@ -53,7 +53,7 @@ use oledlib::matrix::launch::{LaunchFonts, LaunchMatrix};
 use oledlib::matrix::pihole::{PiholeFonts, PiholeMatrix};
 use oledlib::matrix::quake::{QuakeFonts, QuakeMatrix};
 use oledlib::matrix::sport::{SportFonts, SportMatrix};
-use oledlib::api::stock::{HistorySeries, StockHistory};
+use oledlib::api::stock::{HistorySeries, StockHistory, TradingSession};
 use oledlib::matrix::stock::{StockFonts, StockMatrix};
 use oledlib::matrix::stock_chart::{StockChartFonts, StockChartMatrix};
 use oledlib::matrix::time::TimeSnapshot;
@@ -444,7 +444,9 @@ async fn preview_eink_stock_chart(display: &mut EinkDisplay, fonts: &Path) -> Re
         symbol: "AAPL".into(),
         current: 191.2,
         previous_close: 190.0,
-        day: series(24, 188.0, 0.2),
+        // ~70% through the trading day so the 1D row's time-anchored
+        // x-axis shows blank trailing space.
+        day: intraday_day(series(24, 188.0, 0.2).closes, 0.70),
         month: series(30, 180.0, 0.5),
         year: series(52, 150.0, 0.9),
     };
@@ -477,6 +479,7 @@ async fn preview_eink_sport(display: &mut EinkDisplay, fonts: &Path) -> Result<(
             home: TeamSide { name: "76ers".into(), abbreviation: "PHI".into(), logo_url: None, score: Some(88) },
             away: TeamSide { name: "Celtics".into(), abbreviation: "BOS".into(), logo_url: None, score: Some(81) },
             our_side: HomeOrAway::Home,
+            playoff_note: Some("EAST 1ST ROUND - Game 5 · Series tied 2-2".into()),
         }),
         standings,
     };
@@ -616,6 +619,19 @@ async fn preview_stock(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
     }
 }
 
+/// Build a 1D `HistorySeries` whose samples span `fill_frac` of a
+/// 9:30→4:00 (6.5 h) session — `fill_frac < 1.0` models a trading day
+/// still in progress so the chart's time-anchored x-axis is visible.
+fn intraday_day(closes: Vec<f64>, fill_frac: f64) -> HistorySeries {
+    const SESSION_SECS: f64 = 23_400.0; // 6.5 h
+    let session = TradingSession { start: 0, end: SESSION_SECS as i64 };
+    let n = closes.len().max(2);
+    let times: Vec<i64> = (0..closes.len())
+        .map(|i| (i as f64 / (n - 1) as f64 * SESSION_SECS * fill_frac).round() as i64)
+        .collect();
+    HistorySeries::from_samples(closes, times, Some(session))
+}
+
 async fn preview_stock_chart(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
     let mut r = StockChartMatrix::with_fonts_async(StockChartFonts {
         body: fonts.join("04B_03B_.TTF"),
@@ -625,7 +641,10 @@ async fn preview_stock_chart(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(),
     // 1D = noisy intraday wave that closes up; 1M = clear uptrend
     // with a midmonth dip; 1Y = steady climb. Lets the preview verify
     // the autoscale and direction-color logic across all three.
-    let day: Vec<f64> = (0..78)
+    // 1D is a trading day ~70% elapsed: the line fills the left ~70% of
+    // the axis (9:30 → ~2:00 PM) and the rest stays blank, exercising the
+    // time-anchored intraday path. 1M/1Y keep even index spacing.
+    let day: Vec<f64> = (0..55)
         .map(|i| 180.0 + (i as f64 * 0.12).sin() * 1.2 + i as f64 * 0.03)
         .collect();
     let month: Vec<f64> = (0..22)
@@ -639,7 +658,7 @@ async fn preview_stock_chart(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(),
         symbol: "AAPL".into(),
         current: *day.last().unwrap(),
         previous_close: day[0],
-        day: HistorySeries::from_closes(day),
+        day: intraday_day(day, 0.70),
         month: HistorySeries::from_closes(month),
         year: HistorySeries::from_closes(year),
     };
@@ -675,6 +694,7 @@ async fn preview_sport(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
                 score: Some(100),
             },
             our_side: HomeOrAway::Home,
+            playoff_note: None,
         }),
         standings: (1..=5)
             .map(|i| StandingsEntry {

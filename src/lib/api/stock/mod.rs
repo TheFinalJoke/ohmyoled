@@ -12,7 +12,7 @@ pub mod finnhub;
 pub mod model;
 pub mod yahoo;
 
-pub use model::{Direction, HistorySeries, StockApiSource, StockHistory, StockQuote};
+pub use model::{Direction, HistorySeries, StockApiSource, StockHistory, StockQuote, TradingSession};
 
 use coingecko::{CoingeckoConfig, CoingeckoProvider};
 use finnhub::{FinnhubConfig, FinnhubProvider};

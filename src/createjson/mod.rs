@@ -73,6 +73,7 @@ pub fn default_config() -> Value {
         "launch": {"run":false,"agency_filter":[],"cache_ttl_secs":null},
         "hass": {"run":false,"base_url":"http://homeassistant.local:8123","token":"REPLACE_ME_HASS_LONG_LIVED_TOKEN","entity_id":"sensor.kitchen_temp","label":"null","alarm_state":"null","nominal_color":[120,220,120],"alarm_color":[255,60,60],"display_mode":"state","cache_ttl_secs":null},
         "pihole": {"run":false,"base_url":"http://pi.hole","token":"null","cache_ttl_secs":null},
+        "sleep": {"enabled":false,"sleep":"null","wake":"null","start":"null","end":"null","windows":[]},
         "eink": {"enabled":false,"model":"7in5_v2","rotation":0,"threshold":128,"mode":"auto","emulate":false,"refresh_ms":2500,"modules":{"time":{"run":true,"color":[255,255,255],"time_format":"12h","timezone":"null","cache_ttl_secs":null},"weather":{"run":false,"api":"nws","current_location":true,"current_location_api_key":"REPLACE_ME_IPINFO_TOKEN","weather_format":"imperial","animation":"subtle","cache_ttl_secs":null}}}
     }"#;
     serde_json::from_str(json).expect("starter config must parse")
@@ -102,6 +103,7 @@ pub fn create_json(
                 {"run":true,"sport":"golf","tour":"pga"},
                 {"run":true,"sport":"f1"}
             ],
+            "sleep": {"enabled":false,"sleep":"null","wake":"null","start":"null","end":"null","windows":[]},
             "eink": {"enabled":false,"model":"7in5_v2","rotation":0,"threshold":128,"mode":"auto","emulate":false,"refresh_ms":2500,"modules":{"time":{"run":true,"color":[255,255,255],"time_format":"12h","timezone":"null"},"weather":{"run":true,"api":"nws","current_location":true,"current_location_api_key":"null","weather_format":"imperial","animation":"subtle"}}}
         }"#;
         return (

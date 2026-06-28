@@ -109,6 +109,14 @@
     { "run": true, "sport": "golf", "tour": "pga" },
     { "run": true, "sport": "f1" }
   ],
+  "sleep": {
+    "enabled": false,
+    "sleep": "0 22 * * *",
+    "wake": "0 7 * * *",
+    "start": "null",
+    "end": "null",
+    "windows": []
+  },
   "eink": {
     "enabled": false,
     "model": "7in5_v2",

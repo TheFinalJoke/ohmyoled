@@ -547,6 +547,7 @@ scheduler.
 | Add a new font                        | `src/sh/install.sh` + the renderer's `*Fonts` struct                   |
 | Change a shared HTTP behavior         | `src/lib/api/http.rs`                                                  |
 | Tweak the scheduler                   | `src/lib/modules/scheduler.rs`                                         |
+| Change sleep-mode behavior            | `src/lib/modules/sleep.rs` (gate + `SleepSchedule`); `SleepConfig` is a **top-level** block in `registry.rs`, parsed in `main.rs` (`SleepTopConfig`), gated in `scheduler.rs` (render loops) + `mod.rs` (`background_poll`) |
 
 ---
 

@@ -27,6 +27,7 @@
 use crate::api::stock::model::{HistorySeries, StockHistory};
 use crate::matrix::eink::layout::{
     badge, badge_width, footer, header_band, margin, right_text, scaled_px, sparkline,
+    sparkline_timed,
 };
 use crate::matrix::eink_renderer::EinkRenderer;
 use crate::matrix::error::RenderError;
@@ -124,7 +125,21 @@ impl EinkStockChartMatrix {
                 let hl_w = self.pct.text_width(&format!("{:.0}", series.high)).max(self.pct.text_width(&format!("{:.0}", series.low)));
                 let plot_w = wi - m - plot_x - hl_w - m / 2;
                 let pts: Vec<f32> = series.closes.iter().map(|&v| v as f32).collect();
-                sparkline(&mut img, plot_x, plot_y, plot_w, plot_h, &pts, fg);
+                // The 1D row anchors x to the trading session (time of
+                // day) when the provider supplied intraday timestamps; a
+                // day in progress fills only the elapsed portion. Other
+                // rows (and crypto) keep even index spacing.
+                match series.intraday() {
+                    Some((_, times, sess)) if sess.end > sess.start => {
+                        let span = (sess.end - sess.start) as f32;
+                        let fracs: Vec<f32> = times
+                            .iter()
+                            .map(|&t| ((t - sess.start) as f32 / span).clamp(0.0, 1.0))
+                            .collect();
+                        sparkline_timed(&mut img, plot_x, plot_y, plot_w, plot_h, &pts, &fracs, fg);
+                    }
+                    _ => sparkline(&mut img, plot_x, plot_y, plot_w, plot_h, &pts, fg),
+                }
                 // High at the top-right, low at the bottom-right of the plot.
                 right_text(&mut img, &self.pct, wi - m, plot_y + self.pct.ascent(), fg, &format!("{:.0}", series.high));
                 right_text(&mut img, &self.pct, wi - m, plot_y + plot_h - self.pct.height() + self.pct.ascent(), fg, &format!("{:.0}", series.low));
@@ -170,6 +185,16 @@ mod tests {
         HistorySeries::from_closes((0..n).map(|i| base + i as f64 * slope).collect())
     }
 
+    fn intraday_series(n: usize, base: f64, slope: f64, fill_frac: f64) -> HistorySeries {
+        use crate::api::stock::model::TradingSession;
+        let closes: Vec<f64> = (0..n).map(|i| base + i as f64 * slope).collect();
+        let session = TradingSession { start: 0, end: 23_400 };
+        let times: Vec<i64> = (0..n)
+            .map(|i| (i as f64 / (n.max(2) - 1) as f64 * 23_400.0 * fill_frac).round() as i64)
+            .collect();
+        HistorySeries::from_samples(closes, times, Some(session))
+    }
+
     fn sample() -> StockHistory {
         StockHistory {
             api: StockApiSource::Yahoo,
@@ -198,6 +223,37 @@ mod tests {
         s.day = HistorySeries::from_closes(vec![]);
         let img = r.frame(&s, 800, 480);
         assert!(img.pixels().filter(|p| p.0 != [0, 0, 0]).count() > 200, "empty window still renders");
+    }
+
+    #[test]
+    fn intraday_day_row_leaves_trailing_space() {
+        // A 1D row half-elapsed should draw its sparkline only across the
+        // left portion of the plot; the trailing time hasn't happened.
+        // Compare lit pixels in the right quarter of the plot band vs a
+        // full session — the partial day must light fewer.
+        let r = EinkStockChartMatrix::with_fonts(repo_fonts(), (800, 480)).unwrap();
+        let mut partial = sample();
+        partial.day = intraday_series(40, 188.0, 0.15, 0.5);
+        let mut full = sample();
+        full.day = intraday_series(40, 188.0, 0.15, 1.0);
+
+        // The two samples differ *only* in the 1D row's x-positions
+        // (closes, labels, footer, and the 1M/1Y rows are identical), so
+        // any difference in right-side ink is the intraday sparkline.
+        let right_quarter_ink = |img: &RgbImage| -> usize {
+            let w = img.width();
+            let h = img.height();
+            ((w * 3 / 4)..w)
+                .flat_map(|x| (0..h).map(move |y| (x, y)))
+                .filter(|&(x, y)| img.get_pixel(x, y).0 != [0, 0, 0])
+                .count()
+        };
+        let p = right_quarter_ink(&r.frame(&partial, 800, 480));
+        let f = right_quarter_ink(&r.frame(&full, 800, 480));
+        assert!(
+            p < f,
+            "partial-day 1D row should light fewer right-side pixels than a full session ({p} vs {f})"
+        );
     }
 
     #[test]

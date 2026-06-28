@@ -838,6 +838,60 @@ fn default_eink_threshold() -> u8 {
     128
 }
 
+/// Optional "sleep mode" schedule. When `enabled`, the daemon blanks **both**
+/// panels and pauses **all** API polling while the schedule says it's asleep.
+///
+/// Three schedule shapes are supported and OR'd together — it's asleep if *any*
+/// of them matches the current (system local) time:
+///
+/// - **Cron pair** — `sleep` / `wake` crontab expressions mark the instants the
+///   daemon enters and leaves sleep. Handles overnight windows naturally
+///   (e.g. `sleep: "0 22 * * *"`, `wake: "0 7 * * *"`).
+/// - **HH:MM window** — plain `start` / `end` clock times; wraps past midnight
+///   when `start > end`.
+/// - **Cron windows** — each [`SleepWindow`] fires on its `at` cron and keeps the
+///   panels off for `for_mins` minutes afterwards.
+///
+/// All times are evaluated against the system local clock (`chrono::Local`).
+///
+/// ```yaml
+/// sleep:
+///   enabled: true
+///   sleep: "0 22 * * *"   # 10:00 PM — panels off
+///   wake:  "0 7 * * *"    # 7:00 AM — back on
+/// ```
+#[derive(Debug, Deserialize, Default)]
+pub struct SleepConfig {
+    /// Master switch. Off (the default) leaves every existing config unchanged.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Cron expression that ENTERS sleep (pairs with `wake`).
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub sleep: Option<String>,
+    /// Cron expression that WAKES (pairs with `sleep`).
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub wake: Option<String>,
+    /// `HH:MM` window start (pairs with `end`; wraps past midnight).
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub start: Option<String>,
+    /// `HH:MM` window end (pairs with `start`).
+    #[serde(default, deserialize_with = "crate::serde_helpers::null_string_as_none")]
+    pub end: Option<String>,
+    /// Cron-anchored windows, each asleep for `for_mins` after it fires.
+    #[serde(default)]
+    pub windows: Vec<SleepWindow>,
+}
+
+/// One cron-anchored sleep window: asleep for `for_mins` minutes after each
+/// firing of the `at` cron expression.
+#[derive(Debug, Deserialize, Clone)]
+pub struct SleepWindow {
+    /// Crontab expression marking the start of the window.
+    pub at: String,
+    /// How long the window stays asleep, in minutes.
+    pub for_mins: u64,
+}
+
 impl EinkRegistryConfig {
     /// Convert to the matrix crate's panel options.
     pub fn options(&self) -> ohmyoled_matrix::EinkOptions {

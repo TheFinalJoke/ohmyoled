@@ -191,6 +191,26 @@ struct Competition {
     status: Option<StatusWrapper>,
     #[serde(default)]
     competitors: Vec<Competitor>,
+    /// Playoff round/game headlines (e.g. "East 1st Round - Game 5"). Present
+    /// only in the postseason; empty otherwise.
+    #[serde(default)]
+    notes: Vec<CompetitionNote>,
+    /// Playoff series state, when this game is part of a series.
+    #[serde(default)]
+    series: Option<SeriesInfo>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompetitionNote {
+    #[serde(default)]
+    headline: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SeriesInfo {
+    /// e.g. "Series tied 2-2" / "BOS leads 3-2". ESPN names this `summary`.
+    #[serde(default)]
+    summary: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -345,7 +365,17 @@ fn normalize(
         } else {
             HomeOrAway::Away
         };
-        Some(NextGame { start, status, home, away, our_side })
+        // Postseason context: the round/game headline, plus the series score
+        // when present. Both are empty in the regular season → `None`.
+        let round = comp.notes.into_iter().map(|n| n.headline).find(|h| !h.is_empty());
+        let series = comp.series.map(|s| s.summary).filter(|s| !s.is_empty());
+        let playoff_note = match (round, series) {
+            (Some(r), Some(s)) => Some(format!("{r} · {s}")),
+            (Some(r), None) => Some(r),
+            (None, Some(s)) => Some(s),
+            (None, None) => None,
+        };
+        Some(NextGame { start, status, home, away, our_side, playoff_note })
     });
 
     let standings_entries = standings
@@ -464,6 +494,43 @@ mod tests {
         let json = r#"{"homeAway":"home","team":{"displayName":"X","abbreviation":"X"},"score":null}"#;
         let c: Competitor = serde_json::from_str(json).unwrap();
         assert_eq!(c.score.0, None);
+    }
+
+    #[test]
+    fn parses_playoff_round_and_series_note() {
+        // Postseason games carry a `notes` headline and a `series` block.
+        let team_json = r#"
+        {"team":{"displayName":"Boston Celtics","abbreviation":"BOS","record":{"items":[{"summary":"4-2"}]},
+          "nextEvent":[{
+            "date":"2026-05-12T23:30Z",
+            "competitions":[{
+              "status":{"type":{"state":"pre","completed":false,"description":"Scheduled"}},
+              "notes":[{"headline":"East Semifinals - Game 5"}],
+              "series":{"summary":"Series tied 2-2"},
+              "competitors":[
+                {"homeAway":"home","team":{"displayName":"Boston Celtics","abbreviation":"BOS"},"score":null},
+                {"homeAway":"away","team":{"displayName":"New York Knicks","abbreviation":"NYK"},"score":null}
+              ]
+            }]
+          }]
+        }}"#;
+        let team: TeamDetailResponse = serde_json::from_str(team_json).unwrap();
+        let standings: StandingsResponse = serde_json::from_str(r#"{"children":[]}"#).unwrap();
+        let d = normalize(SportKind::Basketball, "Boston Celtics", team, standings).unwrap();
+        let ng = d.next_game.expect("next_game");
+        assert_eq!(
+            ng.playoff_note.as_deref(),
+            Some("East Semifinals - Game 5 · Series tied 2-2")
+        );
+    }
+
+    #[test]
+    fn regular_season_game_has_no_playoff_note() {
+        // No `notes`/`series` → regular season → note stays None.
+        let team: TeamDetailResponse = serde_json::from_str(TEAM_FIXTURE).unwrap();
+        let standings: StandingsResponse = serde_json::from_str(STANDINGS_FIXTURE).unwrap();
+        let d = normalize(SportKind::Basketball, "Boston Celtics", team, standings).unwrap();
+        assert!(d.next_game.unwrap().playoff_note.is_none());
     }
 
     #[test]

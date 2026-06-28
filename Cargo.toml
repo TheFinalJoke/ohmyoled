@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "ohmyoled"
-version = "4.0.0"
+version = "4.1.0"
 edition = "2021"
 default-run = "ohmyoled"
 
@@ -35,6 +35,9 @@ async-trait = "0.1"
 ratatui = "0.30"
 tui-input = "0.15"
 sunrise = { version = "3", features = ["std"] }
+# Standard crontab parsing for the optional `sleep` schedule. Works directly on
+# chrono `DateTime`, so it slots into the existing Local::now() time handling.
+croner = "3"
 ohmyoled-matrix = { path = "crates/ohmyoled-matrix", default-features = false }
 
 [features]

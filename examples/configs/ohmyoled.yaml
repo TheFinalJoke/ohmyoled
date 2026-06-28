@@ -167,6 +167,18 @@ sport:
   - run: true
     sport: f1
 
+# ── Sleep mode — schedule-driven, opt-in ────────────────────────────
+# When enabled, blanks BOTH panels and pauses ALL API polling while the
+# schedule says it's asleep. All three shapes below are OR'd together
+# (asleep if any matches) and evaluated against the system local clock.
+sleep:
+  enabled: false
+  sleep: "0 22 * * *"          # cron pair: enter sleep at 10:00 PM …
+  wake: "0 7 * * *"            # … and wake at 7:00 AM (handles overnight)
+  start: "null"               # OR a plain HH:MM window (wraps past midnight)
+  end: "null"
+  windows: []                 # OR cron-anchored windows: [{ at: "0 13 * * 6,0", for_mins: 120 }]
+
 # ── E-paper (e-ink) display — independent, opt-in ────────────────────
 # Drives a Waveshare B/W e-paper HAT instead of the LED matrix when
 # enabled. Same data collectors, but its own separately-tuned tile

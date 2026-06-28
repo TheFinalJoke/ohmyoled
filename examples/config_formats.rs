@@ -4,7 +4,7 @@
 //! `examples/configs/ohmyoled.{json,yaml,toml}`, deserializes each into
 //! `RegistryConfig`, and prints a short summary.
 
-use oledlib::modules::registry::{EinkRegistryConfig, RegistryConfig, SportSection};
+use oledlib::modules::registry::{EinkRegistryConfig, RegistryConfig, SleepConfig, SportSection};
 use std::path::PathBuf;
 
 /// Pulls the top-level `eink` block, mirroring how `main.rs` parses it.
@@ -12,6 +12,13 @@ use std::path::PathBuf;
 struct EinkTop {
     #[serde(default)]
     eink: EinkRegistryConfig,
+}
+
+/// Pulls the top-level `sleep` block, mirroring how `main.rs` parses it.
+#[derive(serde::Deserialize, Default)]
+struct SleepTop {
+    #[serde(default)]
+    sleep: SleepConfig,
 }
 
 fn fixture(name: &str) -> PathBuf {
@@ -101,4 +108,30 @@ fn main() {
     assert_eq!(sej, sey, "eink json/yaml diverge");
     assert_eq!(sej, set, "eink json/toml diverge");
     println!("all three formats produce equivalent eink config");
+
+    // The independent `sleep` block must also parse equivalently in all three.
+    let json_v2 = load_as_json_value(&fixture("ohmyoled.json"));
+    let yaml_v2 = load_as_json_value(&fixture("ohmyoled.yaml"));
+    let toml_v2 = load_as_json_value(&fixture("ohmyoled.toml"));
+    let zj: SleepTop = serde_json::from_value(json_v2).expect("json -> SleepTop");
+    let zy: SleepTop = serde_json::from_value(yaml_v2).expect("yaml -> SleepTop");
+    let zt: SleepTop = serde_json::from_value(toml_v2).expect("toml -> SleepTop");
+    let sleep_summary = |s: &SleepTop| {
+        format!(
+            "enabled={} sleep={:?} wake={:?} start={:?} end={:?} windows={}",
+            s.sleep.enabled,
+            s.sleep.sleep,
+            s.sleep.wake,
+            s.sleep.start,
+            s.sleep.end,
+            s.sleep.windows.len()
+        )
+    };
+    let (szj, szy, szt) = (sleep_summary(&zj), sleep_summary(&zy), sleep_summary(&zt));
+    println!("sleep json: {szj}");
+    println!("sleep yaml: {szy}");
+    println!("sleep toml: {szt}");
+    assert_eq!(szj, szy, "sleep json/yaml diverge");
+    assert_eq!(szj, szt, "sleep json/toml diverge");
+    println!("all three formats produce equivalent sleep config");
 }

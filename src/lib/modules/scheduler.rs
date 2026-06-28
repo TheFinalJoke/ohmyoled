@@ -7,6 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::modules::eink_module::DynEinkModule;
+use crate::modules::sleep;
 use crate::modules::{DynModule, error::ModuleError};
 use ohmyoled_matrix::{EinkDisplay, RGBMatrix};
 
@@ -61,6 +62,15 @@ pub async fn run(mut matrix: RGBMatrix, mut modules: Vec<Box<dyn DynModule>>) ->
 
     let mut cycle: u64 = 0;
     loop {
+        // Sleep mode: blank the panel and park until wake. The LED path exits
+        // via the libc signal handler, so there's no shutdown race to honor.
+        if sleep::is_sleeping() {
+            log::info!("scheduler: asleep; blanking panel until wake");
+            matrix.clear();
+            sleep::wait_until_awake().await;
+            log::info!("scheduler: awake; resuming");
+            continue;
+        }
         cycle = cycle.wrapping_add(1);
         log::debug!("scheduler: cycle {cycle} begin");
         let started = std::time::Instant::now();
@@ -111,6 +121,19 @@ pub async fn run_eink(
 
     let mut cycle: u64 = 0;
     'outer: loop {
+        // Sleep mode: blank the panel once, then park until wake — but keep
+        // honoring shutdown while parked so SIGINT still clears and exits.
+        if sleep::is_sleeping() {
+            log::info!("eink scheduler: asleep; blanking panel until wake");
+            display.clear();
+            tokio::select! {
+                _ = sleep::wait_until_awake() => {
+                    log::info!("eink scheduler: awake; resuming");
+                    continue 'outer;
+                }
+                _ = await_shutdown() => break 'outer,
+            }
+        }
         cycle = cycle.wrapping_add(1);
         log::debug!("eink scheduler: cycle {cycle} begin");
         let started = std::time::Instant::now();

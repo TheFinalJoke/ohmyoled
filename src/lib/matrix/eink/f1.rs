@@ -112,7 +112,8 @@ impl EinkF1Matrix {
         let m = margin(w);
         let cx = wi / 2;
 
-        let right = match &data.next_race {
+        let current_race = data.current_race(now);
+        let right = match current_race {
             Some(r) => format!("ROUND {}", r.round),
             None => "OFF-SEASON".to_string(),
         };
@@ -121,7 +122,7 @@ impl EinkF1Matrix {
         // Standings occupy the bottom; the race/champion banner the top.
         let standings_top = if data.standings.is_empty() { hi } else { hi - hi * 46 / 100 };
 
-        match &data.next_race {
+        match current_race {
             Some(race) => self.draw_race(&mut img, race, now, content_top, standings_top, fg),
             None => self.draw_offseason(&mut img, data, content_top, standings_top, fg),
         }

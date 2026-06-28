@@ -23,14 +23,20 @@
 //!   read like a rolling caption while the dominant numbers stay
 //!   visible at rest.
 //! - **Graph (bottom 24 px)**: line drawn between consecutive closes.
-//!   The series is bucketed across the 62-px-wide plotting area so a
-//!   ~78-sample intraday window and a ~52-sample yearly window both
-//!   compress cleanly. Y-axis autoscales to that window's `low`/`high`
-//!   — a flat 1D doesn't get dwarfed by a volatile 1Y. Color follows
-//!   the window's own direction (`closes[0]` vs `closes[last]`).
-//! - **Current-price marker**: a 2 px triangle at the right edge of
-//!   the active window. Always white so the "where we are now" reads
-//!   independent of the line color.
+//!   Y-axis autoscales to that window's `low`/`high` — a flat 1D
+//!   doesn't get dwarfed by a volatile 1Y. Color follows the window's
+//!   own direction (`closes[0]` vs `closes[last]`). The x-axis depends
+//!   on the window:
+//!   - **1D (intraday)**: anchored to the regular trading session
+//!     (9:30 AM → 4:00 PM, from the provider's session bounds). Each
+//!     close lands at its real time of day, so a day still in progress
+//!     fills only the elapsed left portion and the rest stays blank.
+//!   - **1M / 1Y (and crypto)**: bucketed evenly across the 62-px
+//!     plotting area so the whole window always spans the graph.
+//! - **Current-price marker**: a 2 px triangle at the newest sample —
+//!   the right edge for completed/even-spaced windows, or wherever
+//!   "now" falls on the intraday time axis. Always white so the "where
+//!   we are now" reads independent of the line color.
 //! - **Period cycle**: 12 s render cycle ⇒ 4 s on each of 1D, 1M, 1Y,
 //!   then return. Empty windows render a "NO DATA" badge in their
 //!   slot instead of an empty graph.
@@ -295,9 +301,6 @@ impl StockChartMatrix {
             Direction::Flat => FLAT,
         };
 
-        let width_px = (GRAPH_RIGHT - GRAPH_LEFT + 1) as usize;
-        let buckets = bucket_to_width(&series.closes, width_px);
-
         // Vertical scaling: clamp degenerate ranges so a flat series
         // draws a horizontal stripe rather than dividing by zero.
         let mut lo = series.low;
@@ -313,6 +316,39 @@ impl StockChartMatrix {
             // Invert: higher price = smaller y (closer to top of graph).
             GRAPH_BOTTOM - (t * (GRAPH_BOTTOM - GRAPH_TOP) as f64).round() as i32
         };
+
+        // Intraday (1D) path: anchor x to the trading session so a
+        // half-finished day fills only the elapsed portion of the axis.
+        if let Some((closes, times, session)) = series.intraday() {
+            if session.end > session.start {
+                let span = (session.end - session.start) as f64;
+                let to_x = |ts: i64| -> i32 {
+                    let t = ((ts - session.start) as f64 / span).clamp(0.0, 1.0);
+                    GRAPH_LEFT + (t * (GRAPH_RIGHT - GRAPH_LEFT) as f64).round() as i32
+                };
+                let mut prev: Option<(i32, i32)> = None;
+                for (i, &price) in closes.iter().enumerate() {
+                    let pt = (to_x(times[i]), to_y(price));
+                    if let Some((px, py)) = prev {
+                        draw_line(img, px, py, pt.0, pt.1, color);
+                    }
+                    prev = Some(pt);
+                }
+                // Marker rides the newest sample — wherever "now" sits on
+                // the time axis, not pinned to the right edge.
+                if let Some((mx, my)) = prev {
+                    put(img, mx, my, MARKER);
+                    put(img, mx - 1, my, MARKER);
+                    put(img, mx, my - 1, MARKER);
+                }
+                return;
+            }
+        }
+
+        // Even-spacing path (1M / 1Y / crypto): bucket across the full
+        // width so the whole window always spans the graph.
+        let width_px = (GRAPH_RIGHT - GRAPH_LEFT + 1) as usize;
+        let buckets = bucket_to_width(&series.closes, width_px);
 
         // Draw connected segments. With buckets.len() == width_px,
         // each segment is one pixel wide.
@@ -530,7 +566,7 @@ fn put(img: &mut RgbImage, x: i32, y: i32, c: Color) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::stock::model::StockApiSource;
+    use crate::api::stock::model::{StockApiSource, TradingSession};
     use std::path::PathBuf;
 
     fn repo_fonts() -> StockChartFonts {
@@ -554,6 +590,67 @@ mod tests {
             month,
             year,
         }
+    }
+
+    /// Build an intraday day series whose samples span `fill_frac` of
+    /// the `[start, end]` session — `fill_frac < 1.0` models a trading
+    /// day still in progress.
+    fn intraday(closes: Vec<f64>, start: i64, end: i64, fill_frac: f64) -> HistorySeries {
+        let n = closes.len().max(2);
+        let span = (end - start) as f64;
+        let times: Vec<i64> = (0..closes.len())
+            .map(|i| start + (i as f64 / (n - 1) as f64 * span * fill_frac).round() as i64)
+            .collect();
+        HistorySeries::from_samples(closes, times, Some(TradingSession { start, end }))
+    }
+
+    /// Count non-black graph-area pixels in the column range `xs`.
+    fn graph_lit_in_cols(img: &RgbImage, xs: std::ops::Range<u32>) -> usize {
+        xs.flat_map(|x| (GRAPH_TOP as u32..=GRAPH_BOTTOM as u32).map(move |y| (x, y)))
+            .filter(|&(x, y)| img.get_pixel(x, y).0 != [0, 0, 0])
+            .count()
+    }
+
+    #[test]
+    fn intraday_half_day_leaves_right_half_empty() {
+        // A session half-elapsed should draw a line only across the left
+        // ~half of the graph; the trailing time hasn't happened yet.
+        let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let day = intraday((0..40).map(|i| 180.0 + i as f64 * 0.05).collect(), 0, 23_400, 0.5);
+        let h = sample(day, ramp(170.0, 0.5, 22), ramp(140.0, 0.8, 52));
+        let img = m.draw_frame(&h, Period::Day, 0);
+        let left = graph_lit_in_cols(&img, (GRAPH_LEFT as u32)..32);
+        let right = graph_lit_in_cols(&img, 40..(GRAPH_RIGHT as u32 + 1));
+        assert!(left > 10, "left half should carry the line, got {left}");
+        assert_eq!(right, 0, "right half (future time) must stay empty, got {right}");
+    }
+
+    #[test]
+    fn intraday_full_session_spans_the_width() {
+        // A completed session reaches the right edge — the marker sits at
+        // GRAPH_RIGHT just like the bucketed windows.
+        let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let day = intraday((0..78).map(|i| 180.0 + i as f64 * 0.05).collect(), 0, 23_400, 1.0);
+        let h = sample(day, ramp(170.0, 0.5, 22), ramp(140.0, 0.8, 52));
+        let img = m.draw_frame(&h, Period::Day, 0);
+        // The right-edge column should be lit (marker + line tail).
+        let right_edge = graph_lit_in_cols(&img, (GRAPH_RIGHT as u32)..(GRAPH_RIGHT as u32 + 1));
+        assert!(right_edge > 0, "full session should reach the right edge");
+    }
+
+    #[test]
+    fn month_window_ignores_intraday_and_fills_width() {
+        // The month series has no timestamps → even-spacing path → line
+        // spans the whole width regardless of time of day.
+        let m = StockChartMatrix::with_fonts(repo_fonts()).expect("fonts");
+        let h = sample(
+            intraday((0..40).map(|i| 180.0 + i as f64 * 0.05).collect(), 0, 23_400, 0.5),
+            ramp(170.0, 0.5, 22),
+            ramp(140.0, 0.8, 52),
+        );
+        let img = m.draw_frame(&h, Period::Month, 0);
+        let right = graph_lit_in_cols(&img, 40..(GRAPH_RIGHT as u32 + 1));
+        assert!(right > 5, "month window should fill the full width, got {right}");
     }
 
     #[test]
