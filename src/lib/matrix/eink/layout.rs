@@ -263,6 +263,44 @@ pub fn sparkline(img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, series: &[f
     fill_rect(img, mx - 1, my - 1, 3, 3, color);
 }
 
+/// Like [`sparkline`], but each point carries its own normalized x
+/// position `fracs[i]` in `0.0..=1.0` instead of being evenly spaced.
+/// Used by the intraday (1D) stock row so a half-finished trading day
+/// fills only the elapsed portion of the plot width — the x-axis is
+/// time of day, not sample index. `series` and `fracs` must be the same
+/// length; values autoscale to the box height exactly as in `sparkline`.
+#[allow(clippy::too_many_arguments)]
+pub fn sparkline_timed(img: &mut RgbImage, x: i32, y: i32, w: i32, h: i32, series: &[f32], fracs: &[f32], color: Color) {
+    if series.len() != fracs.len() || series.len() < 2 || w < 2 || h < 1 {
+        return;
+    }
+    let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+    for &v in series {
+        if v.is_finite() {
+            lo = lo.min(v);
+            hi = hi.max(v);
+        }
+    }
+    if !lo.is_finite() || !hi.is_finite() {
+        return;
+    }
+    let span = hi - lo;
+    let sx = |f: f32| x + ((w - 1) as f32 * f.clamp(0.0, 1.0)).round() as i32;
+    let sy = |v: f32| {
+        if span <= f32::EPSILON {
+            y + h / 2
+        } else {
+            y + h - 1 - ((v - lo) / span * (h - 1) as f32).round() as i32
+        }
+    };
+    for i in 1..series.len() {
+        draw_line(img, sx(fracs[i - 1]), sy(series[i - 1]), sx(fracs[i]), sy(series[i]), color);
+    }
+    // Newest-point marker rides the last sample's time position.
+    let last = series.len() - 1;
+    fill_rect(img, sx(fracs[last]) - 1, sy(series[last]) - 1, 3, 3, color);
+}
+
 /// Draw a badge — a small boxed label. `filled` inverts it (solid box with the
 /// text knocked out), which reads as a high-contrast alert on the panel.
 /// Returns the x just past the badge.
