@@ -28,6 +28,12 @@ pub fn fields() -> Vec<FieldDef> {
             FieldKind::ValueEnum,
         ),
         FieldDef::new(
+            "show_offseason",
+            "Show offseason",
+            "Draw a team-crest \"OFFSEASON\" card between seasons instead of skipping the slot.",
+            FieldKind::Bool { default: false },
+        ),
+        FieldDef::new(
             "cache_ttl_secs",
             "Cache TTL (secs)",
             super::CACHE_TTL_HELP,

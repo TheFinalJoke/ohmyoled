@@ -298,6 +298,11 @@ pub enum SportSection {
     Basketball {
         run: bool,
         team_logo: crate::teams::Logo,
+        /// Render an off-season card (team crest + "OFFSEASON") instead of
+        /// skipping the slot when there's no current game or standings.
+        /// Defaults to `false` so existing configs are unchanged.
+        #[serde(default)]
+        show_offseason: bool,
         #[serde(default)]
         cache_ttl_secs: Option<u64>,
     },
@@ -305,11 +310,15 @@ pub enum SportSection {
         run: bool,
         team_logo: crate::teams::Logo,
         #[serde(default)]
+        show_offseason: bool,
+        #[serde(default)]
         cache_ttl_secs: Option<u64>,
     },
     Football {
         run: bool,
         team_logo: crate::teams::Logo,
+        #[serde(default)]
+        show_offseason: bool,
         #[serde(default)]
         cache_ttl_secs: Option<u64>,
     },
@@ -317,17 +326,27 @@ pub enum SportSection {
         run: bool,
         team_logo: crate::teams::Logo,
         #[serde(default)]
+        show_offseason: bool,
+        #[serde(default)]
         cache_ttl_secs: Option<u64>,
     },
     Golf {
         run: bool,
         #[serde(default = "default_golf_tour")]
         tour: GolfTour,
+        /// Show an "OFFSEASON" card between tournaments instead of skipping
+        /// the slot. Defaults to `false`.
+        #[serde(default)]
+        show_offseason: bool,
         #[serde(default)]
         cache_ttl_secs: Option<u64>,
     },
     F1 {
         run: bool,
+        /// Show the reigning-champion / "OFFSEASON" card between seasons
+        /// instead of skipping the slot. Defaults to `false`.
+        #[serde(default)]
+        show_offseason: bool,
         #[serde(default)]
         cache_ttl_secs: Option<u64>,
     },
@@ -353,6 +372,17 @@ impl SportSection {
             | Self::Hockey { cache_ttl_secs, .. }
             | Self::Golf { cache_ttl_secs, .. }
             | Self::F1 { cache_ttl_secs, .. } => *cache_ttl_secs,
+        }
+    }
+
+    fn show_offseason(&self) -> bool {
+        match self {
+            Self::Basketball { show_offseason, .. }
+            | Self::Baseball { show_offseason, .. }
+            | Self::Football { show_offseason, .. }
+            | Self::Hockey { show_offseason, .. }
+            | Self::Golf { show_offseason, .. }
+            | Self::F1 { show_offseason, .. } => *show_offseason,
         }
     }
 }
@@ -631,31 +661,34 @@ async fn build_stock(s: &StockSection) -> Result<Box<dyn DynModule>, String> {
 
 async fn build_sport(s: &SportSection) -> Result<Box<dyn DynModule>, String> {
     let ttl = s.cache_ttl_secs();
+    let show_offseason = s.show_offseason();
     match s {
         SportSection::Basketball { team_logo, .. } => {
-            build_team_sport(SportKind::Basketball, team_logo, ttl).await
+            build_team_sport(SportKind::Basketball, team_logo, show_offseason, ttl).await
         }
         SportSection::Baseball { team_logo, .. } => {
-            build_team_sport(SportKind::Baseball, team_logo, ttl).await
+            build_team_sport(SportKind::Baseball, team_logo, show_offseason, ttl).await
         }
         SportSection::Football { team_logo, .. } => {
-            build_team_sport(SportKind::Football, team_logo, ttl).await
+            build_team_sport(SportKind::Football, team_logo, show_offseason, ttl).await
         }
         SportSection::Hockey { team_logo, .. } => {
-            build_team_sport(SportKind::Hockey, team_logo, ttl).await
+            build_team_sport(SportKind::Hockey, team_logo, show_offseason, ttl).await
         }
         SportSection::Golf { tour, .. } => {
             let collector = GolfCollector::from_espn(*tour);
             let renderer = GolfMatrix::new_async()
                 .await
-                .map_err(|e| format!("golf fonts: {e}"))?;
+                .map_err(|e| format!("golf fonts: {e}"))?
+                .with_offseason(show_offseason);
             Ok(module_with_ttl(collector, renderer, ttl))
         }
         SportSection::F1 { .. } => {
             let collector = F1Collector::from_jolpica();
             let renderer = F1Matrix::new_async()
                 .await
-                .map_err(|e| format!("f1 fonts: {e}"))?;
+                .map_err(|e| format!("f1 fonts: {e}"))?
+                .with_offseason(show_offseason);
             Ok(module_with_ttl(collector, renderer, ttl))
         }
     }
@@ -756,6 +789,7 @@ async fn build_pihole(s: &PiholeSection) -> Result<Box<dyn DynModule>, String> {
 async fn build_team_sport(
     kind: SportKind,
     team_logo: &crate::teams::Logo,
+    show_offseason: bool,
     cache_ttl_secs: Option<u64>,
 ) -> Result<Box<dyn DynModule>, String> {
     let collector = SportCollector::from_espn(EspnConfig {
@@ -763,9 +797,13 @@ async fn build_team_sport(
         team_name: team_logo.name.clone(),
         team_abbreviation: team_logo.shorthand.clone(),
     });
+    // The off-season card draws the team crest, but off-season payloads carry
+    // no game (hence no per-side logo URL), so pass the configured badge URL
+    // straight through for the renderer to fetch on demand.
     let renderer = SportMatrix::new_async()
         .await
-        .map_err(|e| format!("sport fonts: {e}"))?;
+        .map_err(|e| format!("sport fonts: {e}"))?
+        .with_offseason(show_offseason, Some(team_logo.url.clone()));
     Ok(module_with_ttl(collector, renderer, cache_ttl_secs))
 }
 
@@ -1042,32 +1080,35 @@ pub async fn build_eink(cfg: &RegistryConfig, dims: (u32, u32)) -> Vec<Box<dyn D
 /// the LED [`build_sport`].
 async fn build_eink_sport(s: &SportSection, dims: (u32, u32)) -> Result<Box<dyn DynEinkModule>, String> {
     let ttl = s.cache_ttl_secs();
+    let show_offseason = s.show_offseason();
     match s {
         SportSection::Basketball { team_logo, .. } => {
-            build_eink_team_sport(SportKind::Basketball, team_logo, ttl, dims).await
+            build_eink_team_sport(SportKind::Basketball, team_logo, show_offseason, ttl, dims).await
         }
         SportSection::Baseball { team_logo, .. } => {
-            build_eink_team_sport(SportKind::Baseball, team_logo, ttl, dims).await
+            build_eink_team_sport(SportKind::Baseball, team_logo, show_offseason, ttl, dims).await
         }
         SportSection::Football { team_logo, .. } => {
-            build_eink_team_sport(SportKind::Football, team_logo, ttl, dims).await
+            build_eink_team_sport(SportKind::Football, team_logo, show_offseason, ttl, dims).await
         }
         SportSection::Hockey { team_logo, .. } => {
-            build_eink_team_sport(SportKind::Hockey, team_logo, ttl, dims).await
+            build_eink_team_sport(SportKind::Hockey, team_logo, show_offseason, ttl, dims).await
         }
         SportSection::Golf { tour, .. } => {
             let collector = GolfCollector::from_espn(*tour);
             let renderer = EinkGolfMatrix::new_async(dims)
                 .await
                 .map_err(|e| format!("eink golf fonts: {e}"))?
-                .with_tour(*tour);
+                .with_tour(*tour)
+                .with_offseason(show_offseason);
             Ok(eink_module_with_ttl(collector, renderer, ttl))
         }
         SportSection::F1 { .. } => {
             let collector = F1Collector::from_jolpica();
             let renderer = EinkF1Matrix::new_async(dims)
                 .await
-                .map_err(|e| format!("eink f1 fonts: {e}"))?;
+                .map_err(|e| format!("eink f1 fonts: {e}"))?
+                .with_offseason(show_offseason);
             Ok(eink_module_with_ttl(collector, renderer, ttl))
         }
     }
@@ -1076,6 +1117,7 @@ async fn build_eink_sport(s: &SportSection, dims: (u32, u32)) -> Result<Box<dyn 
 async fn build_eink_team_sport(
     kind: SportKind,
     team_logo: &crate::teams::Logo,
+    show_offseason: bool,
     cache_ttl_secs: Option<u64>,
     dims: (u32, u32),
 ) -> Result<Box<dyn DynEinkModule>, String> {
@@ -1086,7 +1128,8 @@ async fn build_eink_team_sport(
     });
     let renderer = EinkSportMatrix::new_async(dims)
         .await
-        .map_err(|e| format!("eink sport fonts: {e}"))?;
+        .map_err(|e| format!("eink sport fonts: {e}"))?
+        .with_offseason(show_offseason, Some(team_logo.url.clone()));
     Ok(eink_module_with_ttl(collector, renderer, cache_ttl_secs))
 }
 

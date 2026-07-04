@@ -106,8 +106,8 @@
         "sportsipyid": 0
       }
     },
-    { "run": true, "sport": "golf", "tour": "pga" },
-    { "run": true, "sport": "f1" }
+    { "run": true, "sport": "golf", "tour": "pga", "show_offseason": true },
+    { "run": true, "sport": "f1", "show_offseason": true }
   ],
   "sleep": {
     "enabled": false,
