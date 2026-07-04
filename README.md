@@ -317,12 +317,20 @@ sport:
   - run: true
     sport: golf
     tour: pga                      # pga | lpga | champions | korn | liv
+    show_offseason: true           # optional; default false
   - run: true
     sport: f1
+    show_offseason: true           # optional; default false
 ```
 
 Multiple entries rotate through together — basketball + hockey + golf +
 F1 in one display sequence is exactly the YAML above.
+
+Every sport entry accepts an optional **`show_offseason`** (bool, default
+`false`). When `false` the tile is skipped between seasons so the panel
+moves straight to the next module. Set it to `true` to draw an off-season
+card instead — the team crest + `OFFSEASON` for team sports, an
+`OFFSEASON` banner for golf, and the reigning-champion banner for F1.
 
 #### Team sports (basketball / baseball / football / hockey)
 
@@ -333,6 +341,7 @@ F1 in one display sequence is exactly the YAML above.
 | `team_logo.sport`      | enum   | Must match the entry's `sport` field.                                |
 | `team_logo.url`        | string | Logo image URL — fetched on first render and cached.                 |
 | `team_logo.sportsdb_leagueid`, `apisportsid`, `sportsdbid`, `sportsipyid` | int | Legacy IDs from the Python era. Kept for config compatibility; not all are still used by Rust. |
+| `show_offseason`       | bool   | Optional (default `false`). Draw a crest + `OFFSEASON` card off-season instead of skipping the slot. |
 
 Layout: scrolling home/away names on top, logos + score in the middle,
 scrolling division standings on the bottom. Middle-line color: green ⇐
@@ -346,7 +355,8 @@ Data source: ESPN's public scoreboard + standings endpoints
 ```yaml
 - run: true
   sport: golf
-  tour: pga    # optional; default: pga
+  tour: pga              # optional; default: pga
+  show_offseason: true   # optional; default: false
 ```
 
 | `tour` value | What it shows               |
@@ -357,20 +367,23 @@ Data source: ESPN's public scoreboard + standings endpoints
 | `korn`       | Korn Ferry Tour             |
 | `liv`        | LIV Golf                    |
 
-Top 5 only. Off-season shows a two-line placeholder. Score colors: red ⇐
-under par, white ⇐ even, yellow ⇐ over par. Data source: ESPN.
+Top 5 only. Off-season is skipped unless `show_offseason: true`, which
+draws an `OFFSEASON` card. Score colors: red ⇐ under par, white ⇐ even,
+yellow ⇐ over par. Data source: ESPN.
 
 #### Formula 1
 
 ```yaml
 - run: true
   sport: f1
+  show_offseason: true   # optional; default: false
 ```
 
-No extra fields. Header shows the next race + circuit + date; below it,
-a gold/silver/bronze podium of the top 3 in the constructor standings
-plus a scrolling tail with positions 4–10. Off-season shows a "season
-ended" placeholder.
+Header shows the next race + circuit + date; below it, a
+gold/silver/bronze podium of the top 3 in the constructor standings plus
+a scrolling tail with positions 4–10. Off-season is skipped unless
+`show_offseason: true`, which draws the reigning-champion banner (or an
+`OFFSEASON` card when standings are unavailable).
 
 Data source: <https://api.jolpi.ca> (Ergast-compatible). Two parallel
 requests per refresh: `current/next.json` + `current/driverStandings.json`.

@@ -15,7 +15,8 @@
 //! ```
 //!
 //! Podium colors: gold / silver / bronze. The header band is F1 red.
-//! Off-season shows a "season ended" placeholder for ~20s.
+//! Off-season is skipped by default; set `show_offseason: true` to draw the
+//! reigning-champion banner (or an "OFFSEASON" card) for ~20s between seasons.
 //!
 //! # Config
 //!
@@ -26,6 +27,7 @@
 //! sport:
 //!   - run: true
 //!     sport: f1
+//!     show_offseason: false    # true ⇒ draw the champion/"OFFSEASON" card
 //! ```
 //!
 //! # Data source
@@ -147,6 +149,10 @@ impl Default for F1Fonts {
 
 pub struct F1Matrix {
     body_font: Font,
+    /// When `true`, the between-seasons slot shows the champion banner (or an
+    /// "OFFSEASON" card when standings are unavailable); when `false` (the
+    /// default) the slot is skipped.
+    show_offseason: bool,
 }
 
 impl F1Matrix {
@@ -159,13 +165,23 @@ impl F1Matrix {
     }
 
     pub fn with_fonts(paths: F1Fonts) -> Result<Self, String> {
-        Ok(Self { body_font: Font::load_ttf(&paths.body, 8.0)? })
+        Ok(Self {
+            body_font: Font::load_ttf(&paths.body, 8.0)?,
+            show_offseason: false,
+        })
     }
 
     pub async fn with_fonts_async(paths: F1Fonts) -> Result<Self, String> {
         tokio::task::spawn_blocking(move || Self::with_fonts(paths))
             .await
             .map_err(|e| format!("font load task panicked: {e}"))?
+    }
+
+    /// Enable (or disable) the between-seasons card. Builder-style for the
+    /// registry.
+    pub fn with_offseason(mut self, show: bool) -> Self {
+        self.show_offseason = show;
+        self
     }
 }
 
@@ -190,11 +206,15 @@ impl Renderer for F1Matrix {
     async fn render(&mut self, matrix: &mut RGBMatrix, data: &F1Data) -> Result<(), RenderError> {
         matrix.clear();
         if data.is_offseason() {
-            // Between seasons. If we have standings, the leader is the
-            // outgoing world champion — show a static banner. Otherwise
-            // skip this slot entirely so the scheduler advances.
-            if let Some(champ) = data.standings.first() {
-                let img = self.draw_champion(data, champ);
+            // Between seasons. Opt-in only: if we have standings, the leader is
+            // the outgoing world champion — show a static banner; otherwise show
+            // a plain "OFFSEASON" card. With the flag off, skip the slot so the
+            // scheduler advances.
+            if self.show_offseason {
+                let img = match data.standings.first() {
+                    Some(champ) => self.draw_champion(data, champ),
+                    None => self.draw_offseason(data),
+                };
                 matrix.set_image(&img, 0, 0);
                 tokio::time::sleep(Duration::from_secs(20)).await;
                 matrix.clear();
@@ -436,6 +456,30 @@ impl F1Matrix {
 
         img
     }
+
+    /// Plain between-seasons card for the rare case where no standings are
+    /// available to build a champion banner:
+    ///
+    /// ```text
+    ///   F1 2026
+    ///   OFFSEASON
+    ///   Back in March
+    /// ```
+    pub fn draw_offseason(&self, data: &F1Data) -> RgbImage {
+        let mut img = RgbImage::new(PANEL_W, PANEL_H);
+        let font = &self.body_font;
+
+        let bl0 = top_to_baseline(2, font.ascent());
+        draw_text(&mut img, font, 2, bl0, F1_RED, &format!("F1 {}", data.season));
+
+        let bl1 = top_to_baseline(12, font.ascent());
+        draw_text(&mut img, font, 2, bl1, GOLD, "OFFSEASON");
+
+        let bl2 = top_to_baseline(22, font.ascent());
+        draw_text(&mut img, font, 2, bl2, Color::new(160, 160, 160), "Back in March");
+
+        img
+    }
 }
 
 fn top_to_baseline(top_y: i32, ascent: i32) -> i32 {
@@ -493,6 +537,17 @@ mod tests {
         assert!(data.is_offseason());
         let champ = data.standings.first().unwrap();
         let img = m.draw_champion(&data, champ);
+        assert!(img.pixels().filter(|p| p.0 != [0, 0, 0]).count() > 20);
+    }
+
+    #[test]
+    fn offseason_card_renders_without_standings() {
+        // No next race and no standings → the plain "OFFSEASON" fallback card.
+        let m = F1Matrix::with_fonts(repo_fonts()).expect("fonts");
+        let data = sample(false, 0);
+        assert!(data.is_offseason());
+        assert!(data.standings.is_empty());
+        let img = m.draw_offseason(&data);
         assert!(img.pixels().filter(|p| p.0 != [0, 0, 0]).count() > 20);
     }
 

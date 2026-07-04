@@ -75,6 +75,9 @@ pub struct EinkF1Matrix {
     label: Font,
     countdown: Font,
     row: Font,
+    /// When `true`, the between-seasons slot renders the champion / "OFF-SEASON"
+    /// card; when `false` (the default) the tile yields its slot (no repaint).
+    show_offseason: bool,
 }
 
 impl EinkF1Matrix {
@@ -94,6 +97,7 @@ impl EinkF1Matrix {
             label: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
             countdown: Font::load_ttf(&paths.body, scaled_px(58.0, h))?,
             row: Font::load_ttf(&paths.body, scaled_px(24.0, h))?,
+            show_offseason: false,
         })
     }
 
@@ -101,6 +105,13 @@ impl EinkF1Matrix {
         tokio::task::spawn_blocking(move || Self::with_fonts(paths, dims))
             .await
             .map_err(|e| format!("font load task panicked: {e}"))?
+    }
+
+    /// Enable (or disable) the between-seasons card. Builder-style for the
+    /// registry.
+    pub fn with_offseason(mut self, show: bool) -> Self {
+        self.show_offseason = show;
+        self
     }
 
     /// Compose the F1 screen at `w × h`, sampling the countdown at `now`.
@@ -228,6 +239,10 @@ impl EinkRenderer for EinkF1Matrix {
     }
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &F1Data) -> Result<(), RenderError> {
+        // Off-season + opted out: don't repaint — yield the slot.
+        if data.is_offseason() && !self.show_offseason {
+            return Ok(());
+        }
         let img = self.frame(data, Local::now(), display.width(), display.height());
         display.show(&img);
         tokio::time::sleep(self.cycle_duration()).await;

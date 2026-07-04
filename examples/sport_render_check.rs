@@ -79,7 +79,7 @@ fn main() {
         ..data
     };
     ascii(
-        &m.draw_offseason(offseason.sport),
+        &m.draw_offseason(&offseason),
         "=== Offseason placeholder ===",
     );
 }
