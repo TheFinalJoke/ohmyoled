@@ -17,7 +17,8 @@
 //! of the renderer.
 //!
 //! Middle-line color: green ⇐ home winning, red ⇐ home losing, white ⇐ tied
-//! or scheduled. Off-season shows a two-line "season ended" placeholder.
+//! or scheduled. Off-season is skipped by default; set `show_offseason: true`
+//! to draw a team-crest "OFFSEASON" card instead.
 //!
 //! # Config
 //!
@@ -30,6 +31,7 @@
 //! sport:
 //!   - run: true
 //!     sport: basketball        # basketball | baseball | football | hockey
+//!     show_offseason: false    # true ⇒ draw a crest "OFFSEASON" card off-season
 //!     team_logo:
 //!       name: "Boston Celtics"
 //!       shorthand: BOS
@@ -52,9 +54,7 @@
 //! once via `/teams/{abbreviation}` and cached for the process lifetime.
 
 use crate::api::http::shared_client;
-use crate::api::sport::model::{
-    GameStatus, HomeOrAway, NextGame, SportData, SportKind, TeamSide,
-};
+use crate::api::sport::model::{GameStatus, HomeOrAway, NextGame, SportData, TeamSide};
 use crate::matrix::cells::draw_text_in_window;
 use crate::matrix::error::RenderError;
 use crate::matrix::renderer::Renderer;
@@ -76,6 +76,11 @@ const SCROLL_FRAMES: u32 = 600;
 const SCROLL_TICK: Duration = Duration::from_millis(50);
 const FIRST_FRAME_DWELL: Duration = Duration::from_secs(3);
 const FINAL_DWELL: Duration = Duration::from_secs(15);
+/// How long the static off-season card stays up before yielding the slot.
+const OFFSEASON_DWELL: Duration = Duration::from_secs(20);
+
+/// Amber accent for the "OFFSEASON" banner on the off-season card.
+const OFFSEASON_AMBER: Color = Color { r: 247, g: 200, b: 0 };
 
 const STANDINGS_COLOR: Color = Color { r: 156, g: 163, b: 173 };
 
@@ -98,6 +103,13 @@ pub struct SportMatrix {
     body_font: Font,
     big_font: Font,
     logo_cache: HashMap<String, RgbImage>,
+    /// When `true`, off-season renders a team-crest + "OFFSEASON" card; when
+    /// `false` (the default) the slot is skipped so the scheduler advances.
+    show_offseason: bool,
+    /// Badge URL to fetch for the off-season card. Off-season payloads carry no
+    /// game (so no per-side `logo_url`), so the configured team badge is plumbed
+    /// in here and fetched on demand into [`Self::logo_cache`].
+    offseason_logo_url: Option<String>,
 }
 
 impl SportMatrix {
@@ -114,6 +126,8 @@ impl SportMatrix {
             body_font: Font::load_ttf(&paths.body, 8.0)?,
             big_font: Font::load_ttf(&paths.big, 14.0)?,
             logo_cache: HashMap::new(),
+            show_offseason: false,
+            offseason_logo_url: None,
         })
     }
 
@@ -121,6 +135,29 @@ impl SportMatrix {
         tokio::task::spawn_blocking(move || Self::with_fonts(paths))
             .await
             .map_err(|e| format!("font load task panicked: {e}"))?
+    }
+
+    /// Enable (or disable) the off-season card and supply the team badge URL it
+    /// draws. Builder-style so the registry can chain it onto `new_async`.
+    pub fn with_offseason(mut self, show: bool, logo_url: Option<String>) -> Self {
+        self.show_offseason = show;
+        self.offseason_logo_url = logo_url;
+        self
+    }
+
+    /// Fetch + cache the configured badge for the off-season card. Keyed by team
+    /// name so [`Self::draw_offseason`] can look it up; a miss just draws text.
+    async fn ensure_offseason_logo(&mut self, data: &SportData) {
+        if self.logo_cache.contains_key(&data.team_name) {
+            return;
+        }
+        let Some(url) = self.offseason_logo_url.clone() else { return };
+        match fetch_logo(&url).await {
+            Ok(logo) => {
+                self.logo_cache.insert(data.team_name.clone(), logo);
+            }
+            Err(e) => log::warn!("sport: offseason logo fetch failed ({url}): {e}"),
+        }
     }
 
     /// Fetch + decode + resize + cache a team's logo. Idempotent.
@@ -163,9 +200,16 @@ impl Renderer for SportMatrix {
         matrix.clear();
 
         if data.is_offseason() {
-            // No upcoming game and no standings to display. We don't fetch
-            // a prior-season champion, so skip this slot entirely — the
-            // scheduler will move to the next module.
+            // No upcoming game and no standings to display. Either draw the
+            // opt-in off-season card (team crest + "OFFSEASON") or skip the
+            // slot so the scheduler moves to the next module.
+            if self.show_offseason {
+                self.ensure_offseason_logo(data).await;
+                let img = self.draw_offseason(data);
+                matrix.set_image(&img, 0, 0);
+                tokio::time::sleep(OFFSEASON_DWELL).await;
+                matrix.clear();
+            }
             return Ok(());
         }
 
@@ -206,14 +250,57 @@ impl SportMatrix {
         img
     }
 
-    /// Render the offseason placeholder ("NBA / Offseason"). Public for
-    /// examples and visual-regression checks.
-    pub fn draw_offseason(&self, sport: SportKind) -> RgbImage {
+    /// Render the off-season card: the team crest (top-left, when its badge has
+    /// been fetched) with the team name beside it, an amber "OFFSEASON" banner,
+    /// and a "Returns soon" subtitle. The crest is looked up from `logo_cache`
+    /// by team name — a miss (e.g. in unit tests with no network) just leaves
+    /// the slot blank and renders the text. Public for examples + visual checks.
+    ///
+    /// ```text
+    ///   ┌──────────────────┐
+    ///   │ ▢LOGO▢  Lakers   │  rows 0..15  crest + team name
+    ///   │ OFFSEASON        │  rows 16..31 amber banner (big font)
+    ///   └──────────────────┘
+    /// ```
+    pub fn draw_offseason(&self, data: &SportData) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
-        let baseline_1 = top_to_baseline(2, self.big_font.ascent());
-        let baseline_2 = top_to_baseline(17, self.big_font.ascent());
-        draw_text(&mut img, &self.big_font, 4, baseline_1, Color::WHITE, sport.display_name());
-        draw_text(&mut img, &self.big_font, 4, baseline_2, Color::WHITE, "Offseason");
+        let font = &self.body_font;
+
+        // Crest top-left when fetched; otherwise the text shifts to the edge.
+        let has_logo = self.logo_cache.contains_key(&data.team_name);
+        if let Some(logo) = self.logo_cache.get(&data.team_name) {
+            paste(&mut img, logo, 0, 0);
+        }
+        let text_x = if has_logo { LOGO_SIZE as i32 + 2 } else { 2 };
+
+        // Team name (clipped to the right of the crest) on the top band, with a
+        // small grey "off season" hint beneath it.
+        let name_baseline = top_to_baseline(2, font.ascent());
+        draw_text_in_window(
+            &mut img,
+            font,
+            text_x,
+            name_baseline,
+            Color::WHITE,
+            &data.team_name,
+            text_x,
+            PANEL_W as i32,
+        );
+        let hint_baseline = top_to_baseline(9, font.ascent());
+        draw_text_in_window(
+            &mut img,
+            font,
+            text_x,
+            hint_baseline,
+            STANDINGS_COLOR,
+            "Returns soon",
+            text_x,
+            PANEL_W as i32,
+        );
+
+        // Bold amber "OFFSEASON" banner across the bottom band.
+        let banner_baseline = top_to_baseline(16, self.big_font.ascent());
+        draw_text(&mut img, &self.big_font, 2, banner_baseline, OFFSEASON_AMBER, "OFFSEASON");
         img
     }
 
@@ -460,7 +547,7 @@ fn decode_and_resize(bytes: &[u8]) -> Result<RgbImage, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::sport::model::{SportApiSource, StandingsEntry};
+    use crate::api::sport::model::{SportApiSource, SportKind, StandingsEntry};
     use std::path::PathBuf;
 
     fn repo_fonts() -> SportFonts {
@@ -523,11 +610,13 @@ mod tests {
     }
 
     #[test]
-    fn offseason_renders_two_line_placeholder() {
+    fn offseason_renders_card_text() {
         let m = SportMatrix::with_fonts(repo_fonts()).expect("fonts load");
         let data = make_data(false, false, GameStatus::Scheduled);
         assert!(data.is_offseason());
-        let img = m.draw_offseason(data.sport);
+        // No badge fetched in tests — the card still renders the team name +
+        // "OFFSEASON" banner text.
+        let img = m.draw_offseason(&data);
         let lit = img.pixels().filter(|p| p.0 != [0, 0, 0]).count();
         assert!(lit > 20, "offseason frame should have visible text, got {lit}");
     }

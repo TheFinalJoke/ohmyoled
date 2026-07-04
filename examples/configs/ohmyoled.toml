@@ -167,10 +167,12 @@ sportsipyid = 0
 run = true
 sport = "golf"
 tour = "pga"                  # pga | lpga | champions | korn | liv
+show_offseason = true         # draw an "OFFSEASON" card between events
 
 [[sport]]
 run = true
 sport = "f1"
+show_offseason = true         # draw the champion/"OFFSEASON" card off-season
 
 # ── Sleep mode — schedule-driven, opt-in ────────────────────────────
 # When enabled, blanks BOTH panels and pauses ALL API polling while the

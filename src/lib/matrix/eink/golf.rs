@@ -57,6 +57,9 @@ pub struct EinkGolfMatrix {
     event: Font,
     row: Font,
     tour: GolfTour,
+    /// When `true`, off-season renders an "OFF-SEASON" card; when `false` (the
+    /// default) the tile yields its slot (no repaint).
+    show_offseason: bool,
 }
 
 impl EinkGolfMatrix {
@@ -75,6 +78,7 @@ impl EinkGolfMatrix {
             event: Font::load_ttf(&paths.body, scaled_px(32.0, h))?,
             row: Font::load_ttf(&paths.body, scaled_px(24.0, h))?,
             tour: GolfTour::Pga,
+            show_offseason: false,
         })
     }
 
@@ -87,6 +91,12 @@ impl EinkGolfMatrix {
     /// Set the tour shown in the header (defaults to PGA).
     pub fn with_tour(mut self, tour: GolfTour) -> Self {
         self.tour = tour;
+        self
+    }
+
+    /// Enable (or disable) the off-season card. Builder-style for the registry.
+    pub fn with_offseason(mut self, show: bool) -> Self {
+        self.show_offseason = show;
         self
     }
 
@@ -109,8 +119,20 @@ impl EinkGolfMatrix {
         let table_top = content_top + self.event.height() + m;
 
         if data.leaderboard.is_empty() {
-            let bx = cx - badge_width(&self.event, "NO TOURNAMENT") / 2;
-            badge(&mut img, &self.event, bx, hi / 2, "NO TOURNAMENT", fg, true);
+            // Off-season card: a centered "OFF-SEASON" badge over a quieter
+            // "NO ACTIVE TOURNAMENT" subtitle, below the tour/event header.
+            let label = "OFF-SEASON";
+            let bx = cx - badge_width(&self.event, label) / 2;
+            let by = (table_top + hi) / 2 - self.event.height();
+            badge(&mut img, &self.event, bx, by, label, fg, true);
+            crate::matrix::eink::layout::center_text(
+                &mut img,
+                &self.row,
+                cx,
+                by + self.event.height() + m + self.row.ascent(),
+                fg,
+                "NO ACTIVE TOURNAMENT",
+            );
             return img;
         }
 
@@ -147,6 +169,10 @@ impl EinkRenderer for EinkGolfMatrix {
     }
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &GolfData) -> Result<(), RenderError> {
+        // Off-season + opted out: don't repaint — yield the slot.
+        if data.is_offseason() && !self.show_offseason {
+            return Ok(());
+        }
         let img = self.frame(data, display.width(), display.height());
         display.show(&img);
         tokio::time::sleep(self.cycle_duration()).await;

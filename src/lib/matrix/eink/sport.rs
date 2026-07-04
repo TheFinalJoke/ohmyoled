@@ -79,6 +79,13 @@ pub struct EinkSportMatrix {
     /// Team names with a logo fetch currently in flight, so at most one task is
     /// spawned per team even while the fetch is still pending.
     logo_inflight: Arc<Mutex<HashSet<String>>>,
+    /// When `true`, off-season renders a crest + "OFF-SEASON" card; when `false`
+    /// (the default) the tile yields its slot (no repaint) so the panel keeps
+    /// the previous module's content.
+    show_offseason: bool,
+    /// Configured team badge URL, fetched for the off-season crest (off-season
+    /// payloads carry no per-side `logo_url`).
+    offseason_logo_url: Option<String>,
 }
 
 impl EinkSportMatrix {
@@ -101,7 +108,42 @@ impl EinkSportMatrix {
             row: Font::load_ttf(&paths.body, scaled_px(22.0, h))?,
             logo_cache: Arc::new(Mutex::new(HashMap::new())),
             logo_inflight: Arc::new(Mutex::new(HashSet::new())),
+            show_offseason: false,
+            offseason_logo_url: None,
         })
+    }
+
+    /// Enable (or disable) the off-season card and supply the team badge URL it
+    /// draws. Builder-style so the registry can chain it onto `new_async`.
+    pub fn with_offseason(mut self, show: bool, logo_url: Option<String>) -> Self {
+        self.show_offseason = show;
+        self.offseason_logo_url = logo_url;
+        self
+    }
+
+    /// Background-fetch the configured badge for the off-season crest, keyed by
+    /// team name (the same cache `draw_crest`/the card read). Returns
+    /// immediately — never blocks the render path.
+    fn prefetch_offseason_logo(&self, data: &SportData) {
+        let Some(url) = self.offseason_logo_url.clone() else { return };
+        let name = data.team_name.clone();
+        if self.logo_cache.lock().unwrap().contains_key(&name) {
+            return;
+        }
+        if !self.logo_inflight.lock().unwrap().insert(name.clone()) {
+            return;
+        }
+        let cache = Arc::clone(&self.logo_cache);
+        let inflight = Arc::clone(&self.logo_inflight);
+        tokio::spawn(async move {
+            match fetch_logo(&url).await {
+                Ok(logo) => {
+                    cache.lock().unwrap().insert(name.clone(), logo);
+                }
+                Err(e) => log::warn!("eink sport: offseason logo fetch failed for {name} ({url}): {e}"),
+            }
+            inflight.lock().unwrap().remove(&name);
+        });
     }
 
     /// Kick off a background fetch of a team's logo into the shared cache.
@@ -153,13 +195,14 @@ impl EinkSportMatrix {
 
         match data.current_game(Local::now()) {
             Some(game) => self.draw_scoreboard(&mut img, game, content_top, standings_top, fg),
+            None if data.standings.is_empty() => {
+                self.draw_offseason_card(&mut img, data, content_top, standings_top, fg);
+            }
             None => {
-                let label = if data.standings.is_empty() {
-                    format!("{} OFF-SEASON", data.sport.display_name())
-                } else {
-                    "NO UPCOMING GAME".to_string()
-                };
-                // The abbreviation font is large but still fits these labels.
+                // Standings present but no current game — a between-games lull,
+                // not the off-season. Keep the simple label; the table renders
+                // below.
+                let label = "NO UPCOMING GAME".to_string();
                 let bx = cx - badge_width(&self.abbr, &label) / 2;
                 let by = (content_top + standings_top) / 2 - self.abbr.height() / 2;
                 badge(&mut img, &self.abbr, bx, by, &label, fg, true);
@@ -228,6 +271,39 @@ impl EinkSportMatrix {
                 center_text(img, &self.status, cx, score_cy + self.status.height(), fg, &time);
             }
         }
+    }
+
+    /// Off-season card: the team crest (when its badge has been fetched)
+    /// centered above the team name and an "OFF-SEASON" badge. With no crest yet
+    /// (cold cache) it gracefully degrades to name + badge.
+    fn draw_offseason_card(&self, img: &mut RgbImage, data: &SportData, top: i32, bottom: i32, fg: Color) {
+        let wi = img.width() as i32;
+        let m = margin(img.width());
+        let cx = wi / 2;
+        let band_h = bottom - top;
+        let cy = top + band_h / 2;
+
+        // Crest (if fetched) centered in the upper part of the band.
+        let cached = self.logo_cache.lock().unwrap().get(&data.team_name).cloned();
+        let crest_w = (wi / 5).min(band_h * 40 / 100);
+        let name_y = if let Some(logo) = cached {
+            let bx = cx - crest_w / 2;
+            let by = cy - band_h / 4 - crest_w / 2;
+            draw_logo_silhouette(img, &logo, bx, by, crest_w, fg);
+            by + crest_w + m
+        } else {
+            top + m
+        };
+
+        // Team name under the crest.
+        let name = fit_text(&self.name, &data.team_name.to_uppercase(), wi - 2 * m);
+        center_text(img, &self.name, cx, name_y + self.name.ascent(), fg, &name);
+
+        // "OFF-SEASON" badge anchored toward the bottom of the band.
+        let label = "OFF-SEASON";
+        let bx = cx - badge_width(&self.status, label) / 2;
+        let by = (name_y + self.name.height() + bottom) / 2 - self.status.height() / 2;
+        badge(img, &self.status, bx, by, label, fg, true);
     }
 
     /// Draw a team crest into the `box_w` square at `(cx - box_w/2, box_top)`:
@@ -308,12 +384,20 @@ impl EinkRenderer for EinkSportMatrix {
     }
 
     async fn render(&mut self, display: &mut EinkDisplay, data: &SportData) -> Result<(), RenderError> {
+        // Off-season + opted out: don't repaint. Leave the previous module's
+        // content on the panel and let the scheduler advance.
+        if data.is_offseason() && !self.show_offseason {
+            return Ok(());
+        }
         // Kick off logo fetches in the background — never block the panel on
         // the network. `frame` draws the abbreviation box until a logo lands.
-        // Only for a current game (off-season has no scoreboard to fill).
+        // A current game prefetches both sides' crests; the off-season card
+        // prefetches the configured team badge instead.
         if let Some(game) = data.current_game(Local::now()) {
             self.prefetch_logo(&game.home);
             self.prefetch_logo(&game.away);
+        } else if data.is_offseason() {
+            self.prefetch_offseason_logo(data);
         }
         let img = self.frame(data, display.width(), display.height());
         display.show(&img);

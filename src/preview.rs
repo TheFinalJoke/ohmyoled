@@ -668,11 +668,14 @@ async fn preview_stock_chart(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(),
 }
 
 async fn preview_sport(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> {
+    // Enable the off-season card with a real badge URL so the crest renders
+    // live (degrades to text if the preview host is offline).
     let mut r = SportMatrix::with_fonts_async(SportFonts {
         body: fonts.join("04B_03B_.TTF"),
         big: fonts.join("04b24.otf"),
     })
-    .await?;
+    .await?
+    .with_offseason(true, Some("https://a.espncdn.com/i/teamlogos/nba/500/bos.png".into()));
     let data = SportData {
         api: SportApiSource::Espn,
         sport: SportKind::Basketball,
@@ -703,8 +706,18 @@ async fn preview_sport(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), Strin
             })
             .collect(),
     };
+    // Off-season variant: no current game + no standings → the crest card.
+    let offseason = SportData {
+        next_game: None,
+        standings: vec![],
+        ..data.clone()
+    };
+    // Alternate so the scoreboard and the off-season card both get airtime.
+    let mut toggle = false;
     loop {
-        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+        let d = if toggle { &offseason } else { &data };
+        toggle = !toggle;
+        r.render(matrix, d).await.map_err(|e| e.to_string())?;
     }
 }
 
@@ -712,7 +725,8 @@ async fn preview_golf(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String
     let mut r = GolfMatrix::with_fonts_async(GolfFonts {
         body: fonts.join("04B_03B_.TTF"),
     })
-    .await?;
+    .await?
+    .with_offseason(true);
     let data = GolfData {
         tour: GolfTour::Pga,
         event_name: "Masters Tournament".into(),
@@ -725,8 +739,13 @@ async fn preview_golf(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String
             LeaderboardEntry { position: 5, player_short: "CANTLAY".into(),   score: "-3".into()  },
         ],
     };
+    // Off-season variant: empty leaderboard → the "OFFSEASON" card.
+    let offseason = GolfData { leaderboard: vec![], ..data.clone() };
+    let mut toggle = false;
     loop {
-        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+        let d = if toggle { &offseason } else { &data };
+        toggle = !toggle;
+        r.render(matrix, d).await.map_err(|e| e.to_string())?;
     }
 }
 
@@ -734,7 +753,8 @@ async fn preview_f1(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> 
     let mut r = F1Matrix::with_fonts_async(F1Fonts {
         body: fonts.join("04B_03B_.TTF"),
     })
-    .await?;
+    .await?
+    .with_offseason(true);
     let data = F1Data {
         season: "2026".into(),
         next_race: Some(NextRace {
@@ -751,8 +771,13 @@ async fn preview_f1(matrix: &mut RGBMatrix, fonts: &Path) -> Result<(), String> 
             DriverStanding { position: 5, code: "HAM".into(), family_name: "Hamilton".into(),   points: 99.0  },
         ],
     };
+    // Off-season variant: no current race → the reigning-champion banner.
+    let offseason = F1Data { next_race: None, ..data.clone() };
+    let mut toggle = false;
     loop {
-        r.render(matrix, &data).await.map_err(|e| e.to_string())?;
+        let d = if toggle { &offseason } else { &data };
+        toggle = !toggle;
+        r.render(matrix, d).await.map_err(|e| e.to_string())?;
     }
 }
 

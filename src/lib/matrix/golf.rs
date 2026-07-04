@@ -22,7 +22,8 @@
 //! statuses like "Round 4 In Progress".
 //!
 //! Score colors: red ⇐ under par, white ⇐ even, yellow ⇐ over par.
-//! Off-season shows a two-line placeholder for ~20s.
+//! Off-season is skipped by default; set `show_offseason: true` to draw an
+//! "OFFSEASON" card (~20s) between tournaments.
 //!
 //! # Config
 //!
@@ -34,7 +35,8 @@
 //! sport:
 //!   - run: true
 //!     sport: golf
-//!     tour: pga          # pga | lpga | champions | korn | liv
+//!     tour: pga                # pga | lpga | champions | korn | liv
+//!     show_offseason: false    # true ⇒ draw an "OFFSEASON" card between events
 //! ```
 //!
 //! # Data source
@@ -60,6 +62,11 @@ const SCROLL_FRAMES: u32 = 700;
 const SCROLL_TICK: Duration = Duration::from_millis(50);
 const FIRST_FRAME_DWELL: Duration = Duration::from_secs(3);
 const FINAL_DWELL: Duration = Duration::from_secs(5);
+/// How long the static off-season card stays up before yielding the slot.
+const OFFSEASON_DWELL: Duration = Duration::from_secs(20);
+
+/// Amber accent reused for the tour code on the off-season card.
+const TOUR_AMBER: Color = Color { r: 247, g: 200, b: 0 };
 
 /// Max leaderboard entries shown in the cycling roll.
 const LEADERBOARD_MAX: usize = 15;
@@ -99,6 +106,9 @@ impl Default for GolfFonts {
 
 pub struct GolfMatrix {
     body_font: Font,
+    /// When `true`, off-season (no active tournament) renders an "OFFSEASON"
+    /// card; when `false` (the default) the slot is skipped.
+    show_offseason: bool,
 }
 
 impl GolfMatrix {
@@ -111,13 +121,22 @@ impl GolfMatrix {
     }
 
     pub fn with_fonts(paths: GolfFonts) -> Result<Self, String> {
-        Ok(Self { body_font: Font::load_ttf(&paths.body, 8.0)? })
+        Ok(Self {
+            body_font: Font::load_ttf(&paths.body, 8.0)?,
+            show_offseason: false,
+        })
     }
 
     pub async fn with_fonts_async(paths: GolfFonts) -> Result<Self, String> {
         tokio::task::spawn_blocking(move || Self::with_fonts(paths))
             .await
             .map_err(|e| format!("font load task panicked: {e}"))?
+    }
+
+    /// Enable (or disable) the off-season card. Builder-style for the registry.
+    pub fn with_offseason(mut self, show: bool) -> Self {
+        self.show_offseason = show;
+        self
     }
 }
 
@@ -142,8 +161,14 @@ impl Renderer for GolfMatrix {
     async fn render(&mut self, matrix: &mut RGBMatrix, data: &GolfData) -> Result<(), RenderError> {
         matrix.clear();
         if data.is_offseason() {
-            // No active tournament leaderboard. We don't fetch a "previous
-            // event winner" from ESPN, so skip this slot entirely.
+            // No active tournament leaderboard. Either draw the opt-in
+            // "OFFSEASON" card or skip the slot so the scheduler advances.
+            if self.show_offseason {
+                let img = self.draw_offseason(data);
+                matrix.set_image(&img, 0, 0);
+                tokio::time::sleep(OFFSEASON_DWELL).await;
+                matrix.clear();
+            }
             return Ok(());
         }
 
@@ -321,13 +346,25 @@ impl GolfMatrix {
         );
     }
 
+    /// Off-season card shown between tournaments: the tour code (amber) over an
+    /// "OFFSEASON" banner and a "No events" subtitle, instead of a blank slot.
+    ///
+    /// ```text
+    ///   ┌──────────────────┐
+    ///   │ PGA              │  row 1   amber tour code
+    ///   │ OFFSEASON        │  row 12  white banner
+    ///   │ No events        │  row 22  grey subtitle
+    ///   └──────────────────┘
+    /// ```
     pub fn draw_offseason(&self, data: &GolfData) -> RgbImage {
         let mut img = RgbImage::new(PANEL_W, PANEL_H);
         let font = &self.body_font;
-        let bl0 = top_to_baseline(8, font.ascent());
-        let bl1 = top_to_baseline(18, font.ascent());
-        draw_text(&mut img, font, 2, bl0, Color::WHITE, data.tour.display_name());
-        draw_text(&mut img, font, 2, bl1, Color::WHITE, "No event");
+        let bl0 = top_to_baseline(1, font.ascent());
+        let bl1 = top_to_baseline(12, font.ascent());
+        let bl2 = top_to_baseline(22, font.ascent());
+        draw_text(&mut img, font, 2, bl0, TOUR_AMBER, data.tour.display_name());
+        draw_text(&mut img, font, 2, bl1, Color::WHITE, "OFFSEASON");
+        draw_text(&mut img, font, 2, bl2, Color::new(156, 163, 173), "No events");
         img
     }
 }

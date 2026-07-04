@@ -20,6 +20,12 @@ pub fn fields() -> Vec<FieldDef> {
             },
         ),
         FieldDef::new(
+            "show_offseason",
+            "Show offseason",
+            "Draw an \"OFFSEASON\" card between tournaments instead of skipping the slot.",
+            FieldKind::Bool { default: false },
+        ),
+        FieldDef::new(
             "cache_ttl_secs",
             "Cache TTL (secs)",
             super::CACHE_TTL_HELP,
