@@ -22,8 +22,14 @@ permissions:
 
 jobs:
   # Cross-compile the binary for the two Raspberry Pi targets people run
-  # ohmyoled on. `cross` handles the toolchains via Docker images, so the
-  # host runner doesn't need any aarch64/armhf packages installed.
+  # ohmyoled on. We use cargo-zigbuild rather than `cross` so we can pin the
+  # *target glibc floor* explicitly (the `.2.31` suffix on the triple). Raspberry
+  # Pi OS Bullseye ships glibc 2.31; a binary built against a newer glibc (as the
+  # cross `:main` images produce — Ubuntu 24.04 / glibc 2.39) fails to load on the
+  # Pi with `version 'GLIBC_2.3x' not found`. zig's bundled clang also
+  # statically links libstdc++, so there's no `GLIBCXX_*` runtime dependency
+  # either. This same binary is later COPY'd into the release Docker image; a
+  # 2.31 floor is trivially satisfied by bookworm-slim (glibc 2.36).
   build:
     name: Build (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -33,14 +39,10 @@ jobs:
         include:
           - target: aarch64-unknown-linux-gnu
             artifact: ohmyoled-aarch64
-            cc: aarch64-linux-gnu-gcc
-            cxx: aarch64-linux-gnu-g++
-            ar: aarch64-linux-gnu-ar
+            zig_target: aarch64-linux-gnu.2.31
           - target: armv7-unknown-linux-gnueabihf
             artifact: ohmyoled-armv7
-            cc: arm-linux-gnueabihf-gcc
-            cxx: arm-linux-gnueabihf-g++
-            ar: arm-linux-gnueabihf-ar
+            zig_target: arm-linux-gnueabihf.2.31
     steps:
       - uses: actions/checkout@v4
 
@@ -49,26 +51,48 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross
+      - name: Install zig
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.13.0
+
+      - name: Install cargo-zigbuild
         uses: taiki-e/install-action@v2
         with:
-          tool: cross
+          tool: cargo-zigbuild
 
-      # No font fetch needed — Font::load_ttf is a runtime concern.
-      # CC/CXX/AR are forwarded into the cross container (via the
-      # passthrough block in Cross.toml) so rpi-led-matrix-sys's
-      # vendored Makefile builds the C++ library with the cross
-      # toolchain instead of the host x86_64 one.
+      # rpi-led-matrix-sys's build.rs shells out to `make` against the vendored
+      # rpi-rgb-led-matrix Makefile, which uses plain CC/CXX/AR. Point those at
+      # glibc-pinned `zig cc`/`zig c++`/`zig ar` wrappers so the C++ objects are
+      # compiled against the same 2.31 floor as the Rust code — otherwise they'd
+      # pull the runner's host glibc symbols and reintroduce the mismatch.
+      #
+      # cargo-zigbuild parses the `.2.31` suffix on the Rust triple for the link;
+      # its build output still lands under the un-suffixed `target/<triple>/`.
+      #
       # `--features eink` pulls in the Waveshare SPI backend alongside the
       # default `hardware` (LED panel) backend. Both deps are target-gated to
       # arm/aarch64 in ohmyoled-matrix/Cargo.toml, so the same flag is safe on
       # both Pi targets — the released binary supports LED and e-ink panels.
       - name: Build
-        env:
-          CC: ${{ matrix.cc }}
-          CXX: ${{ matrix.cxx }}
-          AR: ${{ matrix.ar }}
-        run: cross build --release --features eink --target ${{ matrix.target }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/zigbin"
+          cat > "$RUNNER_TEMP/zigbin/zcc" <<EOF
+          #!/bin/sh
+          exec zig cc -target ${{ matrix.zig_target }} "\$@"
+          EOF
+          cat > "$RUNNER_TEMP/zigbin/zcxx" <<EOF
+          #!/bin/sh
+          exec zig c++ -target ${{ matrix.zig_target }} "\$@"
+          EOF
+          cat > "$RUNNER_TEMP/zigbin/zar" <<EOF
+          #!/bin/sh
+          exec zig ar "\$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/zigbin/"z*
+          export PATH="$RUNNER_TEMP/zigbin:$PATH"
+          export CC=zcc CXX=zcxx AR=zar
+          cargo zigbuild --release --features eink --target ${{ matrix.target }}.2.31
 
       - name: Stage binary
         run: cp target/${{ matrix.target }}/release/ohmyoled ${{ matrix.artifact }}
