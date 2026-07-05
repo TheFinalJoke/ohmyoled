@@ -547,7 +547,7 @@ scheduler.
 | Add a new font                        | `src/sh/install.sh` + the renderer's `*Fonts` struct                   |
 | Change a shared HTTP behavior         | `src/lib/api/http.rs`                                                  |
 | Tweak the scheduler                   | `src/lib/modules/scheduler.rs`                                         |
-| Change sleep-mode behavior            | `src/lib/modules/sleep.rs` (gate + `SleepSchedule`); `SleepConfig` is a **top-level** block in `registry.rs`, parsed in `main.rs` (`SleepTopConfig`), gated in `scheduler.rs` (render loops) + `mod.rs` (`background_poll`) |
+| Change sleep-mode behavior            | `src/lib/modules/sleep.rs` (gate + `SleepSchedule`); `SleepConfig` is a **top-level** block in `registry.rs`, parsed in `main.rs` (`SleepTopConfig`), gated in `scheduler.rs` (render loops) + `mod.rs` (`background_poll`). The `-c` wizard edits it as the single-instance `sleep` tile: schema + cron/HH:MM validation in `src/createjson/sleep.rs`, top-level assembly (never under `eink.modules`) in `tui/preview.rs::attach_sleep`, un-editable `windows` preserved via `App::preserved_sleep_windows` |
 
 ---
 

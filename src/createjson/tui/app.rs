@@ -105,10 +105,11 @@ pub struct App {
     pub should_quit: bool,
     /// `Some` on save (config + chosen format), `None` while running / on quit.
     pub result: Option<(Value, ConfigFormat)>,
-    /// Top-level `sleep` block carried over from a loaded config. The wizard
-    /// doesn't edit sleep mode, but it must not drop it on re-save — so it's
-    /// stashed here and re-emitted verbatim by [`super::preview::build_value`].
-    pub preserved_sleep: Option<Value>,
+    /// The `sleep.windows` list carried over from a loaded config. The wizard
+    /// edits the rest of the sleep block through its tile, but the
+    /// cron-anchored window objects don't fit the flat form engine — so they're
+    /// stashed here and re-attached by [`super::preview::build_value`].
+    pub preserved_sleep_windows: Option<Value>,
 }
 
 impl App {
@@ -122,12 +123,28 @@ impl App {
             .map(detect_target)
             .unwrap_or(Target::Matrix);
         let target_form = build_target_form(target, existing.as_ref());
-        let instances = existing
+        let mut instances = existing
             .as_ref()
             .map(|v| load_instances(v, target))
             .unwrap_or_default();
         let fmt = initial_fmt.unwrap_or(ConfigFormat::Json);
-        let preserved_sleep = existing.as_ref().and_then(|v| v.get("sleep").cloned());
+        // `sleep` is a top-level, target-independent block — loaded here rather
+        // than in the SECTION_KEYS scan (which, on the eink target, only looks
+        // under `eink.modules`). The un-editable `windows` list is stashed so a
+        // round-trip can't drop it.
+        let mut preserved_sleep_windows = None;
+        if let Some(block) = existing.as_ref().and_then(|v| v.get("sleep")) {
+            if block.is_object() {
+                instances.push(Instance {
+                    kind: "sleep",
+                    form: form_module::value_to_form("sleep", &normalize_nulls(block)),
+                });
+                preserved_sleep_windows = block
+                    .get("windows")
+                    .filter(|w| w.as_array().is_some_and(|a| !a.is_empty()))
+                    .cloned();
+            }
+        }
         let (screen, status) = if existing.is_some() {
             (
                 Screen::Modules,
@@ -154,7 +171,7 @@ impl App {
             status,
             should_quit: false,
             result: None,
-            preserved_sleep,
+            preserved_sleep_windows,
         }
     }
 
@@ -286,6 +303,21 @@ fn load_instances(value: &Value, target: Target) -> Vec<Instance> {
         }
     }
     out
+}
+
+/// Replace the legacy `"null"` string literals (what the old builder wrote for
+/// unset optionals) with real JSON nulls, so loaded sleep fields show blank in
+/// the form instead of the word "null".
+fn normalize_nulls(block: &Value) -> Value {
+    let mut v = block.clone();
+    if let Value::Object(m) = &mut v {
+        for val in m.values_mut() {
+            if val.as_str().is_some_and(|s| s.eq_ignore_ascii_case("null")) {
+                *val = Value::Null;
+            }
+        }
+    }
+    v
 }
 
 /// Map a sport-array entry to its tile kind by the inner `sport` tag.

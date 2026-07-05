@@ -14,7 +14,9 @@
 //!
 //! Logos are fetched on first render via `reqwest`, decoded with the `image`
 //! crate, resized to 16×16 with `Lanczos3`, and cached in-memory for the life
-//! of the renderer.
+//! of the renderer. Processed crests are also written to an on-disk cache
+//! (`$XDG_CACHE_HOME/ohmyoled/logos/`, falling back to `$HOME/.cache` then
+//! `/tmp`) so a restart is network-free — team badges never change.
 //!
 //! Middle-line color: green ⇐ home winning, red ⇐ home losing, white ⇐ tied
 //! or scheduled. Off-season is skipped by default; set `show_offseason: true`
@@ -509,8 +511,46 @@ fn middle_line_color(ng: &NextGame, line_idx: usize) -> Color {
     }
 }
 
-/// HTTP fetch + image decode + resize to `LOGO_SIZE × LOGO_SIZE`.
+/// On-disk cache directory for processed logos. Honors `XDG_CACHE_HOME`, then
+/// `$HOME/.cache`, then `/tmp`. Team logos never change, so once a processed
+/// crest is written here it's reused across restarts with no network at all.
+/// Shared location with the e-ink renderer; the size in the key keeps the
+/// 16px matrix crest from colliding with the 120px e-ink one.
+fn logo_cache_dir() -> PathBuf {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
+        .unwrap_or_else(|| PathBuf::from("/tmp"));
+    base.join("ohmyoled").join("logos")
+}
+
+/// Stable cache path for a logo URL at the current size. `DefaultHasher::new()`
+/// is fixed-seed (not `RandomState`), so the name is deterministic across runs.
+fn logo_cache_path(url: &str) -> PathBuf {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    url.hash(&mut h);
+    LOGO_SIZE.hash(&mut h);
+    logo_cache_dir().join(format!("{:016x}.png", h.finish()))
+}
+
+/// Load a processed logo: disk cache first (static, so a hit means zero
+/// network), otherwise HTTP fetch → decode → resize to `LOGO_SIZE × LOGO_SIZE`,
+/// then write it back to disk so every subsequent run is a disk hit.
 async fn fetch_logo(url: &str) -> Result<RgbImage, String> {
+    let path = logo_cache_path(url);
+
+    // Disk hit — reuse the already-processed crest, no network.
+    let read_path = path.clone();
+    if let Ok(Ok(img)) = tokio::task::spawn_blocking(move || {
+        image::open(&read_path).map(|i| i.to_rgb8())
+    })
+    .await
+    {
+        log::debug!("sport: logo disk-cache hit for {url}");
+        return Ok(img);
+    }
+
     let bytes = shared_client()
         .get(url)
         .send()
@@ -522,9 +562,22 @@ async fn fetch_logo(url: &str) -> Result<RgbImage, String> {
         .await
         .map_err(|e| format!("body: {e}"))?;
     let owned = bytes.to_vec();
-    tokio::task::spawn_blocking(move || decode_and_resize(&owned))
-        .await
-        .map_err(|e| format!("decode task panicked: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        let out = decode_and_resize(&owned)?;
+        // Persist the processed crest (best-effort — a cache write failure must
+        // never fail the render; we just re-fetch next time).
+        if let Some(dir) = path.parent() {
+            let saved = std::fs::create_dir_all(dir)
+                .map_err(|e| e.to_string())
+                .and_then(|_| out.save(&path).map_err(|e| e.to_string()));
+            if let Err(e) = saved {
+                log::debug!("sport: logo cache write failed ({}): {e}", path.display());
+            }
+        }
+        Ok(out)
+    })
+    .await
+    .map_err(|e| format!("decode task panicked: {e}"))?
 }
 
 fn decode_and_resize(bytes: &[u8]) -> Result<RgbImage, String> {

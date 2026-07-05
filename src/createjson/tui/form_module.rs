@@ -9,12 +9,15 @@
 
 use super::field::{FieldDef, FieldKind, Form};
 use crate::createjson::{
-    aurora, f1, flights, golf, hass, iss, launch, pihole, quake, sport, stock, time, weather,
+    aurora, f1, flights, golf, hass, iss, launch, pihole, quake, sleep, sport, stock, time,
+    weather,
 };
 use serde_json::{json, Map, Value};
 
 /// Selectable tile kinds shown on the Modules screen, in display order, as
-/// `(kind id, menu label)`. Same set for both display targets.
+/// `(kind id, menu label)`. Same set for both display targets. `sleep` is the
+/// one non-module tile: single-instance, `enabled` instead of `run`, and it
+/// always assembles at the config top level (never under `eink.modules`).
 pub const TILE_KINDS: &[(&str, &str)] = &[
     ("time", "Time"),
     ("weather", "Weather"),
@@ -29,7 +32,14 @@ pub const TILE_KINDS: &[(&str, &str)] = &[
     ("launch", "Launch"),
     ("hass", "Home Assistant"),
     ("pihole", "Pi-hole"),
+    ("sleep", "Sleep Schedule"),
 ];
+
+/// Whether a tile kind may have several instances (folded to a JSON array).
+/// `sleep` is a single top-level object in the registry, so exactly one.
+pub fn allow_multi(kind: &str) -> bool {
+    kind != "sleep"
+}
 
 /// Menu label for a tile kind.
 pub fn title(kind: &str) -> &'static str {
@@ -55,6 +65,7 @@ pub fn config_key(kind: &str) -> &'static str {
         "launch" => "launch",
         "hass" => "hass",
         "pihole" => "pihole",
+        "sleep" => "sleep",
         _ => "",
     }
 }
@@ -75,14 +86,16 @@ pub fn fields(kind: &str) -> Vec<FieldDef> {
         "launch" => launch::fields(),
         "hass" => hass::fields(),
         "pihole" => pihole::fields(),
+        "sleep" => sleep::fields(),
         _ => Vec::new(),
     }
 }
 
 /// A fresh default form for a tile kind, with any dynamic options populated
-/// (sport's team list).
+/// (sport's team list). `sleep` carries its own `enabled` switch, so it's the
+/// one kind that doesn't get the implicit `run: true`.
 pub fn default_form(kind: &str) -> Form {
-    let mut form = Form::from_defs(fields(kind), true);
+    let mut form = Form::from_defs(fields(kind), kind != "sleep");
     init_dynamic(kind, &mut form);
     form
 }
@@ -129,6 +142,16 @@ pub fn section_to_value(kind: &str, form: &Form) -> Result<Value, Vec<(String, S
     // shape physically can't drift from the struct (unknown keys dropped,
     // renames applied). Value-native sport flavours pass through untouched.
     let v = canonicalize(kind, v).map_err(|e| vec![(kind.to_string(), e)])?;
+    // Sleep gets the daemon's own schedule validation (cron syntax, HH:MM,
+    // pairing rules) so a wizard-written config can't fail at startup.
+    if kind == "sleep" {
+        let opts: sleep::SleepOptions = serde_json::from_value(v.clone())
+            .map_err(|e| vec![("sleep".to_string(), e.to_string())])?;
+        let errs = sleep::validate(&opts);
+        if !errs.is_empty() {
+            return Err(errs);
+        }
+    }
     let mut map = match v {
         Value::Object(m) => m,
         other => return Ok(other),
@@ -172,6 +195,7 @@ fn canonicalize(kind: &str, v: Value) -> Result<Value, String> {
         "launch" => roundtrip!(launch::LaunchOptions),
         "hass" => roundtrip!(hass::HassOptions),
         "pihole" => roundtrip!(pihole::PiholeOptions),
+        "sleep" => roundtrip!(sleep::SleepOptions),
         _ => Ok(v),
     }
 }
