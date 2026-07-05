@@ -104,6 +104,15 @@ type EpdSpi = ExclusiveDevice<Spi, NoCs, Delay>;
 /// though, so every [`FULL_REFRESH_EVERY`] updates one is promoted to a full
 /// refresh ([`update_full`]) to reset accumulated ghosting before it fades the
 /// image.
+///
+/// After every screen-change refresh the HV rails are dropped ([`power_off`]).
+/// Leaving them up keeps a DC bias (VCOM) across the panel that visibly pulls
+/// the just-developed image back toward gray within a second or two — and per
+/// Waveshare, sustained high-voltage state permanently degrades the panel.
+/// E-ink is bistable, so once powered off the image holds crisp indefinitely.
+/// The one exception is [`update_fast`] (a 1 Hz ticking tile): it keeps the
+/// rails up between ticks — each tick re-develops the frame anyway — and the
+/// dwell-ending [`update`]/[`update_full`] pays the power-off back.
 struct SevenIn5V2 {
     spi: Spi,
     rst: Out,
@@ -116,6 +125,10 @@ struct SevenIn5V2 {
     /// [`FULL_REFRESH_EVERY`] deep-clean so accumulated ghosting never fades the
     /// image. Reset by any full refresh ([`update_full`]/[`clear`]).
     partial_since_full: u32,
+    /// Whether the HV rails are up (`PowerOn` sent, no `PowerOff` since).
+    /// Registers survive a power-off, so re-powering is just `0x04` + BUSY —
+    /// no re-init needed (see [`ensure_powered`]).
+    powered: bool,
 }
 
 impl SevenIn5V2 {
@@ -132,6 +145,7 @@ impl SevenIn5V2 {
             busy,
             in_partial_mode: false,
             partial_since_full: 0,
+            powered: false,
         };
         // Full power-on setup (resolution, VCOM, TCON). Updates then switch to
         // partial mode; the first update's clear scrubs any retained image.
@@ -203,6 +217,7 @@ impl SevenIn5V2 {
         self.cmd(0x04)?; // Power on
         sleep(Duration::from_millis(100));
         self.wait_until_idle()?;
+        self.powered = true;
         self.cmd_data(0x00, &[0x1F])?; // Panel setting (KW, no rotate)
         self.cmd_data(0x61, &[0x03, 0x20, 0x01, 0xE0])?; // TRES: 800×480
         self.cmd_data(0x15, &[0x00])?; // Dual SPI off
@@ -220,8 +235,35 @@ impl SevenIn5V2 {
         self.cmd(0x04)?; // Power on
         sleep(Duration::from_millis(100));
         self.wait_until_idle()?;
+        self.powered = true;
         self.cmd_data(0xE0, &[0x02])?; // Cascade setting (fast mode)
         self.cmd_data(0xE5, &[0x6E])?; // Force temperature (fast mode)
+        Ok(())
+    }
+
+    /// Drop the HV rails (`PowerOff`, 0x02) once the refresh has developed.
+    /// The image is bistable and holds; register config survives, so the next
+    /// refresh only needs [`ensure_powered`], not a re-init. This is the
+    /// `epd.sleep()` step of the reference flow (minus deep sleep, which would
+    /// lose the registers and need a full reset to leave).
+    fn power_off(&mut self) -> Result<(), String> {
+        self.cmd(0x02)?; // Power off
+        self.wait_until_idle()?;
+        self.powered = false;
+        Ok(())
+    }
+
+    /// Bring the HV rails back up if [`power_off`] dropped them. Mirrors the
+    /// power-on step of `init`/`init_part` (0x04 + settle + BUSY handshake);
+    /// a no-op while already powered (e.g. between [`update_fast`] ticks).
+    fn ensure_powered(&mut self) -> Result<(), String> {
+        if self.powered {
+            return Ok(());
+        }
+        self.cmd(0x04)?; // Power on
+        sleep(Duration::from_millis(100));
+        self.wait_until_idle()?;
+        self.powered = true;
         Ok(())
     }
 
@@ -285,12 +327,16 @@ impl SevenIn5V2 {
         if !self.in_partial_mode {
             self.init_part()?;
             self.in_partial_mode = true;
+        } else {
+            self.ensure_powered()?;
         }
         let white = vec![0xFF; Self::FRAME_BYTES];
         self.display_partial(&white)?;
         self.display_partial(packed)?;
         self.partial_since_full += 1;
-        Ok(())
+        // The frame has developed; drop the rails so the image holds crisp
+        // instead of fading under VCOM bias during the dwell.
+        self.power_off()
     }
 
     /// Push one packed frame with a single partial refresh and **no** clear —
@@ -301,12 +347,17 @@ impl SevenIn5V2 {
         if !self.in_partial_mode {
             self.init_part()?;
             self.in_partial_mode = true;
+        } else {
+            self.ensure_powered()?;
         }
         // Count toward the deep-clean budget but never trigger it here: a
         // ticking tile (clock, countdown) calls this every second and must not
         // flash a full refresh mid-dwell. The accumulated count is paid off by
         // the next per-tile `update`, which de-ghosts the ticking tile's trail.
         self.partial_since_full = self.partial_since_full.saturating_add(1);
+        // No power_off here: the next tick is ≤1 s away and re-develops the
+        // frame, so fade never sets in; power-cycling per tick would just add
+        // latency. The dwell-ending `update`/`update_full` drops the rails.
         self.display_partial(packed)
     }
 
@@ -318,6 +369,8 @@ impl SevenIn5V2 {
         if self.in_partial_mode {
             self.init()?;
             self.in_partial_mode = false;
+        } else {
+            self.ensure_powered()?;
         }
         // Clear to white first so the fine stipple develops on a clean substrate
         // — a single transition pass can leave residual ghosting on detail-dense
@@ -327,7 +380,9 @@ impl SevenIn5V2 {
         self.display_full(packed)?;
         // A full refresh resets the panel; the ghosting budget starts over.
         self.partial_since_full = 0;
-        Ok(())
+        // The frame has developed; drop the rails so the fine stipple holds
+        // crisp instead of fading under VCOM bias during the dwell.
+        self.power_off()
     }
 
     /// Blank the panel to white with a clean full refresh. Restores full mode
@@ -339,7 +394,8 @@ impl SevenIn5V2 {
         self.in_partial_mode = false;
         self.partial_since_full = 0;
         let white = vec![0xFF; Self::FRAME_BYTES];
-        self.display_full(&white)
+        self.display_full(&white)?;
+        self.power_off()
     }
 }
 
