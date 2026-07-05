@@ -87,12 +87,31 @@ pub fn write(path: &str, value: &serde_json::Value) -> Result<(), ConfigError> {
     let contents = match fmt {
         Format::Json => serde_json::to_string_pretty(value)?,
         Format::Yaml => serde_yml::to_string(value)?,
-        Format::Toml => toml::to_string_pretty(value)?,
+        Format::Toml => toml::to_string_pretty(&strip_nulls(value))?,
     };
     std::fs::write(path, contents).map_err(|source| ConfigError::Write {
         path: path.to_string(),
         source,
     })
+}
+
+/// TOML has no null, so serializing a config with unset optionals (blank
+/// `cache_ttl_secs`, optional strings) fails with "unsupported unit type".
+/// Recursively drop null-valued object entries instead — every optional field
+/// is `#[serde(default)]`, so an omitted key loads back as the same `None`.
+pub fn strip_nulls(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(m) => serde_json::Value::Object(
+            m.iter()
+                .filter(|(_, v)| !v.is_null())
+                .map(|(k, v)| (k.clone(), strip_nulls(v)))
+                .collect(),
+        ),
+        serde_json::Value::Array(a) => {
+            serde_json::Value::Array(a.iter().map(strip_nulls).collect())
+        }
+        other => other.clone(),
+    }
 }
 
 fn sniff(contents: &str) -> Option<serde_json::Value> {
@@ -162,5 +181,23 @@ mod tests {
             assert_eq!(parsed, v);
             let _ = std::fs::remove_file(&path);
         }
+    }
+
+    #[test]
+    fn toml_write_drops_null_optionals() {
+        // TOML can't hold nulls; unset optionals are dropped on write and load
+        // back as `None` through the sections' serde defaults.
+        let tmp = std::env::temp_dir().join("ohmyoled_cfgio_nulls.toml");
+        let path = tmp.to_str().unwrap();
+        let v = serde_json::json!({
+            "time": {"run": true, "cache_ttl_secs": null},
+            "sleep": {"enabled": true, "start": null, "end": null}
+        });
+        write(path, &v).expect("toml write with nulls succeeds");
+        let parsed = load(path).unwrap();
+        assert_eq!(parsed["time"]["run"], serde_json::json!(true));
+        assert!(parsed["time"].get("cache_ttl_secs").is_none());
+        assert_eq!(parsed["sleep"]["enabled"], serde_json::json!(true));
+        let _ = std::fs::remove_file(&tmp);
     }
 }

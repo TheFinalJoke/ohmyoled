@@ -7,6 +7,7 @@ pub mod iss;
 pub mod launch;
 pub mod pihole;
 pub mod quake;
+pub mod sleep;
 pub mod sport;
 pub mod stock;
 pub mod time;

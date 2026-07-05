@@ -138,14 +138,19 @@ fn modules_list_keys(app: &mut App, key: KeyEvent) {
             }
         }
         KeyCode::Char('a') => {
-            // Every tile may repeat — sections fold to a JSON array on save.
-            app.add_instance(kind);
-            app.inst_idx = app.instances_of(kind).len().saturating_sub(1);
-            app.status = format!(
-                "Added {} #{} — ←/→ to switch, d to remove",
-                form_module::title(kind),
-                app.inst_idx + 1
-            );
+            // Most tiles may repeat — sections fold to a JSON array on save.
+            // `sleep` is a single top-level object, so exactly one.
+            if !form_module::allow_multi(kind) && app.kind_enabled(kind) {
+                app.status = format!("Only one {} allowed", form_module::title(kind));
+            } else {
+                app.add_instance(kind);
+                app.inst_idx = app.instances_of(kind).len().saturating_sub(1);
+                app.status = format!(
+                    "Added {} #{} — ←/→ to switch, d to remove",
+                    form_module::title(kind),
+                    app.inst_idx + 1
+                );
+            }
         }
         KeyCode::Char('d') if inst_count > 0 => {
             app.remove_active_instance();
